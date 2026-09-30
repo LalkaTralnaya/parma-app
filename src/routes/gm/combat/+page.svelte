@@ -1,0 +1,671 @@
+<script lang="ts">
+	import { listCharacters, getCurrentResource } from '../../../lib/db/characters';
+	import { createRequest, SESSION_LABELS } from '../../../lib/sync/session';
+	import { getCharacter, saveCharacter } from '../../../lib/db/characters';
+	import { notifyCharacterUpdate } from '../../../lib/sync/combat';
+	import { rollD100 } from '../../../lib/engine/dice';
+	import { onMount, onDestroy } from 'svelte';
+	import { getCharacteristicValue, getModifier, getResourceMax } from '../../../lib/engine/character';
+	import { getArmorValue } from '../../../lib/engine/combat';
+	import { BESTIARY } from '../../../lib/rules/bestiary';
+	import { scaleMonster } from '../../../lib/engine/bestiary';
+	import {
+		getCombat, createEmptyCombat, saveCombat, sortedParticipants, getCurrentParticipant,
+		updateParticipant, damageParticipant, nextTurn, startCombat, endCombat, clearCombat,
+		subscribeCombat,findParticipantBySource,
+		type CombatState, type CombatParticipant, type MonsterAttackData
+	} from '../../../lib/sync/combat';
+	import type { Character } from '../../../lib/types';
+
+	let state = $state<CombatState>(createEmptyCombat());
+	// ... остальной код
+	let characters = $state<Character[]>([]);
+	let unsubscribe: (() => void) | null = null;
+	let showAddEnemy = $state(false);
+	let showAddPlayers = $state(false);
+	let attackResult = $state<{
+		attackerName: string;
+		attackName: string;
+		targetName: string;
+		roll: number;
+		target: number;
+		outcome: 'hit' | 'miss' | 'critical_hit' | 'critical_miss' | 'double';
+		damageRoll?: { rolls: number[]; mod: number; total: number; diceString: string; type: string };
+	} | null>(null);
+
+	let pendingAttack = $state<{
+		attacker: CombatParticipant;
+		attack: MonsterAttackData;
+	} | null>(null);
+
+	const attackLabel: Record<string, string> = {
+		hit: 'Попадание',
+		miss: 'Промах',
+		critical_hit: 'Правь! Критический успех',
+		critical_miss: 'Навь! Критический провал',
+		double: 'Явь! Дубль'
+	};
+
+	function rollDice(diceString: string): number[] {
+		const m = diceString.match(/^(\d+)[кd](\d+)$/i);
+		if (!m) return [];
+		const count = Number(m[1]);
+		const sides = Number(m[2]);
+		const out: number[] = [];
+		for (let i = 0; i < count; i++) out.push(Math.floor(Math.random() * sides) + 1);
+		return out;
+	}
+
+	function initiateAttack(attacker: CombatParticipant, attack: MonsterAttackData) {
+		pendingAttack = { attacker, attack };
+	}
+
+		function confirmAttack(target: CombatParticipant) {
+		if (!pendingAttack) return;
+		const { attacker, attack } = pendingAttack;
+		const roll = rollD100();
+		const targetValue = 30 + attack.hitBonus - target.armor;
+
+		let outcome: 'hit' | 'miss' | 'critical_hit' | 'critical_miss' | 'double';
+		if (roll === 1) outcome = 'critical_hit';
+		else if (roll === 100) outcome = 'critical_miss';
+		else if (roll % 11 === 0 && roll <= 99 && roll <= targetValue) outcome = 'double';
+		else outcome = roll <= targetValue ? 'hit' : 'miss';
+
+		let damageRoll;
+		let appliedDamage = 0;
+
+		if ((outcome === 'hit' || outcome === 'critical_hit' || outcome === 'double') && attack.damageDice !== '0') {
+			const rolls = rollDice(attack.damageDice);
+			const baseSum = rolls.reduce((a, b) => a + b, 0);
+			const mod = attacker.primaryMod ?? 0;
+			appliedDamage = baseSum + mod;
+
+			// Крит — максимум кубиков
+			if (outcome === 'critical_hit') {
+				const maxRoll = rolls.length * Number(attack.damageDice.match(/[кd](\d+)/i)?.[1] ?? 0);
+				appliedDamage = maxRoll + mod;
+			}
+
+			damageRoll = {
+				rolls,
+				mod,
+				total: appliedDamage,
+				diceString: attack.damageDice,
+				type: attack.damageType
+			};
+
+			// ⬇ ВОТ ЭТО ГЛАВНОЕ — списываем урон с цели
+			damageParticipant(target.id, -appliedDamage);
+			state = getCombat()!;
+		}
+
+		attackResult = {
+			attackerName: attacker.name,
+			attackName: attack.name,
+			targetName: target.name,
+			roll,
+			target: targetValue,
+			outcome,
+			damageRoll
+		};
+
+		pendingAttack = null;
+	}
+
+	function rollJustDamage(attacker: CombatParticipant, attack: MonsterAttackData) {
+		if (attack.damageDice === '0') return;
+		const rolls = rollDice(attack.damageDice);
+		const baseSum = rolls.reduce((a, b) => a + b, 0);
+		const mod = attacker.primaryMod ?? 0;
+		attackResult = {
+			attackerName: attacker.name,
+			attackName: attack.name + ' (только урон)',
+			targetName: '—',
+			roll: 0,
+			target: 0,
+			outcome: 'hit',
+			damageRoll: {
+				rolls,
+				mod,
+				total: baseSum + mod,
+				diceString: attack.damageDice,
+				type: attack.damageType
+			}
+		};
+	}
+
+	function closeAttackResult() {
+		attackResult = null;
+	}
+	// выбор врага
+	let enemyMonsterId = $state<string>(BESTIARY[0]?.id ?? '');
+	let enemyLevel = $state(1);
+	let enemyName = $state('');
+
+	async function loadCharacters() {
+		characters = await listCharacters();
+	}
+
+			onMount(async () => {
+		await loadCharacters();
+		const s = getCombat();
+		if (s) state = s;
+		unsubscribe = subscribeCombat((newState) => {
+			state = newState ?? createEmptyCombat();
+		});
+	});
+
+	onDestroy(() => unsubscribe?.());
+
+	function persist(newState: CombatState) {
+		state = newState;
+		saveCombat(newState);
+	}
+
+	function rollD20(): number {
+		return Math.floor(Math.random() * 20) + 1;
+	}
+
+	/** Добавить всех персонажей, которых ещё нет в бою */
+	function addAllPlayers() {
+		if (!state || !characters.length) return;
+		const s = getCombat() ?? createEmptyCombat();
+		const existingSourceIds = new Set(s.participants.map((p) => p.sourceId).filter(Boolean));
+
+		for (const c of characters) {
+			if (existingSourceIds.has(c.id)) continue;
+			const dexMod = getModifier(getCharacteristicValue(c, 'dexterity'));
+			const armorInfo = getArmorValue(c);
+			const hpMax = getResourceMax(c, 'hp');
+			const realHp = getCurrentResource(c, 'hp', hpMax);
+			const tempHp = (c as any).tempHp ?? 0;
+			const roll = rollD20();
+			s.participants.push({
+				id: crypto.randomUUID(),
+				name: c.name || '(без имени)',
+				sourceId: c.id,
+				isPlayer: true,
+				maxHp: hpMax,
+				currentHp: realHp + tempHp,
+				armor: armorInfo.total,
+				initiative: roll + dexMod,
+				initiativeRoll: roll,
+				initiativeMod: dexMod
+			});
+		}
+		persist(s);
+		showAddPlayers = false;
+	}
+
+	function addEnemy() {
+		const base = BESTIARY.find((m) => m.id === enemyMonsterId);
+		if (!base) return;
+		const scaled = scaleMonster(base, enemyLevel);
+		const s = getCombat() ?? createEmptyCombat();
+		const dexMod = scaled.scaledMods.dexterity ?? 0;
+		const roll = rollD20();
+
+		s.participants.push({
+			id: crypto.randomUUID(),
+			name: enemyName.trim() || `${base.name} (ур. ${enemyLevel})`,
+			sourceId: base.id,
+			isPlayer: false,
+			maxHp: scaled.scaledHp,
+			currentHp: scaled.scaledHp,
+			armor: scaled.scaledArmor,
+			initiative: roll + dexMod,
+			initiativeRoll: roll,
+			initiativeMod: dexMod,
+			traits: base.traits,
+			attacks: scaled.scaledAttacks.map((a) => ({
+				name: a.name,
+				hitBonus: a.hitBonus,
+				damageDice: a.damageDice,
+				damageType: a.damageType
+			})),
+			primaryMod: scaled.scaledMods[base.primaryStat]
+		});
+		persist(s);
+		enemyName = '';
+		showAddEnemy = false;
+	}
+	/** Отправить игрокам запрос на бросок прыти. Их результаты придут
+	 *  через broadcast и обновят участников боя автоматически. */
+	function requestAllInitiatives() {
+		createRequest('initiative', SESSION_LABELS.initiative);
+	}
+	function rerollAll() {
+		const s = getCombat() ?? createEmptyCombat();
+		s.participants = s.participants.map((p) => {
+			const roll = rollD20();
+			return {
+				...p,
+				initiativeRoll: roll,
+				initiative: roll + (p.initiativeMod ?? 0)
+			};
+		});
+		s.currentTurnIndex = 0;
+		persist(s);
+	}
+
+	function begin() {
+		startCombat();
+		state = getCombat()!;
+	}
+
+	/** Завершить бой (участники и прыть сохраняются) */
+	function end() {
+		if (!confirm('Завершить бой? Участники и прыть сохранятся.')) return;
+		endCombat();
+		state = getCombat() ?? createEmptyCombat();
+	}
+
+	/** Полностью очистить (убрать всех участников) */
+	function clearAll() {
+		if (!confirm('Убрать всех участников из боя?')) return;
+		clearCombat();
+		state = createEmptyCombat();
+	}
+
+	function next() {
+		const prevRound = state.round;
+		nextTurn();
+		state = getCombat()!;
+
+		// Если начался новый круг — тикаем состояния
+		if (state.round > prevRound) {
+			tickConditionsForPlayers();
+		}
+	}
+		/** Уменьшить все активные состояния у всех игроков на 1 раунд.
+	 *  Удаляет те, где осталось 0. */
+	async function tickConditionsForPlayers() {
+		for (const p of state.participants) {
+			if (!p.isPlayer || !p.sourceId) continue;
+
+			const c = await getCharacter(p.sourceId);
+			if (!c) continue;
+
+			let changed = false;
+
+			const nextConditions = (c.conditions ?? [])
+				.map((cond) => {
+					if (cond.roundsLeft === null) return cond;
+					changed = true;
+					return { ...cond, roundsLeft: cond.roundsLeft - 1 };
+				})
+				.filter((cond) => cond.roundsLeft === null || cond.roundsLeft > 0);
+
+			if (changed) {
+				c.conditions = nextConditions;
+				await saveCharacter(c);
+				notifyCharacterUpdate(c.id);
+			}
+		}
+	}
+
+	function removeParticipant_click(id: string) {
+		removeParticipant(id);
+		state = getCombat()!;
+	}
+
+	async function hp(id: string, delta: number) {
+		const p = state.participants.find((x) => x.id === id);
+		if (!p) return;
+		const next = Math.max(0, Math.min(p.maxHp, p.currentHp + delta));
+		updateParticipant(id, { currentHp: next });
+		state = getCombat()!;
+	}
+
+	const sorted = $derived(sortedParticipants(state));
+	const currentParticipant = $derived(state.active ? getCurrentParticipant(state) : null);
+	const players = $derived(state.participants.filter((p) => p.isPlayer));
+	const enemies = $derived(state.participants.filter((p) => !p.isPlayer));
+
+	function hpColor(p: CombatParticipant): string {
+		const ratio = p.currentHp / p.maxHp;
+		if (ratio > 0.7) return 'text-green-700';
+		if (ratio > 0.3) return 'text-amber-600';
+		if (ratio > 0) return 'text-red-600';
+		return 'text-gray-400';
+	}
+</script>
+
+<main class="max-w-6xl mx-auto p-6">
+	<header class="flex justify-between items-center mb-6 flex-wrap gap-3">
+		<div>
+			<h1 class="text-3xl font-bold">Бой</h1>
+			<p class="text-sm text-gray-500">
+				Участников: {state.participants.length}
+				{#if state.active} · раунд {state.round}{/if}
+			</p>
+		</div>
+		<div class="flex gap-2 flex-wrap">
+			<button
+				class="px-4 py-2 border rounded hover:bg-gray-50"
+				onclick={() => (showAddPlayers = true)}>+ Игроки</button>
+			<button
+				class="px-4 py-2 border rounded hover:bg-gray-50"
+				onclick={() => (showAddEnemy = true)}>+ Враг</button>
+							<button
+				class="px-4 py-2 text-red-600 border border-red-300 rounded hover:bg-red-50"
+				onclick={clearAll}>✕ Очистить</button>
+			<button
+				class="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700"
+				onclick={requestAllInitiatives}>🎲 Прыть всем</button>
+			{#if state.active}
+				<button
+					class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+					onclick={end}>■ Закончить бой</button>
+			{:else}
+				<button
+					class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+					disabled={state.participants.length === 0}
+					onclick={begin}>▶ Начать бой</button>
+			{/if}
+			<a href="/gm" class="px-4 py-2 border rounded hover:bg-gray-50">← К мастеру</a>
+		</div>
+	</header>
+
+	{#if state.participants.length === 0}
+		<div class="border-2 border-dashed rounded-lg p-10 text-center text-gray-500">
+			<p>В бою пока никого. Добавьте игроков или врага.</p>
+		</div>
+	{:else}
+		<!-- Порядок хода -->
+		<section class="border-2 border-purple-300 rounded-lg p-4 bg-purple-50 mb-6">
+			<div class="flex justify-between items-center mb-3">
+				<h2 class="text-lg font-semibold">
+					Порядок хода {#if state.active}· раунд {state.round}{/if}
+				</h2>
+				{#if state.active}
+					<button
+						class="px-5 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 font-semibold"
+						onclick={next}>
+						✓ Закончить ход
+					</button>
+				{/if}
+			</div>
+			<ol class="space-y-1">
+				{#each sorted as p, i}
+					{@const isCurrent = state.active && state.currentTurnIndex % sorted.length === i}
+					<li
+						class="flex justify-between items-center px-3 py-2 rounded
+							{isCurrent ? 'bg-purple-600 text-white font-bold' : 'bg-white'}
+							{p.currentHp <= 0 ? 'opacity-40 line-through' : ''}">
+						<div class="flex items-center gap-3">
+							<span class="text-xs w-6 text-center {isCurrent ? 'text-purple-100' : 'text-gray-500'}">
+								{i + 1}
+							</span>
+							<span class="font-medium">{p.name}</span>
+							<span class="text-xs {isCurrent ? 'text-purple-100' : 'text-gray-500'}">
+								{p.isPlayer ? 'игрок' : 'враг'} · ЖВЧ {p.currentHp}/{p.maxHp} · Броня {p.armor}
+							</span>
+						</div>
+						<span class="font-mono text-lg {isCurrent ? 'text-white' : 'text-purple-700'}">
+							{p.initiative}
+							{#if p.initiativeRoll !== undefined}
+								<span class="text-xs {isCurrent ? 'text-purple-100' : 'text-gray-500'}">
+									({p.initiativeRoll}{p.initiativeMod !== undefined && p.initiativeMod >= 0 ? '+' : ''}{p.initiativeMod})
+								</span>
+							{/if}
+						</span>
+					</li>
+				{/each}
+			</ol>
+		</section>
+
+		<!-- Игроки -->
+		{#if players.length > 0}
+			<section class="mb-6">
+				<h2 class="text-lg font-semibold mb-2 text-blue-700">Игроки</h2>
+				<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+					{#each players as p (p.id)}
+						<div class="border rounded-lg bg-white p-3 {p.currentHp <= 0 ? 'opacity-50' : ''}">
+							<div class="flex justify-between items-start mb-2">
+								<div>
+									<div class="font-semibold">{p.name}</div>
+									<div class="text-xs text-gray-500">Броня {p.armor} · прыть {p.initiative}</div>
+								</div>
+								<button
+									class="text-red-500 hover:text-red-700 px-2"
+									onclick={() => removeParticipant_click(p.id)}
+									title="Убрать">✕</button>
+							</div>
+							<div class="flex items-center gap-2 mb-2">
+								<div class="flex-1">
+									<div class="text-xs text-gray-500">ЖВЧ</div>
+									<div class="text-2xl font-bold {hpColor(p)}">
+										{p.currentHp}<span class="text-sm text-gray-400">/{p.maxHp}</span>
+									</div>
+								</div>
+								<div class="flex gap-1 flex-wrap justify-end">
+									<button class="px-2 py-1 text-xs border rounded hover:bg-gray-100" onclick={() => hp(p.id, -1)}>−1</button>
+									<button class="px-2 py-1 text-xs border rounded hover:bg-gray-100" onclick={() => hp(p.id, -5)}>−5</button>
+									<button class="px-2 py-1 text-xs border rounded hover:bg-gray-100" onclick={() => hp(p.id, -10)}>−10</button>
+									<button class="px-2 py-1 text-xs border rounded hover:bg-gray-100" onclick={() => hp(p.id, +1)}>+1</button>
+									<button class="px-2 py-1 text-xs border rounded hover:bg-gray-100" onclick={() => hp(p.id, +5)}>+5</button>
+								</div>
+							</div>
+						</div>
+					{/each}
+				</div>
+			</section>
+		{/if}
+
+		<!-- Враги -->
+		{#if enemies.length > 0}
+			<section>
+				<h2 class="text-lg font-semibold mb-2 text-red-700">Враги</h2>
+				<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+					{#each enemies as p (p.id)}
+						<div class="border rounded-lg bg-white p-3 {p.currentHp <= 0 ? 'opacity-50' : ''}">
+							<div class="flex justify-between items-start mb-2">
+								<div>
+									<div class="font-semibold">{p.name}</div>
+									<div class="text-xs text-gray-500">Броня {p.armor} · прыть {p.initiative}</div>
+								</div>
+								<button
+									class="text-red-500 hover:text-red-700 px-2"
+									onclick={() => removeParticipant_click(p.id)}
+									title="Убрать">✕</button>
+							</div>
+							<div class="flex items-center gap-2 mb-2">
+								<div class="flex-1">
+									<div class="text-xs text-gray-500">ЖВЧ</div>
+									<div class="text-2xl font-bold {hpColor(p)}">
+										{p.currentHp}<span class="text-sm text-gray-400">/{p.maxHp}</span>
+									</div>
+								</div>
+								<div class="flex gap-1 flex-wrap justify-end">
+									<button class="px-2 py-1 text-xs border rounded hover:bg-gray-100" onclick={() => hp(p.id, -1)}>−1</button>
+									<button class="px-2 py-1 text-xs border rounded hover:bg-gray-100" onclick={() => hp(p.id, -5)}>−5</button>
+									<button class="px-2 py-1 text-xs border rounded hover:bg-gray-100" onclick={() => hp(p.id, -10)}>−10</button>
+									<button class="px-2 py-1 text-xs border rounded hover:bg-gray-100" onclick={() => hp(p.id, +1)}>+1</button>
+									<button class="px-2 py-1 text-xs border rounded hover:bg-gray-100" onclick={() => hp(p.id, +5)}>+5</button>
+								</div>
+							</div>
+
+							{#if p.attacks && p.attacks.length > 0}
+								<div class="border-t pt-2 mt-2">
+									<div class="text-xs text-gray-500 mb-1">Атаки</div>
+									<div class="space-y-1.5">
+										{#each p.attacks as attack}
+											<div class="flex items-center justify-between gap-2 text-xs">
+												<div class="flex-1 min-w-0">
+													<div class="font-medium truncate">{attack.name}</div>
+													<div class="text-gray-500">
+														≤ {30 + attack.hitBonus}
+														{#if attack.damageDice !== '0'}
+															· {attack.damageDice}{#if (p.primaryMod ?? 0) !== 0} {(p.primaryMod ?? 0) >= 0 ? '+' : ''}{p.primaryMod}{/if} {attack.damageType}
+														{/if}
+													</div>
+												</div>
+												<div class="flex gap-1 shrink-0">
+													{#if attack.damageDice !== '0'}
+														<button
+															class="px-1.5 py-0.5 border rounded hover:bg-gray-100"
+															onclick={() => rollJustDamage(p, attack)}
+															title="Только урон">🎲</button>
+													{/if}
+													<button
+														class="px-1.5 py-0.5 bg-red-600 text-white rounded hover:bg-red-700"
+														onclick={() => initiateAttack(p, attack)}
+														title="Атаковать цель">⚔</button>
+												</div>
+											</div>
+										{/each}
+									</div>
+								</div>
+							{/if}
+
+							{#if p.traits && p.traits.length > 0}
+								<div class="text-xs text-gray-600 mt-2 pt-2 border-t">
+									{p.traits.join(' · ')}
+								</div>
+							{/if}
+						</div>
+					{/each}
+				</div>
+			</section>
+		{/if}
+	{/if}
+
+	<!-- Модалка: добавить игроков -->
+	{#if showAddPlayers}
+		<div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+			<div class="bg-white rounded-lg p-6 max-w-md w-full">
+				<h3 class="text-lg font-semibold mb-3">Добавить игроков</h3>
+				<p class="text-sm text-gray-500 mb-4">
+					Будут добавлены все персонажи из базы, которых ещё нет в бою.
+				</p>
+				<div class="flex gap-2 justify-end">
+					<button
+						class="px-4 py-2 border rounded hover:bg-gray-50"
+						onclick={() => (showAddPlayers = false)}>Отмена</button>
+					<button
+						class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+						onclick={addAllPlayers}>Добавить всех</button>
+				</div>
+			</div>
+		</div>
+	{/if}
+
+	<!-- Модалка: добавить врага -->
+	{#if showAddEnemy}
+		<div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+			<div class="bg-white rounded-lg p-6 max-w-md w-full">
+				<h3 class="text-lg font-semibold mb-3">Добавить врага</h3>
+				<div class="space-y-3">
+					<div>
+						<label class="block text-sm text-gray-500 mb-1">Монстр</label>
+						<select
+							bind:value={enemyMonsterId}
+							class="w-full px-3 py-2 border rounded">
+							{#each BESTIARY as m}
+								<option value={m.id}>{m.name} (база: {m.dangerLabel})</option>
+							{/each}
+						</select>
+					</div>
+					<div>
+						<label class="block text-sm text-gray-500 mb-1">Уровень</label>
+						<input type="number" min="1" max="20" bind:value={enemyLevel}
+							class="w-full px-3 py-2 border rounded" />
+					</div>
+					<div>
+						<label class="block text-sm text-gray-500 mb-1">Имя (необязательно)</label>
+						<input type="text" bind:value={enemyName} placeholder="например, Серый Клык"
+							class="w-full px-3 py-2 border rounded" />
+					</div>
+				</div>
+				<div class="flex gap-2 justify-end mt-4">
+					<button
+						class="px-4 py-2 border rounded hover:bg-gray-50"
+						onclick={() => (showAddEnemy = false)}>Отмена</button>
+					<button
+						class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+						onclick={addEnemy}>Добавить</button>
+				</div>
+			</div>
+		</div>
+	{/if}
+		<!-- Модалка выбора цели -->
+	{#if pendingAttack}
+		<div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+			<div class="bg-white rounded-lg p-6 max-w-md w-full">
+				<h3 class="text-lg font-semibold mb-1">
+					{pendingAttack.attacker.name} атакует: {pendingAttack.attack.name}
+				</h3>
+				<p class="text-sm text-gray-500 mb-4">
+					Попадание ≤ {30 + pendingAttack.attack.hitBonus}. Выбери цель:
+				</p>
+				<div class="space-y-2 mb-4 max-h-64 overflow-y-auto">
+					{#each players as target (target.id)}
+						<button
+							class="w-full text-left px-3 py-2 border rounded hover:bg-gray-50"
+							onclick={() => confirmAttack(target)}>
+							<div class="font-medium">{target.name}</div>
+							<div class="text-xs text-gray-500">
+								Броня {target.armor} · ЖВЧ {target.currentHp}/{target.maxHp}
+								→ цель атаки {30 + pendingAttack!.attack.hitBonus - target.armor}
+							</div>
+						</button>
+					{/each}
+				</div>
+				<div class="flex justify-end">
+					<button
+						class="px-4 py-2 border rounded hover:bg-gray-50"
+						onclick={() => (pendingAttack = null)}>Отмена</button>
+				</div>
+			</div>
+		</div>
+	{/if}
+
+	<!-- Модалка результата атаки -->
+	{#if attackResult}
+		<div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
+			onclick={closeAttackResult}>
+			<div class="bg-white rounded-lg p-6 max-w-md w-full" onclick={(e) => e.stopPropagation()}>
+				<h3 class="text-lg font-semibold mb-2">
+					{attackResult.attackerName}: {attackResult.attackName}
+				</h3>
+
+				{#if attackResult.roll > 0}
+					<div class="mb-3">
+						<div class="text-sm text-gray-500">Цель: {attackResult.targetName}</div>
+						<div class="text-2xl mt-1">
+							Выпало <span class="font-bold">{attackResult.roll}</span>,
+							попадание ≤ {attackResult.target} —
+							<span class="font-bold
+								{attackResult.outcome === 'hit' || attackResult.outcome === 'critical_hit' || attackResult.outcome === 'double' ? 'text-green-700' : 'text-red-700'}">
+								{attackLabel[attackResult.outcome]}
+							</span>
+						</div>
+					</div>
+				{/if}
+
+				{#if attackResult.damageRoll}
+					<div class="border-t pt-3">
+						<div class="text-sm text-gray-500">Урон ({attackResult.damageRoll.type})</div>
+						<div class="text-3xl font-bold text-red-700">
+							{attackResult.damageRoll.total}
+						</div>
+						<div class="text-xs text-gray-500">
+							{attackResult.damageRoll.diceString} = [{attackResult.damageRoll.rolls.join(', ')}]
+							{#if attackResult.damageRoll.mod !== 0}
+								+ {attackResult.damageRoll.mod} мод.
+							{/if}
+						</div>
+					</div>
+				{/if}
+
+				<div class="flex justify-end mt-4">
+					<button
+						class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+						onclick={closeAttackResult}>ОК</button>
+				</div>
+			</div>
+		</div>
+	{/if}
+</main>
