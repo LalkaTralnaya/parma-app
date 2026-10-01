@@ -19,7 +19,7 @@
 		<!-- ═══════ ПРОВЕРКИ ═══════ -->
 		<div class="border rounded-lg bg-white">
 			<button class="w-full text-left px-4 py-3 font-semibold flex justify-between items-center hover:bg-gray-50"
-				onclick={() => toggle('checks')}>
+				aria-expanded={openSection === 'checks'} onclick={() => toggle('checks')}>
 				<span>🎲 Основные проверки</span>
 				<span class="text-gray-400">{openSection === 'checks' ? '−' : '+'}</span>
 			</button>
@@ -87,8 +87,8 @@
 		<!-- ═══════ БОЙ ═══════ -->
 		<div class="border rounded-lg bg-white">
 			<button class="w-full text-left px-4 py-3 font-semibold flex justify-between items-center hover:bg-gray-50"
-				onclick={() => toggle('combat')}>
-				<span>⚔ Бой</span>
+				aria-expanded={openSection === 'combat'} onclick={() => toggle('combat')}>
+				<span>Боевой трекер</span>
 				<span class="text-gray-400">{openSection === 'combat' ? '−' : '+'}</span>
 			</button>
 			{#if openSection === 'combat'}
@@ -186,7 +186,7 @@
 		<!-- ═══════ МАГИЯ ═══════ -->
 		<div class="border rounded-lg bg-white">
 			<button class="w-full text-left px-4 py-3 font-semibold flex justify-between items-center hover:bg-gray-50"
-				onclick={() => toggle('magic')}>
+				aria-expanded={openSection === 'magic'} onclick={() => toggle('magic')}>
 				<span>✨ Магия</span>
 				<span class="text-gray-400">{openSection === 'magic' ? '−' : '+'}</span>
 			</button>
@@ -288,7 +288,7 @@
 		<!-- ═══════ СОСТОЯНИЯ ═══════ -->
 		<div class="border rounded-lg bg-white">
 			<button class="w-full text-left px-4 py-3 font-semibold flex justify-between items-center hover:bg-gray-50"
-				onclick={() => toggle('states')}>
+				aria-expanded={openSection === 'states'} onclick={() => toggle('states')}>
 				<span>💀 Состояния</span>
 				<span class="text-gray-400">{openSection === 'states' ? '−' : '+'}</span>
 			</button>
@@ -325,7 +325,7 @@
 		<!-- ═══════ ГРАНЬ ═══════ -->
 		<div class="border rounded-lg bg-white">
 			<button class="w-full text-left px-4 py-3 font-semibold flex justify-between items-center hover:bg-gray-50"
-				onclick={() => toggle('edge')}>
+				aria-expanded={openSection === 'edge'} onclick={() => toggle('edge')}>
 				<span>☠ Грань (смерть и возвращение)</span>
 				<span class="text-gray-400">{openSection === 'edge' ? '−' : '+'}</span>
 			</button>
@@ -378,7 +378,7 @@
 		<!-- ═══════ ЭКОНОМИКА ═══════ -->
 		<div class="border rounded-lg bg-white">
 			<button class="w-full text-left px-4 py-3 font-semibold flex justify-between items-center hover:bg-gray-50"
-				onclick={() => toggle('economy')}>
+				aria-expanded={openSection === 'economy'} onclick={() => toggle('economy')}>
 				<span>💰 Экономика и снаряжение</span>
 				<span class="text-gray-400">{openSection === 'economy' ? '−' : '+'}</span>
 			</button>
@@ -454,7 +454,7 @@
 		<!-- ═══════ ИЗНОС ═══════ -->
 		<div class="border rounded-lg bg-white">
 			<button class="w-full text-left px-4 py-3 font-semibold flex justify-between items-center hover:bg-gray-50"
-				onclick={() => toggle('wear')}>
+				aria-expanded={openSection === 'wear'} onclick={() => toggle('wear')}>
 				<span>🔧 Износ доспехов и оружия</span>
 				<span class="text-gray-400">{openSection === 'wear' ? '−' : '+'}</span>
 			</button>
@@ -503,7 +503,7 @@
 		<!-- ═══════ ОТДЫХ И РЕСУРСЫ ═══════ -->
 		<div class="border rounded-lg bg-white">
 			<button class="w-full text-left px-4 py-3 font-semibold flex justify-between items-center hover:bg-gray-50"
-				onclick={() => toggle('rest')}>
+				aria-expanded={openSection === 'rest'} onclick={() => toggle('rest')}>
 				<span>💤 Отдых и ресурсы</span>
 				<span class="text-gray-400">{openSection === 'rest' ? '−' : '+'}</span>
 			</button>

@@ -1,6 +1,6 @@
 import { WEAPONS, ARMORS, SHIELDS, type Weapon, type Armor, type Shield, type AttackType, ATTACK_SPEED_BONUS } from '../rules/weapons';
 import { getCharacteristicValue, getModifier, getSkillTotal } from './character';
-import type { Character } from '../types';
+import type { Character } from '$lib/type';
 
 /** Прыть (инициатива): d20 + мод Ловкости */
 export function rollInitiative(char: Character): { roll: number; mod: number; total: number } {
@@ -54,7 +54,7 @@ export function getAttackTarget(
 	return {
 		target,
 		parts: [
-			{ label: 'база', value: 30 },,
+			{ label: 'база', value: 30 },
 			{ label: `мод. ${weapon.parent === 'strength' ? 'СИЛ' : 'ЛОВ'}`, value: charMod },
 			{ label: `навык ${weapon.skill}`, value: skillTotal },
 			{ label: `скорость (${attackType})`, value: speedBonus },

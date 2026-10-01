@@ -1,5 +1,5 @@
 import { getItem, type Item } from '../rules/items';
-import type { Character, InventoryItem } from '../types';
+import type { Character, InventoryItem } from '$lib/type';
 
 /** Список инвентаря с расшифровкой из справочника */
 export interface InventoryEntry {

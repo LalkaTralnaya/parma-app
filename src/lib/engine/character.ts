@@ -2,7 +2,7 @@ import { BASE_CHARACTERISTIC_VALUE, MAX_CHECK_TARGET } from '../rules/characteri
 import { SKILLS } from '../rules/skills';
 import { RACES } from '../rules/races';
 import { RESOURCES } from '../rules/resources';
-import type { Character } from '../types';
+import type { Character } from '$lib/type';
 import { ABILITIES, ABILITY_THRESHOLDS, type Ability } from '../rules/abilities';
 import { BACKGROUNDS } from '../rules/backgrounds';
 

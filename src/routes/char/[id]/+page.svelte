@@ -42,7 +42,7 @@ import {
 		getResourceMax
 	} from '../../../lib/engine/character';
 	import { rollD100, classifyRoll, type RollResult } from '../../../lib/engine/dice';
-	import type { Character } from '../../../lib/types';
+	import type { Character } from '$lib/type';
 	import {
 	getSpellCastTarget,
 	getSpellCost,
@@ -111,7 +111,7 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 		}>;
 	} | null>(null);
 		onMount(async () => {
-		const found = await getCharacter(page.params.id);
+		const found = await getCharacter(page.params.id ?? '');
 		if (!found) {
 			goto('/');
 			return;
@@ -1085,9 +1085,9 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 			<div>
 				<h1 class="text-3xl font-bold">{char.name || '(без имени)'}</h1>
 				<p class="text-gray-600">
-					{RACES.find((r) => r.id === char.raceId)?.name} · {char.level} уровень
+					{RACES.find((r) => r.id === char?.raceId)?.name} · {char.level} уровень
 					{#if char.backgroundId}
-						· {BACKGROUNDS.find((b) => b.id === char.backgroundId)?.name}
+						· {BACKGROUNDS.find((b) => b.id === char?.backgroundId)?.name}
 					{/if}
 				</p>
 			</div>
@@ -1105,10 +1105,14 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 				</button>
 			</div>
 		</header>
+        <nav class="sheet-nav" aria-label="Разделы листа персонажа">
+          <a href="#characteristics">Характеристики</a><a href="#resources">Ресурсы</a><a href="#battle">Бой</a><a href="#skills">Навыки</a><a href="#spells">Магия</a><a href="#inventory">Инвентарь</a><a href="#personality">Личность</a><a href="#conditions">Состояния</a><a href="#rest">Отдых</a>
+        </nav>
+
 
 		<section>
-			<h2 class="text-xl font-semibold mb-3">Характеристики</h2>
-			<div class="grid grid-cols-5 gap-3">
+			<h2 id="characteristics" class="text-xl font-semibold mb-3">Характеристики</h2>
+			<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
 				{#each CHARACTERISTICS as c}
 					{@const baseVal = getCharacteristicValue(char, c.id)}
 					{@const effVal = getCharacteristicValue(char, c.id, condMods)}
@@ -1136,25 +1140,26 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 		</section>
 
 		<section>
-			<h2 class="text-xl font-semibold mb-3">Ресурсы</h2>
-			<div class="grid grid-cols-5 gap-3">
+			<h2 id="resources" class="text-xl font-semibold mb-3">Ресурсы</h2>
+			<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
 				{#each RESOURCES as r}
 					{@const max = getResourceMax(char, r.id, condMods)}
 					{@const current = getCurrentResource(char, r.id, max)}
 						<div class="border rounded-lg p-3 text-center bg-white">
-							<div class="text-xs uppercase text-gray-500">{r.short}</div>
+							<div class="text-sm text-gray-500" title={r.short}>{r.name}</div>
 							<div class="text-xl font-bold">
 								<span class={current < max * 0.3 ? 'text-red-600' : current < max * 0.7 ? 'text-amber-600' : 'text-green-700'}>
 									{current}
 								</span>
 								<span class="text-gray-400 text-sm">/ {max}</span>
 							</div>
-						{#if r.id === 'hp' && (char.tempHp ?? 0) > 0}
+						<progress class="resource-meter" class:low={current < max * 0.3} max={Math.max(1, max)} value={Math.max(0, Math.min(current, max))} aria-label={r.name}>{current} / {max}</progress>
+                        {#if r.id === 'hp' && (char.tempHp ?? 0) > 0}
 							<div class="text-xs text-red-700 font-semibold">
 								+{char.tempHp} временных
 							</div>
 						{/if}
-													<div class="flex gap-1 mt-1 justify-center">
+													<div class="flex flex-wrap gap-1 mt-1 justify-center">
 							{#if r.id === 'hp'}
 								<button
 									class="px-1.5 text-xs border rounded hover:bg-gray-100"
@@ -1188,7 +1193,7 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 			</div>
 		</section>
 					<section>
-			<h2 class="text-xl font-semibold mb-3">Отдых</h2>
+			<h2 id="rest" class="text-xl font-semibold mb-3">Отдых</h2>
 			<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
 				<div class="border rounded-lg bg-white p-4 flex flex-col">
 					<div class="flex justify-between items-start mb-2">
@@ -1226,7 +1231,7 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 			</div>
 		</section>
 		<section>
-			<h2 class="text-xl font-semibold mb-3">Состояния</h2>
+			<h2 id="conditions" class="text-xl font-semibold mb-3">Состояния</h2>
 
 			<!-- Активные состояния -->
 			{#if (char.conditions ?? []).length === 0}
@@ -1328,8 +1333,8 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 				<div class="border rounded-lg p-3 bg-blue-50">
 					<div class="grid grid-cols-1 md:grid-cols-3 gap-2 mb-2">
 						<div class="md:col-span-2">
-							<label class="block text-xs text-gray-500 mb-1">Состояние</label>
-							<select bind:value={newConditionId}
+							<label for="field-1" class="block text-xs text-gray-500 mb-1">Состояние</label>
+							<select id="field-1" bind:value={newConditionId}
 								class="w-full px-2 py-1 border rounded text-sm">
 								<option value="">— выберите —</option>
 								{#each CONDITIONS as def}
@@ -1340,8 +1345,8 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 							</select>
 						</div>
 						<div>
-							<label class="block text-xs text-gray-500 mb-1">Раундов</label>
-							<input
+							<label for="field-2" class="block text-xs text-gray-500 mb-1">Раундов</label>
+							<input id="field-2"
 								type="number"
 								bind:value={newConditionRounds}
 								placeholder="авто"
@@ -1453,7 +1458,7 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 			</section>
 		{/if}
 		<section>
-			<h2 class="text-xl font-semibold mb-3">Бой</h2>
+			<h2 id="battle" class="text-xl font-semibold mb-3">Бой</h2>
 
 			<!-- Прыть -->
 			<div class="border rounded-lg p-4 bg-white mb-3">
@@ -1501,8 +1506,8 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 				<h3 class="font-semibold mb-3">Экипировка</h3>
 				<div class="grid grid-cols-3 gap-3">
 					<div>
-						<label class="block text-xs text-gray-500 mb-1">Оружие</label>
-						<select
+						<label for="field-3" class="block text-xs text-gray-500 mb-1">Оружие</label>
+						<select id="field-3"
 							value={char.equipment?.weaponId ?? ''}
 							onchange={(e) => updateEquipment('weaponId', (e.currentTarget as HTMLSelectElement).value)}
 							class="w-full px-2 py-1 border rounded text-sm">
@@ -1513,8 +1518,8 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 						</select>
 					</div>
 					<div>
-						<label class="block text-xs text-gray-500 mb-1">Доспех</label>
-						<select
+						<label for="field-4" class="block text-xs text-gray-500 mb-1">Доспех</label>
+						<select id="field-4"
 							value={char.equipment?.armorId ?? 'none'}
 							onchange={(e) => updateEquipment('armorId', (e.currentTarget as HTMLSelectElement).value)}
 							class="w-full px-2 py-1 border rounded text-sm">
@@ -1524,8 +1529,8 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 						</select>
 					</div>
 					<div>
-						<label class="block text-xs text-gray-500 mb-1">Щит</label>
-						<select
+						<label for="field-5" class="block text-xs text-gray-500 mb-1">Щит</label>
+						<select id="field-5"
 							value={char.equipment?.shieldId ?? 'none'}
 							onchange={(e) => updateEquipment('shieldId', (e.currentTarget as HTMLSelectElement).value)}
 							class="w-full px-2 py-1 border rounded text-sm">
@@ -1559,10 +1564,10 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 					<h3 class="font-semibold mb-3">Атака: {currentWeapon.name}</h3>
 					{#if combat?.active && enemiesInCombat.length > 0}
 						<div class="mb-3 p-3 border-2 border-red-300 rounded bg-red-50">
-							<label class="block text-xs text-red-700 font-semibold mb-1">
+							<label for="field-6" class="block text-xs text-red-700 font-semibold mb-1">
 								🎯 Цель (активен бой)
 							</label>
-							<select
+							<select id="field-6"
 								bind:value={targetEnemyId}
 								class="w-full px-3 py-2 border rounded text-sm">
 								<option value={null}>— выберите врага —</option>
@@ -1585,23 +1590,23 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 					{/if}
 					<div class="grid grid-cols-3 gap-3 mb-3">
 						<div>
-							<label class="block text-xs text-gray-500 mb-1">Тип атаки</label>
-							<select bind:value={attackType} class="w-full px-2 py-1 border rounded text-sm">
+							<label for="field-7" class="block text-xs text-gray-500 mb-1">Тип атаки</label>
+							<select id="field-7" bind:value={attackType} class="w-full px-2 py-1 border rounded text-sm">
 								<option value="normal">{ATTACK_TYPE_LABEL.normal}</option>
 								<option value="strong">{ATTACK_TYPE_LABEL.strong}</option>
 								<option value="fast">{ATTACK_TYPE_LABEL.fast}</option>
 							</select>
 						</div>
 						<div>
-							<label class="block text-xs text-gray-500 mb-1">Броня цели</label>
-							<input
+							<label for="field-8" class="block text-xs text-gray-500 mb-1">Броня цели</label>
+							<input id="field-8"
 								type="number"
 								bind:value={targetArmor}
 								class="w-full px-2 py-1 border rounded text-sm" />
 						</div>
 						<div>
 							{#if currentWeapon.damageTwoHands}
-								<label class="block text-xs text-gray-500 mb-1">Две руки</label>
+								<span class="block text-xs text-gray-500 mb-1">Две руки</span>
 								<label class="flex items-center gap-1 text-sm mt-1">
 									<input type="checkbox" bind:checked={useTwoHandsWeapon} />
 									<span>да</span>
@@ -1871,7 +1876,7 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 		{/if}
 
 		<section>
-			<h2 class="text-xl font-semibold mb-3">Навыки</h2>
+			<h2 id="skills" class="text-xl font-semibold mb-3">Навыки</h2>
 			{#if (condMods.skills ?? 0) !== 0 || (condMods.attacks ?? 0) !== 0 || (condMods.armor ?? 0) !== 0}
 				<div class="mb-3 p-2 rounded bg-red-50 border border-red-300 text-sm">
 					<strong class="text-red-800">Штрафы от состояний:</strong>
@@ -1927,7 +1932,7 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 		</section>
 
 		<section>
-			<h2 class="text-xl font-semibold mb-3">Личность</h2>
+			<h2 id="personality" class="text-xl font-semibold mb-3">Личность</h2>
 
 			<!-- Вдохновение -->
 			<div class="border rounded-lg bg-white p-4 mb-4">
@@ -1961,10 +1966,10 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 					{ field: 'ideal',       title: 'Идеал',      list: IDEALS },
 					{ field: 'bond',        title: 'Привязанность', list: BONDS },
 					{ field: 'flaw',        title: 'Слабость',   list: FLAWS }
-				] as entry}
+				] as const as entry}
 					<div class="border rounded-lg bg-white p-4">
-						<label class="block font-semibold mb-2">{entry.title}</label>
-						<select
+						<label for={"personality-" + entry.field} class="block font-semibold mb-2">{entry.title}</label>
+						<select id={"personality-" + entry.field}
 							class="w-full px-3 py-2 border rounded mb-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
 							value={char.bio[`${entry.field}Key` as const]}
 							onchange={(e) => selectPersonality(
@@ -1979,7 +1984,7 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 						</select>
 						<textarea
 							class="w-full px-3 py-2 border rounded text-sm min-h-[80px] focus:outline-none focus:ring-2 focus:ring-blue-500"
-							placeholder="Описание или своя формулировка"
+							aria-label={`Описание: ${entry.title}`} placeholder="Описание или своя формулировка"
 							value={char.bio[`${entry.field}Text` as const]}
 							onblur={(e) => updateBio({
 								[`${entry.field}Text`]: e.currentTarget.value
@@ -1991,24 +1996,24 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 			<!-- Цели и предыстория -->
 			<div class="border rounded-lg bg-white p-4 mt-4 space-y-4">
 				<div>
-					<label class="block font-semibold mb-2">Цели</label>
-					<textarea
+					<label for="field-10" class="block font-semibold mb-2">Цели</label>
+					<textarea id="field-10"
 						class="w-full px-3 py-2 border rounded text-sm min-h-[80px] focus:outline-none focus:ring-2 focus:ring-blue-500"
 						placeholder="Например: найти способ снять Тлен, вернуть право умереть, отомстить за деревню…"
 						value={char.bio.goals}
 						onblur={(e) => updateBio({ goals: e.currentTarget.value })}></textarea>
 				</div>
 				<div>
-					<label class="block font-semibold mb-2">Предыстория</label>
-					<textarea
+					<label for="field-11" class="block font-semibold mb-2">Предыстория</label>
+					<textarea id="field-11"
 						class="w-full px-3 py-2 border rounded text-sm min-h-[120px] focus:outline-none focus:ring-2 focus:ring-blue-500"
 						placeholder="Кем был персонаж до приключений, что привело его в путь…"
 						value={char.bio.backstory}
 						onblur={(e) => updateBio({ backstory: e.currentTarget.value })}></textarea>
 				</div>
 				<div>
-					<label class="block font-semibold mb-2">Внешность</label>
-					<textarea
+					<label for="field-12" class="block font-semibold mb-2">Внешность</label>
+					<textarea id="field-12"
 						class="w-full px-3 py-2 border rounded text-sm min-h-[80px] focus:outline-none focus:ring-2 focus:ring-blue-500"
 						placeholder="Как выглядит персонаж, во что одет, какие приметы…"
 						value={char.bio.appearance}
@@ -2018,7 +2023,7 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 		</section>
 		<section>
 			<div class="flex justify-between items-center mb-3 flex-wrap gap-2">
-				<h2 class="text-xl font-semibold">Заклинания</h2>
+				<h2 id="spells" class="text-xl font-semibold">Заклинания</h2>
 				<label class="flex items-center gap-2 text-sm px-3 py-1.5 border rounded hover:bg-gray-50 cursor-pointer">
 					<input
 						type="checkbox"
@@ -2037,10 +2042,10 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 			</div>
 						{#if combat?.active && enemiesInCombat.length > 0}
 				<div class="mb-3 p-3 border-2 border-red-300 rounded bg-red-50">
-					<label class="block text-xs text-red-700 font-semibold mb-1">
+					<label for="field-13" class="block text-xs text-red-700 font-semibold mb-1">
 						🎯 Цель заклинания (активен бой)
 					</label>
-					<select
+					<select id="field-13"
 						bind:value={targetEnemyId}
 						class="w-full px-3 py-2 border rounded text-sm">
 						<option value={null}>— выберите врага —</option>
@@ -2165,7 +2170,7 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 			</div>
 		</section>
 		{#if char.backgroundId}
-			{@const bg = BACKGROUNDS.find((b) => b.id === char.backgroundId)}
+			{@const bg = BACKGROUNDS.find((b) => b.id === char?.backgroundId)}
 			{#if bg}
 				<section>
 					<h2 class="text-xl font-semibold mb-3">Предыстория</h2>
@@ -2186,7 +2191,7 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 					</div>
 				</section>
 				<section>
-			<h2 class="text-xl font-semibold mb-3">Инвентарь</h2>
+			<h2 id="inventory" class="text-xl font-semibold mb-3">Инвентарь</h2>
 
 			<!-- Деньги -->
 			<div class="border rounded-lg p-4 bg-white mb-3">
@@ -2356,7 +2361,7 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 			{/if}
 		{/if}
 		<section>
-			<h2 class="text-xl font-semibold mb-3">Умения и таланты</h2>
+			<h2 id="abilities" class="text-xl font-semibold mb-3">Умения и таланты</h2>
 			<div class="space-y-4">
 				{#each SKILLS as s}
 					{@const unlocked = getUnlockedAbilities(char, s.id)}

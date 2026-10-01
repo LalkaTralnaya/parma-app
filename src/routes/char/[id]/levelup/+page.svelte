@@ -10,7 +10,7 @@
 		type ResourceLevelRoll
 	} from '../../../../lib/engine/levelup';
 	import { getCharacteristicValue, getModifier } from '../../../../lib/engine/character';
-	import type { Character } from '../../../../lib/types';
+	import type { Character } from '$lib/type';
 
 	let char = $state<Character | null>(null);
 	let loading = $state(true);
@@ -19,7 +19,7 @@
 	let saving = $state(false);
 
 	onMount(async () => {
-		const found = await getCharacter(page.params.id);
+		const found = await getCharacter(page.params.id ?? '');
 		if (!found) {
 			goto('/');
 			return;

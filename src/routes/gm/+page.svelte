@@ -13,7 +13,7 @@
 		SESSION_LABELS, SESSION_SKILLS,
 		type SessionRequest, type SessionRequestType
 	} from '../../lib/sync/session';
-	import type { Character } from '../../lib/types';
+	import type { Character } from '$lib/type';
 
 	let characters = $state<Character[]>([]);
 	let loading = $state(true);
@@ -135,17 +135,17 @@
 			<a
 				href="/gm/cheatsheet"
 				class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
-				📖 Шпаргалка
+				Шпаргалка
 			</a>
 			<a
 				href="/gm/combat"
 				class="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700">
-				⚔ Бой
+				Боевой трекер
 			</a>
 			<a
 				href="/gm/bestiary"
 				class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">
-				⚔ Противники
+				Бестиарий
 			</a>
 			<button
 				class="px-4 py-2 border rounded hover:bg-gray-50"
@@ -159,26 +159,26 @@
 		</div>
 	</header>
 
+	<p class="notice mb-6">Пульт видит персонажей этого браузера. Для общих проверок откройте их листы в соседних вкладках. Между разными устройствами данные не передаются.</p>
 	<!-- Панель запросов -->
 	<section class="border rounded-lg bg-white p-4 mb-6">
 		<h2 class="font-semibold mb-3">Запросы к игрокам</h2>
 		<div class="flex gap-2 flex-wrap">
 			<button
 				class="px-3 py-2 bg-purple-600 text-white rounded hover:bg-purple-700"
-				onclick={() => startRequest('initiative')}>🎲 Прыть всем</button>
+				onclick={() => startRequest('initiative')}>Прыть всем</button>
 			<button
 				class="px-3 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700"
-				onclick={() => startRequest('stealth')}>👤 Скрытность</button>
+				onclick={() => startRequest('stealth')}>Скрытность</button>
 			<button
 				class="px-3 py-2 bg-amber-600 text-white rounded hover:bg-amber-700"
-				onclick={() => startRequest('perception')}>👁 Наблюдательность</button>
+				onclick={() => startRequest('perception')}>Наблюдательность</button>
 			<button
 				class="px-3 py-2 bg-green-700 text-white rounded hover:bg-green-800"
-				onclick={() => startRequest('survival')}>🌲 Выживание</button>
+				onclick={() => startRequest('survival')}>Выживание</button>
 		</div>
 
 		{#if session}
-					{#if session}
 			<div class="mt-4 p-3 bg-amber-50 border border-amber-300 rounded">
 				<div class="flex justify-between items-center mb-2 flex-wrap gap-2">
 					<div>
@@ -206,11 +206,10 @@
 				{/if}
 
 				<div class="text-xs text-gray-600 mt-2">
-					Игроки должны открыть свои листы и нажать «Бросить». Если кто-то не в сети,
+					Откройте листы игроков в других вкладках этого браузера и нажать «Бросить». Если лист игрока не открыт,
 					нажмите 🎲 на его карточке ниже — бросите за него.
 				</div>
 			</div>
-		{/if}
 		{/if}
 	</section>
 
