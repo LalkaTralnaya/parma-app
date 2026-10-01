@@ -65,8 +65,8 @@
 	<section class="border rounded-lg p-4 bg-white mb-6">
 		<div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
 			<div>
-				<label class="block font-semibold mb-1 text-sm">Монстр</label>
-				<select
+				<label for="field-1" class="block font-semibold mb-1 text-sm">Монстр</label>
+				<select id="field-1"
 					bind:value={selectedId}
 					class="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
 					{#each BESTIARY as m}
@@ -75,8 +75,8 @@
 				</select>
 			</div>
 			<div>
-				<label class="block font-semibold mb-1 text-sm">Целевой уровень</label>
-				<input
+				<label for="field-2" class="block font-semibold mb-1 text-sm">Целевой уровень</label>
+				<input id="field-2"
 					type="number"
 					min="1"
 					max="20"
@@ -86,7 +86,7 @@
 			<button
 				class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 font-semibold"
 				onclick={generate}>
-				⚔ Создать противника
+				Создать противника
 			</button>
 		</div>
 

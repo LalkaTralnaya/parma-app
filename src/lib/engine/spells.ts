@@ -8,7 +8,7 @@ import {
 import { ABILITIES, ABILITY_THRESHOLDS } from '../rules/abilities';
 import { MAX_CHECK_TARGET } from '../rules/characteristics';
 import { getCharacteristicValue, getSkillTotal } from './character';
-import type { Character } from '../types';
+import type { Character } from '$lib/type';
 /** Пороги характеристик для уровней заклинаний (1 — 42+, 2 — 54+, 3 — 72+, 4 — 84+) */
 export const SPELL_LEVEL_THRESHOLDS: Record<number, number> = {
 	0: 0,

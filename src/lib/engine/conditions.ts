@@ -1,5 +1,5 @@
 import { findCondition, type ConditionDef, type ConditionModifiers } from '../rules/conditions';
-import type { Character } from '../types';
+import type { Character } from '$lib/type';
 
 /** Собрать суммарные модификаторы от всех активных состояний */
 export function getConditionModifiers(char: Character): ConditionModifiers {

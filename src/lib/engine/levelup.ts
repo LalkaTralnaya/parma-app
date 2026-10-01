@@ -1,6 +1,6 @@
 import { RESOURCES } from '../rules/resources';
 import { getCharacteristicValue, getModifier } from './character';
-import type { Character } from '../types';
+import type { Character } from '$lib/type';
 
 /** Результат броска одного ресурса на уровень */
 export interface ResourceLevelRoll {

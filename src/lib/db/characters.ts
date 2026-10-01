@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie';
-import type { Character } from '../../../lib/types';
+import type { Character } from '$lib/type';
 
 class ParmaDB extends Dexie {
 	characters!: Table<Character, string>;

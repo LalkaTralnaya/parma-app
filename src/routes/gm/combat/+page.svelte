@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Dialog from '$lib/components/Dialog.svelte';
 	import { listCharacters, getCurrentResource } from '../../../lib/db/characters';
 	import { createRequest, SESSION_LABELS } from '../../../lib/sync/session';
 	import { getCharacter, saveCharacter } from '../../../lib/db/characters';
@@ -11,14 +12,13 @@
 	import { scaleMonster } from '../../../lib/engine/bestiary';
 	import {
 		getCombat, createEmptyCombat, saveCombat, sortedParticipants, getCurrentParticipant,
-		updateParticipant, damageParticipant, nextTurn, startCombat, endCombat, clearCombat,
+		updateParticipant, damageParticipant, removeParticipant, nextTurn, startCombat, endCombat, clearCombat,
 		subscribeCombat,findParticipantBySource,
 		type CombatState, type CombatParticipant, type MonsterAttackData
 	} from '../../../lib/sync/combat';
-	import type { Character } from '../../../lib/types';
+	import type { Character } from '$lib/type';
 
-	let state = $state<CombatState>(createEmptyCombat());
-	// ... остальной код
+	let combatState = $state<CombatState>(createEmptyCombat());
 	let characters = $state<Character[]>([]);
 	let unsubscribe: (() => void) | null = null;
 	let showAddEnemy = $state(false);
@@ -97,7 +97,7 @@
 
 			// ⬇ ВОТ ЭТО ГЛАВНОЕ — списываем урон с цели
 			damageParticipant(target.id, -appliedDamage);
-			state = getCombat()!;
+			combatState = getCombat()!;
 		}
 
 		attackResult = {
@@ -150,16 +150,16 @@
 			onMount(async () => {
 		await loadCharacters();
 		const s = getCombat();
-		if (s) state = s;
+		if (s) combatState = s;
 		unsubscribe = subscribeCombat((newState) => {
-			state = newState ?? createEmptyCombat();
+			combatState = newState ?? createEmptyCombat();
 		});
 	});
 
 	onDestroy(() => unsubscribe?.());
 
 	function persist(newState: CombatState) {
-		state = newState;
+		combatState = newState;
 		saveCombat(newState);
 	}
 
@@ -169,7 +169,7 @@
 
 	/** Добавить всех персонажей, которых ещё нет в бою */
 	function addAllPlayers() {
-		if (!state || !characters.length) return;
+		if (!combatState || !characters.length) return;
 		const s = getCombat() ?? createEmptyCombat();
 		const existingSourceIds = new Set(s.participants.map((p) => p.sourceId).filter(Boolean));
 
@@ -251,37 +251,37 @@
 
 	function begin() {
 		startCombat();
-		state = getCombat()!;
+		combatState = getCombat()!;
 	}
 
 	/** Завершить бой (участники и прыть сохраняются) */
 	function end() {
 		if (!confirm('Завершить бой? Участники и прыть сохранятся.')) return;
 		endCombat();
-		state = getCombat() ?? createEmptyCombat();
+		combatState = getCombat() ?? createEmptyCombat();
 	}
 
 	/** Полностью очистить (убрать всех участников) */
 	function clearAll() {
 		if (!confirm('Убрать всех участников из боя?')) return;
 		clearCombat();
-		state = createEmptyCombat();
+		combatState = createEmptyCombat();
 	}
 
 	function next() {
-		const prevRound = state.round;
+		const prevRound = combatState.round;
 		nextTurn();
-		state = getCombat()!;
+		combatState = getCombat()!;
 
 		// Если начался новый круг — тикаем состояния
-		if (state.round > prevRound) {
+		if (combatState.round > prevRound) {
 			tickConditionsForPlayers();
 		}
 	}
 		/** Уменьшить все активные состояния у всех игроков на 1 раунд.
 	 *  Удаляет те, где осталось 0. */
 	async function tickConditionsForPlayers() {
-		for (const p of state.participants) {
+		for (const p of combatState.participants) {
 			if (!p.isPlayer || !p.sourceId) continue;
 
 			const c = await getCharacter(p.sourceId);
@@ -305,23 +305,25 @@
 		}
 	}
 
-	function removeParticipant_click(id: string) {
+	async function removeParticipant_click(id: string) {
+		const prevRound = combatState.round;
 		removeParticipant(id);
-		state = getCombat()!;
+		combatState = getCombat()!;
+		if (combatState.round > prevRound) await tickConditionsForPlayers();
 	}
 
 	async function hp(id: string, delta: number) {
-		const p = state.participants.find((x) => x.id === id);
+		const p = combatState.participants.find((x) => x.id === id);
 		if (!p) return;
 		const next = Math.max(0, Math.min(p.maxHp, p.currentHp + delta));
 		updateParticipant(id, { currentHp: next });
-		state = getCombat()!;
+		combatState = getCombat()!;
 	}
 
-	const sorted = $derived(sortedParticipants(state));
-	const currentParticipant = $derived(state.active ? getCurrentParticipant(state) : null);
-	const players = $derived(state.participants.filter((p) => p.isPlayer));
-	const enemies = $derived(state.participants.filter((p) => !p.isPlayer));
+	const sorted = $derived(sortedParticipants(combatState));
+	const currentParticipant = $derived(combatState.active ? getCurrentParticipant(combatState) : null);
+	const players = $derived(combatState.participants.filter((p) => p.isPlayer));
+	const enemies = $derived(combatState.participants.filter((p) => !p.isPlayer));
 
 	function hpColor(p: CombatParticipant): string {
 		const ratio = p.currentHp / p.maxHp;
@@ -337,8 +339,8 @@
 		<div>
 			<h1 class="text-3xl font-bold">Бой</h1>
 			<p class="text-sm text-gray-500">
-				Участников: {state.participants.length}
-				{#if state.active} · раунд {state.round}{/if}
+				Участников: {combatState.participants.length}
+				{#if combatState.active} · раунд {combatState.round}{/if}
 			</p>
 		</div>
 		<div class="flex gap-2 flex-wrap">
@@ -353,22 +355,22 @@
 				onclick={clearAll}>✕ Очистить</button>
 			<button
 				class="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700"
-				onclick={requestAllInitiatives}>🎲 Прыть всем</button>
-			{#if state.active}
+				onclick={requestAllInitiatives}>Прыть всем</button>
+			{#if combatState.active}
 				<button
 					class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
 					onclick={end}>■ Закончить бой</button>
 			{:else}
 				<button
 					class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
-					disabled={state.participants.length === 0}
+					disabled={combatState.participants.length === 0}
 					onclick={begin}>▶ Начать бой</button>
 			{/if}
 			<a href="/gm" class="px-4 py-2 border rounded hover:bg-gray-50">← К мастеру</a>
 		</div>
 	</header>
 
-	{#if state.participants.length === 0}
+	{#if combatState.participants.length === 0}
 		<div class="border-2 border-dashed rounded-lg p-10 text-center text-gray-500">
 			<p>В бою пока никого. Добавьте игроков или врага.</p>
 		</div>
@@ -377,9 +379,9 @@
 		<section class="border-2 border-purple-300 rounded-lg p-4 bg-purple-50 mb-6">
 			<div class="flex justify-between items-center mb-3">
 				<h2 class="text-lg font-semibold">
-					Порядок хода {#if state.active}· раунд {state.round}{/if}
+					Порядок хода {#if combatState.active}· раунд {combatState.round}{/if}
 				</h2>
-				{#if state.active}
+				{#if combatState.active}
 					<button
 						class="px-5 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 font-semibold"
 						onclick={next}>
@@ -389,7 +391,7 @@
 			</div>
 			<ol class="space-y-1">
 				{#each sorted as p, i}
-					{@const isCurrent = state.active && state.currentTurnIndex % sorted.length === i}
+					{@const isCurrent = combatState.active && combatState.currentTurnIndex % sorted.length === i}
 					<li
 						class="flex justify-between items-center px-3 py-2 rounded
 							{isCurrent ? 'bg-purple-600 text-white font-bold' : 'bg-white'}
@@ -534,8 +536,7 @@
 
 	<!-- Модалка: добавить игроков -->
 	{#if showAddPlayers}
-		<div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-			<div class="bg-white rounded-lg p-6 max-w-md w-full">
+		<Dialog label="Добавить игроков" onclose={() => showAddPlayers = false}>
 				<h3 class="text-lg font-semibold mb-3">Добавить игроков</h3>
 				<p class="text-sm text-gray-500 mb-4">
 					Будут добавлены все персонажи из базы, которых ещё нет в бою.
@@ -548,19 +549,17 @@
 						class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
 						onclick={addAllPlayers}>Добавить всех</button>
 				</div>
-			</div>
-		</div>
+		</Dialog>
 	{/if}
 
 	<!-- Модалка: добавить врага -->
 	{#if showAddEnemy}
-		<div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-			<div class="bg-white rounded-lg p-6 max-w-md w-full">
+		<Dialog label="Добавить противника" onclose={() => showAddEnemy = false}>
 				<h3 class="text-lg font-semibold mb-3">Добавить врага</h3>
 				<div class="space-y-3">
 					<div>
-						<label class="block text-sm text-gray-500 mb-1">Монстр</label>
-						<select
+						<label for="field-1" class="block text-sm text-gray-500 mb-1">Монстр</label>
+						<select id="field-1"
 							bind:value={enemyMonsterId}
 							class="w-full px-3 py-2 border rounded">
 							{#each BESTIARY as m}
@@ -569,13 +568,13 @@
 						</select>
 					</div>
 					<div>
-						<label class="block text-sm text-gray-500 mb-1">Уровень</label>
-						<input type="number" min="1" max="20" bind:value={enemyLevel}
+						<label for="field-2" class="block text-sm text-gray-500 mb-1">Уровень</label>
+						<input id="field-2" type="number" min="1" max="20" bind:value={enemyLevel}
 							class="w-full px-3 py-2 border rounded" />
 					</div>
 					<div>
-						<label class="block text-sm text-gray-500 mb-1">Имя (необязательно)</label>
-						<input type="text" bind:value={enemyName} placeholder="например, Серый Клык"
+						<label for="field-3" class="block text-sm text-gray-500 mb-1">Имя (необязательно)</label>
+						<input id="field-3" type="text" bind:value={enemyName} placeholder="например, Серый Клык"
 							class="w-full px-3 py-2 border rounded" />
 					</div>
 				</div>
@@ -587,13 +586,11 @@
 						class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
 						onclick={addEnemy}>Добавить</button>
 				</div>
-			</div>
-		</div>
+		</Dialog>
 	{/if}
 		<!-- Модалка выбора цели -->
 	{#if pendingAttack}
-		<div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-			<div class="bg-white rounded-lg p-6 max-w-md w-full">
+		<Dialog label="Выбрать цель атаки" onclose={() => pendingAttack = null}>
 				<h3 class="text-lg font-semibold mb-1">
 					{pendingAttack.attacker.name} атакует: {pendingAttack.attack.name}
 				</h3>
@@ -618,15 +615,12 @@
 						class="px-4 py-2 border rounded hover:bg-gray-50"
 						onclick={() => (pendingAttack = null)}>Отмена</button>
 				</div>
-			</div>
-		</div>
+		</Dialog>
 	{/if}
 
 	<!-- Модалка результата атаки -->
 	{#if attackResult}
-		<div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
-			onclick={closeAttackResult}>
-			<div class="bg-white rounded-lg p-6 max-w-md w-full" onclick={(e) => e.stopPropagation()}>
+		<Dialog label="Результат атаки" onclose={closeAttackResult}>
 				<h3 class="text-lg font-semibold mb-2">
 					{attackResult.attackerName}: {attackResult.attackName}
 				</h3>
@@ -665,7 +659,6 @@
 						class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
 						onclick={closeAttackResult}>ОК</button>
 				</div>
-			</div>
-		</div>
+		</Dialog>
 	{/if}
 </main>

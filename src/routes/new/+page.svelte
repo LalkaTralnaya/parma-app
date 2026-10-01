@@ -7,6 +7,8 @@
 	import { BACKGROUNDS } from '../../lib/rules/backgrounds';
 
 	let name = $state('');
+	let saving = $state(false);
+	let error = $state('');
 	let raceId = $state('human');
 	let raceVariantId = $state('');
 	let raceChoice = $state('strength');
@@ -32,10 +34,15 @@
 	}
 
 	async function save() {
+		if (saving) return;
+		error = '';
 		if (!name.trim()) {
-			alert('Введите имя персонажа');
+			error = 'Введите имя персонажа.';
+			document.getElementById('character-name')?.focus();
 			return;
 		}
+		saving = true;
+		try {
 		const char = createEmptyCharacter();
 		char.name = name.trim();
 		char.raceId = raceId;
@@ -45,7 +52,10 @@
 		char.skillPoints = { ...skillPoints };
 		giveStartingInventory(char, backgroundId);
 		await saveCharacter(char);
-		goto(`/char/${char.id}`);
+		await goto(`/char/${char.id}`);
+		} catch {
+			error = 'Не удалось сохранить персонажа. Проверьте доступ к хранилищу браузера и повторите попытку.';
+		} finally { saving = false; }
 	}
 </script>
 
@@ -54,12 +64,13 @@
 		<h1 class="text-3xl font-bold">Новый персонаж</h1>
 		<a href="/" class="px-3 py-2 border rounded hover:bg-gray-50">← Отмена</a>
 	</header>
+	<p class="notice">Имя, происхождение и первые умения — начало вашей истории. Выберите расу и предысторию, затем распределите до 10 очков навыков.</p>
 
 	<!-- Имя -->
 	<section class="border rounded-lg p-4 bg-white">
-		<label class="block mb-2 font-semibold">Имя персонажа</label>
+		<label for="character-name" class="block mb-2 font-semibold">Имя персонажа</label>
 		<input
-			type="text"
+			id="character-name" type="text" required aria-invalid={!!error && !name.trim()}
 			bind:value={name}
 			placeholder="Например, Радомир"
 			class="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500" />
@@ -68,9 +79,9 @@
 	<!-- Раса -->
 	<section class="border rounded-lg p-4 bg-white space-y-3">
 		<div>
-			<label class="block mb-2 font-semibold">Раса</label>
+			<label for="raceId" class="block mb-2 font-semibold">Раса</label>
 			<select
-				bind:value={raceId}
+				id="raceId" bind:value={raceId} onchange={(event) => { raceVariantId = ''; raceChoice = RACES.find(r => r.id === event.currentTarget.value)?.bonusChoice?.from[0] ?? 'strength'; }}
 				class="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
 				{#each RACES as r}
 					<option value={r.id}>{r.name}</option>
@@ -81,9 +92,9 @@
 
 		{#if selectedRace.variants}
 			<div>
-				<label class="block mb-2 font-semibold">Вариант расы</label>
+				<label for="raceVariantId" class="block mb-2 font-semibold">Вариант расы</label>
 				<select
-					bind:value={raceVariantId}
+					id="raceVariantId" bind:value={raceVariantId}
 					class="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
 					<option value="">— выберите —</option>
 					{#each selectedRace.variants as v}
@@ -95,11 +106,11 @@
 
 		{#if selectedRace.bonusChoice}
 			<div>
-				<label class="block mb-2 font-semibold">
+				<label for="race-choice" class="block mb-2 font-semibold">
 					+{selectedRace.bonusChoice.amount} к характеристике (на выбор)
 				</label>
 				<select
-					bind:value={raceChoice}
+					id="race-choice" bind:value={raceChoice}
 					class="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
 					{#each CHARACTERISTICS as c}
 						{#if selectedRace.bonusChoice!.from.includes(c.id)}
@@ -123,9 +134,9 @@
 	<!-- Предыстория -->
 	<section class="border rounded-lg p-4 bg-white space-y-3">
 		<div>
-			<label class="block mb-2 font-semibold">Предыстория</label>
+			<label for="backgroundId" class="block mb-2 font-semibold">Предыстория</label>
 			<select
-				bind:value={backgroundId}
+				id="backgroundId" bind:value={backgroundId}
 				class="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
 				{#each BACKGROUNDS as bg}
 					<option value={bg.id}>{bg.name} {bg.subtitle}</option>
@@ -162,27 +173,28 @@
 				Осталось: <span class="font-bold {pointsLeft === 0 ? 'text-green-700' : 'text-blue-700'}">{pointsLeft}</span> из 10
 			</div>
 		</div>
-		<p class="text-xs text-gray-500 mb-3">Максимум 2 очка в один навык.</p>
+		<progress class="resource-meter" max="10" value={spentPoints} aria-label="Распределено очков навыков">{spentPoints} из 10</progress>
+		<p class="text-sm text-gray-500 mb-3">Максимум 2 очка в один навык.</p>
 
 		<div class="space-y-4">
 			{#each CHARACTERISTICS as c}
 				<div>
 					<h3 class="text-sm font-semibold text-gray-700 mb-1">{c.name}</h3>
-					<div class="grid grid-cols-2 gap-x-4 gap-y-1">
+					<div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
 						{#each SKILLS.filter((s) => s.parent === c.id) as s}
 							{@const pts = skillPoints[s.id] ?? 0}
 							<div class="flex items-center justify-between py-1 border-b">
 								<span class="text-sm">{s.name}</span>
 								<div class="flex items-center gap-1">
 									<button
-										class="w-7 h-7 rounded border hover:bg-gray-100 disabled:opacity-30"
+										class="w-11 h-11 rounded border hover:bg-gray-100 disabled:opacity-30"
 										disabled={pts <= 0}
-										onclick={() => decrement(s.id)}>−</button>
+										aria-label={`Уменьшить навык ${s.name}`} onclick={() => decrement(s.id)}>−</button>
 									<span class="w-6 text-center font-mono">{pts}</span>
 									<button
-										class="w-7 h-7 rounded border hover:bg-gray-100 disabled:opacity-30"
+										class="w-11 h-11 rounded border hover:bg-gray-100 disabled:opacity-30"
 										disabled={pts >= 2 || spentPoints >= 10}
-										onclick={() => increment(s.id)}>+</button>
+										aria-label={`Увеличить навык ${s.name}`} onclick={() => increment(s.id)}>+</button>
 								</div>
 							</div>
 						{/each}
@@ -193,11 +205,12 @@
 	</section>
 
 	<!-- Кнопка -->
+	{#if error}<p class="notice error" role="alert">{error}</p>{/if}
 	<div class="flex gap-3">
 		<button
 			class="px-6 py-3 bg-blue-600 text-white rounded hover:bg-blue-700 font-semibold"
-			onclick={save}>
-			Сохранить персонажа
+			disabled={saving} onclick={save}>
+			{saving ? 'Сохраняем…' : 'Сохранить персонажа'}
 		</button>
 	</div>
 </main>

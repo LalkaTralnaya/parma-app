@@ -134,6 +134,21 @@ export function damageParticipant(id: string, amount: number): CombatState {
 	return state;
 }
 
+/** Удалить участника, сохранив текущего действующего героя, если он остался. */
+export function removeParticipant(id: string): void {
+  const state = getCombat();
+  if (!state || !state.participants.some(p => p.id === id)) return;
+  const current = getCurrentParticipant(state);
+  const oldIndex = state.currentTurnIndex;
+  state.participants = state.participants.filter(p => p.id !== id);
+  const sorted = sortedParticipants(state);
+  const keptIndex = current ? sorted.findIndex(p => p.id === current.id) : -1;
+  state.currentTurnIndex = keptIndex >= 0 ? keptIndex : sorted.length ? oldIndex % sorted.length : 0;
+  if (current?.id === id && sorted.length > 0 && oldIndex >= sorted.length) state.round++;
+  if (sorted.length === 0) state.active = false;
+  saveCombat(state);
+}
+
 /** Продвинуть ход вперёд */
 export function nextTurn(): CombatState {
 	const state = getCombat() ?? createEmptyCombat();
