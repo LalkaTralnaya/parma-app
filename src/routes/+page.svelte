@@ -73,6 +73,7 @@
     <aside class="toolbox" aria-labelledby="tools-title">
       <h2 id="tools-title">За ширмой мастера</h2><p>Подготовьте встречу и ведите игру.</p>
       <a href="/gm" class="tool"><span class="tool-icon"><Icon name="dice" /></span><span><strong>Пульт мастера</strong><small>Группа и общие проверки</small></span><Icon name="arrow" size={17} /></a>
+      <a href="/room" class="tool"><span class="tool-icon"><Icon name="people" /></span><span><strong>Комната</strong><small>Общий стол для мастера и игроков</small></span><Icon name="arrow" size={17} /></a>
       <a href="/gm/combat" class="tool"><span class="tool-icon"><Icon name="sword" /></span><span><strong>Боевой трекер</strong><small>Инициатива, ходы и здоровье</small></span><Icon name="arrow" size={17} /></a>
       <a href="/gm/bestiary" class="tool"><span class="tool-icon"><Icon name="shield" /></span><span><strong>Бестиарий</strong><small>Противники для вашей истории</small></span><Icon name="arrow" size={17} /></a>
       <a href="/gm/cheatsheet" class="tool"><span class="tool-icon"><Icon name="book" /></span><span><strong>Правила под рукой</strong><small>Краткая шпаргалка за столом</small></span><Icon name="arrow" size={17} /></a>

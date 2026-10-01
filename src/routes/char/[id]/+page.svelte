@@ -1,4 +1,5 @@
 <script lang="ts">
+import { getCurrentRoom, clearCurrentRoom, publishToActiveRoom } from '../../../lib/engine/rooms';
 import { CONDITIONS, findCondition } from '../../../lib/rules/conditions';
 import { getConditionModifiers, rollConditionsDotDamage } from '../../../lib/engine/conditions';
 import { onDestroy } from 'svelte';
@@ -75,6 +76,7 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 	let char = $state<Character | null>(null);
 	let loading = $state(true);	
 	let session = $state<SessionRequest | null>(null);
+	let activeRoomCode = $state<string | null>(null);
 	let combat = $state<CombatState | null>(null);
 	let targetEnemyId = $state<string | null>(null);
 	let unsubscribe: (() => void) | null = null;
@@ -118,6 +120,7 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 		}
 		char = found;
 		loading = false;
+		activeRoomCode = getCurrentRoom();
 
 		session = getSession();
 		const unsubSession = subscribe((s) => {
@@ -199,21 +202,35 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 		const roll = rollD20();
 		alert(`Прыть: ${roll} + ${dexMod} = ${roll + dexMod}`);
 	}
-	function rollSkill(skillId: string, skillName: string) {
+		function rollSkill(skillId: string, skillName: string) {
 		if (!char) return;
 		const target = getSkillCheckTarget(char, skillId, condMods);
 		const roll = rollD100();
 		const result = classifyRoll(roll, target);
 		lastRoll = { skill: skillName, roll, target, result };
+
+		// Отправляем в комнату, если мы в ней
+		publishToActiveRoom(char.name || 'Безымянный', 'skill', {
+			skillName,
+			roll,
+			target,
+			result
+		});
 	}
 	function rollCharacteristicCheck(charId: string, charName: string) {
 		if (!char) return;
-		// Избавление: значение характеристики + модификатор от состояний (saves)
 		const value = getCharacteristicValue(char, charId, condMods) + (condMods.saves ?? 0);
 		const target = Math.min(95, Math.max(0, value));
 		const roll = rollD100();
 		const result = classifyRoll(roll, target);
 		lastCharCheck = { charId, charName, roll, target, result };
+
+		publishToActiveRoom(char.name || 'Безымянный', 'characteristic', {
+			charName,
+			roll,
+			target,
+			result
+		});
 	}
 		/** Применить урон или лечение с учётом временных Жвч.
 	 *  delta < 0 — урон (сначала в tempHp), delta > 0 — лечение (только реальные HP) */
@@ -490,6 +507,13 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 	function rollInit() {
 		if (!char) return;
 		lastInitiative = rollInitiative(char);
+		if (lastInitiative) {
+			publishToActiveRoom(char.name || 'Безымянный', 'initiative', {
+				roll: lastInitiative.roll,
+				modifier: lastInitiative.mod,
+				total: lastInitiative.total
+			});
+		}
 	}
 
 	async function updateEquipment(field: 'weaponId' | 'armorId' | 'shieldId', value: string) {
@@ -538,6 +562,21 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 			parts,
 			attacks
 		};
+				// Отправляем броски атаки в комнату
+		for (const atk of attacks) {
+			publishToActiveRoom(char.name || 'Безымянный', 'attack', {
+				weaponName: weapon.name,
+				attackType,
+				roll: atk.roll,
+				target: atk.target,
+				result: atk.outcome === 'hit' ? 'success'
+					: atk.outcome === 'critical_hit' ? 'crit_success'
+					: atk.outcome === 'critical_miss' ? 'crit_fail'
+					: atk.outcome === 'double' ? 'double'
+					: 'fail',
+				damage: atk.damage?.total
+			});
+		}
 		// Если бой активен и выбрана цель — списываем урон с врага
 		if (combat?.active && targetEnemyId) {
 			for (const atk of attacks) {
@@ -624,6 +663,18 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 			resource: char.useGraceForSpells ? 'grace' : costInfo.resource,
 			effect: effectResult
 		};
+				// Отправляем бросок заклинания в комнату
+		publishToActiveRoom(char.name || 'Безымянный', 'spell', {
+			spellName: spell.name,
+			school,
+			roll,
+			target,
+			result: outcome === 'success' ? 'success'
+				: outcome === 'critical_success' ? 'crit_success'
+				: outcome === 'critical_failure' ? 'crit_fail'
+				: 'fail',
+			damage: effectResult?.total
+		});
 
 		// Добавим отметку о нанесённом уроне в lastCast
 		if (damageApplied > 0) {
@@ -1030,23 +1081,44 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 </script>
 
 <main class="max-w-4xl mx-auto p-6 space-y-6">
-		{#if loading}
+	{#if loading}
 		<p class="text-gray-500">Загрузка…</p>
-	{:else if char}
-		{#if combat && combat.active && myCombatParticipant}
-			{#if isMyTurnInCombat}
-				<div class="border-2 border-purple-500 bg-purple-100 rounded-lg p-4 mb-4 text-center">
-					<div class="text-2xl font-bold text-purple-800">🎲 Твой ход!</div>
-					<div class="text-sm text-purple-700 mt-1">
-						Раунд {combat.round}. Действуй.
+			{:else if char}
+				{#if activeRoomCode}
+			<div class="border-2 border-amber-400 bg-amber-50 rounded-lg p-3 mb-4 flex justify-between items-center flex-wrap gap-2">
+				<div class="text-sm">
+					<span class="text-amber-900">🎲 Вы в комнате мастера:</span>
+					<span class="font-mono font-bold text-amber-800 ml-2">{activeRoomCode}</span>
+					<span class="text-amber-700 ml-2 text-xs">Все броски отправляются в общий стол</span>
+				</div>
+				<div class="flex gap-2">
+					<a
+						href={`/room/${activeRoomCode}`}
+						class="px-3 py-1 text-xs border border-amber-500 rounded hover:bg-amber-100">
+						Перейти в комнату
+					</a>
+					<button
+						class="px-3 py-1 text-xs text-red-700 border border-red-300 rounded hover:bg-red-50"
+						onclick={() => { clearCurrentRoom(); activeRoomCode = null; }}>
+						Выйти
+					</button>
+				</div>
+			</div>
+	{/if}
+			{#if combat && combat.active && myCombatParticipant}
+				{#if isMyTurnInCombat}
+					<div class="border-2 border-purple-500 bg-purple-100 rounded-lg p-4 mb-4 text-center">
+						<div class="text-2xl font-bold text-purple-800">🎲 Твой ход!</div>
+						<div class="text-sm text-purple-700 mt-1">
+							Раунд {combat.round}. Действуй.
+						</div>
 					</div>
-				</div>
-			{:else}
-				<div class="border border-purple-200 bg-purple-50 rounded-lg p-3 mb-4 text-center text-sm text-purple-700">
-					Идёт бой. Раунд {combat.round}. Ждём своего хода…
-				</div>
+				{:else}
+					<div class="border border-purple-200 bg-purple-50 rounded-lg p-3 mb-4 text-center text-sm text-purple-700">
+						Идёт бой. Раунд {combat.round}. Ждём своего хода…
+					</div>
+				{/if}
 			{/if}
-		{/if}
 			{#if session && char && !session.results[char.id]}
 			<div class="border-2 border-amber-400 bg-amber-50 rounded-lg p-4 mb-4">
 				<div class="flex justify-between items-center gap-3 flex-wrap">
