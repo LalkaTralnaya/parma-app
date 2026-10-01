@@ -210,22 +210,38 @@ export async function leaveRoom(roomId: string): Promise<void> {
 }
 
 /** Подписка на изменения в комнате — участники + броски */
+/** Подписка на изменения в комнате — участники + броски */
 export function subscribeToRoom(
 	roomId: string,
 	onParticipantsChange: () => void,
-	onRollAdded: (roll: RoomRoll) => void
-): () => void {
+	onRoll: (roll: RoomRoll) => void
+) {
+	// Уникальный суффикс, чтобы Supabase не возвращал старый канал
+	const uniqueName = `room:${roomId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+
 	const channel = supabase
-		.channel(`room:${roomId}`)
+		.channel(uniqueName)
 		.on(
 			'postgres_changes',
-			{ event: '*', schema: 'public', table: 'room_participants', filter: `room_id=eq.${roomId}` },
+			{
+				event: '*',
+				schema: 'public',
+				table: 'room_participants',
+				filter: `room_id=eq.${roomId}`
+			},
 			() => onParticipantsChange()
 		)
 		.on(
 			'postgres_changes',
-			{ event: 'INSERT', schema: 'public', table: 'room_rolls', filter: `room_id=eq.${roomId}` },
-			(payload) => onRollAdded(payload.new as RoomRoll)
+			{
+				event: 'INSERT',
+				schema: 'public',
+				table: 'room_rolls',
+				filter: `room_id=eq.${roomId}`
+			},
+			(payload) => {
+				onRoll(payload.new as RoomRoll);
+			}
 		)
 		.subscribe();
 
