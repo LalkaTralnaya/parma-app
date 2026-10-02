@@ -1,118 +1,190 @@
 <script lang="ts">
-import { getCurrentRoom, clearCurrentRoom, publishToActiveRoom } from '../../../lib/engine/rooms';
-import { CONDITIONS, findCondition } from '../../../lib/rules/conditions';
-import { getConditionModifiers, rollConditionsDotDamage } from '../../../lib/engine/conditions';
-import { onDestroy } from 'svelte';
-import {getSession, submitResult, subscribe,SESSION_SKILLS, type SessionRequest, type SessionRequestType} from '../../../lib/sync/session';
-import {
-	getCombat, subscribeCombat, findParticipantBySource, damageParticipant,
-	setParticipantInitiative, subscribeCharacterUpdates, updateParticipant,
-	type CombatState, type CombatParticipant,
-} from '../../../lib/sync/combat';
-import { PERSONALITY_TRAITS, IDEALS, BONDS, FLAWS, findOption } from '../../../lib/rules/personality';
-import { ITEMS, CATEGORY_LABEL, type Item, type ItemCategory } from '../../../lib/rules/items';
-import {
-	listInventory,
-	addItemToInventory,
-	removeItemFromInventory,
-	adjustItemQuantity,
-	getTotalWeight,
-	getMoneyInSilver,
-	normalizeMoney,
-	getTotalCopper,
-	canAfford,
-	spendSilver
-} from '../../../lib/engine/inventory';
-	import { BACKGROUNDS } from '../../../lib/rules/backgrounds';
-	import { getSkillBonusDetails } from '../../../lib/engine/character';
-	import { ABILITY_THRESHOLDS } from '../../../lib/rules/abilities';
-	import { getUnlockedAbilities, getLockedAbilities } from '../../../lib/engine/character';
-	import { onMount } from 'svelte';
+	// ────────────────────────────────────────────
+	// ИМПОРТЫ
+	// ────────────────────────────────────────────
+	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { getCharacter, deleteCharacter, saveCharacter, spendResource, restoreResource, getCurrentResource, toggleGraceMode } from '../../../lib/db/characters';
+
+	// Комнаты и синхронизация боя через Supabase
+	import {
+		getCurrentRoom,
+		clearCurrentRoom,
+		publishToActiveRoom,
+		findRoomByCode,
+		getRoomCombatState,
+		saveRoomCombatState,
+		subscribeToRoomCombat,
+	} from '../../../lib/engine/rooms';
+
+	// Сессия (запросы мастера)
+	import {
+		getSession,
+		submitResult,
+		subscribe as subscribeSession,
+		SESSION_SKILLS,
+		type SessionRequest,
+		type SessionRequestType,
+	} from '../../../lib/sync/session';
+
+	// Локальная синхронизация боя
+	import {
+		getCombat,
+		saveCombat,
+		findParticipantBySource,
+		setParticipantInitiative,
+		subscribeCharacterUpdates,
+		type CombatState,
+	} from '../../../lib/sync/combat';
+
+	// Правила
+	import { CONDITIONS, findCondition } from '../../../lib/rules/conditions';
+	import { getConditionModifiers, rollConditionsDotDamage } from '../../../lib/engine/conditions';
+	import { PERSONALITY_TRAITS, IDEALS, BONDS, FLAWS, findOption } from '../../../lib/rules/personality';
+	import { ITEMS, CATEGORY_LABEL, type ItemCategory } from '../../../lib/rules/items';
+	import { BACKGROUNDS } from '../../../lib/rules/backgrounds';
 	import { CHARACTERISTICS } from '../../../lib/rules/characteristics';
 	import { SKILLS } from '../../../lib/rules/skills';
 	import { RESOURCES } from '../../../lib/rules/resources';
 	import { RACES } from '../../../lib/rules/races';
+	import { ABILITY_THRESHOLDS } from '../../../lib/rules/abilities';
+	import {
+		SPELLS_BY_SCHOOL,
+		SCHOOL_STABILITY_THRESHOLDS,
+		getSpellLevelThreshold,
+	} from '../../../lib/rules/spells';
+	import {
+		WEAPONS,
+		ARMORS,
+		SHIELDS,
+		ATTACK_TYPE_LABEL,
+		type AttackType,
+	} from '../../../lib/rules/weapons';
+
+	// Инвентарь
+	import {
+		listInventory,
+		addItemToInventory,
+		removeItemFromInventory,
+		adjustItemQuantity,
+		getTotalWeight,
+		normalizeMoney,
+		canAfford,
+		spendSilver,
+	} from '../../../lib/engine/inventory';
+
+	// Персонаж
+	import {
+		getCharacter,
+		deleteCharacter,
+		saveCharacter,
+		spendResource,
+		restoreResource,
+		getCurrentResource,
+		toggleGraceMode,
+	} from '../../../lib/db/characters';
+
 	import {
 		getCharacteristicValue,
 		getModifier,
 		getSkillTotal,
 		getSkillCheckTarget,
-		getResourceMax
+		getResourceMax,
+		getSkillBonusDetails,
+		getUnlockedAbilities,
 	} from '../../../lib/engine/character';
-	import { rollD100, classifyRoll, type RollResult } from '../../../lib/engine/dice';
-	import type { Character } from '$lib/type';
-	import {
-	getSpellCastTarget,
-	getSpellCost,
-	getSpellSkillLevel,
-	getSpellsWithAccess,
-	getMaxSpellLevel,
-	isSpellKnown,
-	classifySpellRoll,
-	rollSpellEffect,
-	isSchoolStable,
-	type SpellOutcome,
-	type SpellEffectRoll
-} from '../../../lib/engine/spells';
-import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold } from '../../../lib/rules/spells';
-	import { WEAPONS, ARMORS, SHIELDS, ATTACK_TYPE_LABEL, type AttackType } from '../../../lib/rules/weapons';
-	import {
-	rollInitiative,
-	getArmorValue,
-	getEquippedWeapon,
-	getAttackTarget,
-	rollWeaponDamage,
-	classifyAttack,
-	rollAttack,
-	type AttackOutcome,
-	type SingleAttackRoll,
-	type BonusDice
-} from '../../../lib/engine/combat';
-	
 
+	import { rollD100, classifyRoll, type RollResult } from '../../../lib/engine/dice';
+
+	import {
+		getSpellCastTarget,
+		getSpellCost,
+		getSpellSkillLevel,
+		getSpellsWithAccess,
+		getMaxSpellLevel,
+		isSpellKnown,
+		classifySpellRoll,
+		rollSpellEffect,
+		isSchoolStable,
+		type SpellOutcome,
+		type SpellEffectRoll,
+	} from '../../../lib/engine/spells';
+
+	import {
+		rollInitiative,
+		getArmorValue,
+		getEquippedWeapon,
+		getAttackTarget,
+		rollAttack,
+		type AttackOutcome,
+		type SingleAttackRoll,
+		type BonusDice,
+	} from '../../../lib/engine/combat';
+
+	import type { Character } from '$lib/type';
+
+	// ────────────────────────────────────────────
+	// STATE
+	// ────────────────────────────────────────────
 	let char = $state<Character | null>(null);
-	let loading = $state(true);	
+	let loading = $state(true);
 	let session = $state<SessionRequest | null>(null);
 	let activeRoomCode = $state<string | null>(null);
 	let combat = $state<CombatState | null>(null);
 	let targetEnemyId = $state<string | null>(null);
-	let unsubscribe: (() => void) | null = null;
-	let lastRoll = $state<{ skill: string; roll: number; target: number; result: RollResult } | null>(null);
-	let lastCharCheck = $state<{
-		charId: string;
-		charName: string;
-		roll: number;
-		target: number;
-		result: RollResult;
-	} | null>(null);
 	let lastCombatHp: number | null = null;
-	let showEdge = $state(false);
-	let lastEdgeResult = $state<{
-		action: string;
-		description: string;
-		roll?: number;
-		target?: number;
-		success?: boolean;
-	} | null>(null);
+
+	let lastRoll = $state<{ skill: string; roll: number; target: number; result: RollResult } | null>(null);
+	let lastCharCheck = $state<{ charId: string; charName: string; roll: number; target: number; result: RollResult } | null>(null);
+	let lastEdgeResult = $state<{ action: string; description: string; roll?: number; target?: number; success?: boolean } | null>(null);
 	let lastRest = $state<{
 		type: 'short' | 'long';
 		results: Array<{
-			resource: string;
-			short: string;
-			charShort: string;
-			charValue: number;
-			roll: number;
-			resultLabel: string;
-			restored: number;
-			before: number;
-			after: number;
-			max: number;
+			resource: string; short: string; charShort: string; charValue: number;
+			roll: number; resultLabel: string; restored: number;
+			before: number; after: number; max: number;
 		}>;
 	} | null>(null);
-		onMount(async () => {
+
+	// Отписки
+	let unsubSession: (() => void) | null = null;
+	let unsubRoomCombat: (() => void) | null = null;
+	let unsubCharUpdates: (() => void) | null = null;
+
+	// Бой
+	let attackType = $state<AttackType>('normal');
+	let targetArmor = $state(15);
+	let useTwoHandsWeapon = $state(false);
+	let lastInitiative = $state<{ roll: number; mod: number; total: number } | null>(null);
+	let lastAttack = $state<{
+		weapon: string; attackType: AttackType; target: number;
+		parts: { label: string; value: number }[];
+		attacks: SingleAttackRoll[];
+	} | null>(null);
+
+	// Магия
+	type TwoHandsChoice = Record<string, boolean>;
+	let twoHands = $state<TwoHandsChoice>({});
+	let lastCast = $state<{
+		spell: string; roll: number; target: number; outcome: SpellOutcome;
+		cost?: number; resource?: 'mana' | 'grace';
+		effect?: SpellEffectRoll | null; damageApplied?: number;
+	} | null>(null);
+
+	// Инвентарь
+	let showItemPicker = $state(false);
+	let itemFilter = $state<ItemCategory | 'all'>('all');
+
+	// Состояния
+	let showConditionPicker = $state(false);
+	let newConditionId = $state<string>('');
+	let newConditionRounds = $state<number | null>(null);
+	let lastSave = $state<{ condition: string; roll: number; target: number; label: string; success: boolean } | null>(null);
+
+	// ────────────────────────────────────────────
+	// ON MOUNT / ON DESTROY
+	// ────────────────────────────────────────────
+	onMount(async () => {
 		const found = await getCharacter(page.params.id ?? '');
 		if (!found) {
 			goto('/');
@@ -122,119 +194,239 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 		loading = false;
 		activeRoomCode = getCurrentRoom();
 
+		// Подписка на запросы мастера (BroadcastChannel — между вкладками одного браузера)
 		session = getSession();
-		const unsubSession = subscribe((s) => {
+		unsubSession = subscribeSession((s) => {
 			session = s;
 		});
 
+		// Начальное состояние боя из localStorage
 		combat = getCombat();
-				const unsubCombat = subscribeCombat(async (s) => {
-			combat = s;
-			if (!s?.active || !char) return;
-			const myP = findParticipantBySource(s, char.id);
-			if (!myP) return;
 
-			// Первая синхронизация: запоминаем, что видим
-			if (lastCombatHp === null) {
-				lastCombatHp = myP.currentHp;
-				return;
-			}
+		// Если мы в комнате — синхронизация боя через Supabase
+		if (activeRoomCode) {
+			try {
+				const room = await findRoomByCode(activeRoomCode);
+				if (room) {
+					// Первичная загрузка состояния
+					const remote = await getRoomCombatState(room.id);
+					if (remote) combat = remote;
 
-			const prevHp = lastCombatHp;
-			lastCombatHp = myP.currentHp;
-
-			if (prevHp === myP.currentHp) return;
-
-			const max = getResourceMax(char, 'hp');
-			const currentReal = getCurrentResource(char, 'hp', max);
-			const currentTemp = char.tempHp ?? 0;
-
-			if (myP.currentHp < prevHp) {
-				// ГМ нанёс урон: сначала tempHp, потом реальный
-				const damage = prevHp - myP.currentHp;
-				const tempSpent = Math.min(currentTemp, damage);
-				char.tempHp = currentTemp - tempSpent;
-				const remaining = damage - tempSpent;
-
-				if (remaining > 0) {
-					char.currentResources = {
-						...(char.currentResources ?? {}),
-						hp: Math.max(0, currentReal - remaining)
-					};
+					// Подписка на обновления
+					unsubRoomCombat = subscribeToRoomCombat(room.id, handleRoomCombatUpdate);
 				}
-
-				char = { ...char };
-				await saveCharacter($state.snapshot(char) as Character);
-
-				// Синхронизируем ИТОГО (реальный + temp) обратно в трекер
-				const newTotal = (char.currentResources!.hp ?? 0) + (char.tempHp ?? 0);
-				if (newTotal !== myP.currentHp) {
-					lastCombatHp = newTotal;  // чтобы не сработал повторно на своём же апдейте
-					updateParticipant(myP.id, { currentHp: newTotal });
-					combat = getCombat();
-				}
-			} else {
-				// ГМ восстановил HP (лечение идёт в реальные, не в temp)
-				const heal = myP.currentHp - prevHp;
-				char.currentResources = {
-					...(char.currentResources ?? {}),
-					hp: Math.min(max, currentReal + heal)
-				};
-				char = { ...char };
-				await saveCharacter($state.snapshot(char) as Character);
+			} catch (e) {
+				console.warn('Не удалось подключиться к комнате:', e);
 			}
-		});
-		const unsubCharUpdates = subscribeCharacterUpdates(async (characterId) => {
+		}
+
+		// Обновления персонажа из других вкладок
+		unsubCharUpdates = subscribeCharacterUpdates(async (characterId) => {
 			if (!char || char.id !== characterId) return;
 			const refreshed = await getCharacter(characterId);
 			if (refreshed) char = refreshed;
 		});
-
-		unsubscribe = () => {
-			unsubSession();
-			unsubCombat();
-			unsubCharUpdates();
-		};
 	});
-	function rollInitRoll() {
-		if (!char) return;
-		const dexMod = getModifier(getCharacteristicValue(char, 'dexterity'));
-		const roll = rollD20();
-		alert(`Прыть: ${roll} + ${dexMod} = ${roll + dexMod}`);
-	}
-		function rollSkill(skillId: string, skillName: string) {
-		if (!char) return;
-		const target = getSkillCheckTarget(char, skillId, condMods);
-		const roll = rollD100();
-		const result = classifyRoll(roll, target);
-		lastRoll = { skill: skillName, roll, target, result };
 
-		// Отправляем в комнату, если мы в ней
-		publishToActiveRoom(char.name || 'Безымянный', 'skill', {
-			skillName,
-			roll,
-			target,
-			result
-		});
-	}
-	function rollCharacteristicCheck(charId: string, charName: string) {
-		if (!char) return;
-		const value = getCharacteristicValue(char, charId, condMods) + (condMods.saves ?? 0);
-		const target = Math.min(95, Math.max(0, value));
-		const roll = rollD100();
-		const result = classifyRoll(roll, target);
-		lastCharCheck = { charId, charName, roll, target, result };
+	onDestroy(() => {
+		unsubSession?.();
+		unsubRoomCombat?.();
+		unsubCharUpdates?.();
+	});
 
-		publishToActiveRoom(char.name || 'Безымянный', 'characteristic', {
-			charName,
-			roll,
-			target,
-			result
-		});
+	// ────────────────────────────────────────────
+	// СИНХРОНИЗАЦИЯ БОЯ
+	// ────────────────────────────────────────────
+	async function handleRoomCombatUpdate(newState: CombatState | null) {
+		if (!newState) return;
+		combat = newState;
+
+		const s = newState;
+		if (!s.active || !char) return;
+
+		const myP = findParticipantBySource(s, char.id);
+		if (!myP) return;
+
+		// Первая синхронизация — запоминаем, что видим
+		if (lastCombatHp === null) {
+			lastCombatHp = myP.currentHp;
+			return;
+		}
+
+		const prevHp = lastCombatHp;
+		lastCombatHp = myP.currentHp;
+		if (prevHp === myP.currentHp) return;
+
+		const max = getResourceMax(char, 'hp');
+		const currentReal = getCurrentResource(char, 'hp', max);
+		const currentTemp = char.tempHp ?? 0;
+
+		if (myP.currentHp < prevHp) {
+			// ГМ нанёс урон: сначала tempHp, потом реальный
+			const damage = prevHp - myP.currentHp;
+			const tempSpent = Math.min(currentTemp, damage);
+			char.tempHp = currentTemp - tempSpent;
+			const remaining = damage - tempSpent;
+
+			if (remaining > 0) {
+				char.currentResources = {
+					...(char.currentResources ?? {}),
+					hp: Math.max(0, currentReal - remaining),
+				};
+			}
+
+			char = { ...char };
+			await saveCharacter($state.snapshot(char) as Character);
+
+			// Возвращаем итог обратно в трекер, чтобы tempHp тоже учёлся
+			const newTotal = (char.currentResources!.hp ?? 0) + (char.tempHp ?? 0);
+			if (newTotal !== myP.currentHp) {
+				lastCombatHp = newTotal;
+				await writeCombatState({
+					...s,
+					participants: s.participants.map((p) =>
+						p.id === myP.id ? { ...p, currentHp: newTotal } : p
+					),
+				});
+			}
+		} else {
+			// ГМ восстановил HP
+			const heal = myP.currentHp - prevHp;
+			char.currentResources = {
+				...(char.currentResources ?? {}),
+				hp: Math.min(max, currentReal + heal),
+			};
+			char = { ...char };
+			await saveCharacter($state.snapshot(char) as Character);
+		}
 	}
-		/** Применить урон или лечение с учётом временных Жвч.
-	 *  delta < 0 — урон (сначала в tempHp), delta > 0 — лечение (только реальные HP) */
-		async function applyHpDelta(delta: number) {
+
+	/** Единая запись боя: локально + в комнату, если мы в ней */
+	async function writeCombatState(next: CombatState) {
+		combat = next;
+		saveCombat(next);
+
+		if (activeRoomCode) {
+			try {
+				const room = await findRoomByCode(activeRoomCode);
+				if (room) await saveRoomCombatState(room.id, next);
+			} catch (e) {
+				console.warn('Не удалось синхронизировать бой:', e);
+			}
+		}
+	}
+
+	// ────────────────────────────────────────────
+	// DERIVED
+	// ────────────────────────────────────────────
+	let condMods = $derived(
+		char
+			? getConditionModifiers(char)
+			: { characteristics: 0, attacks: 0, skills: 0, saves: 0, armor: 0, speed: 0, maxStamina: 0, skipTurn: false, canAct: true }
+	);
+
+	let currentWeapon = $derived(char ? getEquippedWeapon(char) : undefined);
+
+	let armorInfo = $derived.by(() => {
+		if (!char) return { total: 0, dexMod: 0, armor: 0, shield: 0 };
+		const base = getArmorValue(char);
+		const condArmor = condMods.armor ?? 0;
+		return { ...base, total: Math.max(0, base.total + condArmor) };
+	});
+
+	let enemiesInCombat = $derived(
+		combat?.active ? combat.participants.filter((p) => !p.isPlayer) : []
+	);
+
+	let myCombatParticipant = $derived(
+		combat && char ? findParticipantBySource(combat, char.id) : null
+	);
+
+	let isMyTurnInCombat = $derived(
+		combat && myCombatParticipant && combat.active
+			? (() => {
+					const sorted = [...combat.participants].sort((a, b) => b.initiative - a.initiative);
+					const idx = combat.currentTurnIndex % sorted.length;
+					return sorted[idx]?.id === myCombatParticipant.id;
+				})()
+			: false
+	);
+
+	let attackInfo = $derived(
+		char && currentWeapon
+			? getAttackTarget(char, currentWeapon, attackType, targetArmor, useTwoHandsWeapon)
+			: null
+	);
+
+	let atDeathsDoor = $derived.by(() => {
+		if (!char) return false;
+		const max = getResourceMax(char, 'hp');
+		const realHp = getCurrentResource(char, 'hp', max);
+		const temp = char.tempHp ?? 0;
+		return realHp === 0 && temp === 0;
+	});
+
+	let inventoryEntries = $derived(char ? listInventory(char) : []);
+	let totalWeight = $derived(char ? getTotalWeight(char) : 0);
+	let arrowsCount = $derived(char?.inventory?.find((i) => i.itemId === 'arrows')?.quantity ?? 0);
+
+	// ────────────────────────────────────────────
+	// ЯРЛЫКИ / УТИЛИТЫ
+	// ────────────────────────────────────────────
+	function rollD20(): number {
+		return Math.floor(Math.random() * 20) + 1;
+	}
+
+	const resultLabel: Record<RollResult, string> = {
+		crit_success: 'Правь! Критический успех',
+		success: 'Успех',
+		fail: 'Провал',
+		crit_fail: 'Навь! Критический провал',
+		double: 'Явь! Дубль',
+	};
+
+	const resultColor: Record<RollResult, string> = {
+		crit_success: 'text-green-700',
+		success: 'text-green-600',
+		fail: 'text-gray-500',
+		crit_fail: 'text-red-700',
+		double: 'text-blue-700',
+	};
+
+	const attackOutcomeLabel: Record<AttackOutcome, string> = {
+		hit: 'Попадание',
+		miss: 'Промах',
+		critical_hit: 'Правь! Максимальный урон + эффект',
+		critical_miss: 'Навь! Оружие может застрять/сломаться',
+		double: 'Явь! Дубль — особый эффект',
+	};
+
+	const attackOutcomeColor: Record<AttackOutcome, string> = {
+		hit: 'text-green-700',
+		miss: 'text-gray-500',
+		critical_hit: 'text-green-700 font-bold',
+		critical_miss: 'text-red-700 font-bold',
+		double: 'text-blue-700 font-bold',
+	};
+
+	const spellOutcomeLabel: Record<SpellOutcome, string> = {
+		critical_success: 'Правь! Ресурсы не тратятся, эффект максимален',
+		success: 'Заклинание сработало',
+		failure: 'Провал — ресурсы потрачены',
+		critical_failure: 'Навь! 1к4 урона, школа недоступна 1 раунд',
+	};
+
+	const typeLabel: Record<SessionRequestType, string> = {
+		initiative: 'прыть',
+		stealth: 'Скрытность',
+		perception: 'Наблюдательность',
+		survival: 'Выживание',
+	};
+
+	// ────────────────────────────────────────────
+	// РЕСУРСЫ
+	// ────────────────────────────────────────────
+	async function applyHpDelta(delta: number) {
 		if (!char) return;
 		const max = getResourceMax(char, 'hp');
 		const current = getCurrentResource(char, 'hp', max);
@@ -245,17 +437,16 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 			const tempSpent = Math.min(temp, damage);
 			char.tempHp = temp - tempSpent;
 			const remaining = damage - tempSpent;
-
 			if (remaining > 0) {
 				char.currentResources = {
 					...(char.currentResources ?? {}),
-					hp: Math.max(0, current - remaining)
+					hp: Math.max(0, current - remaining),
 				};
 			}
 		} else {
 			char.currentResources = {
 				...(char.currentResources ?? {}),
-				hp: Math.min(max, current + delta)
+				hp: Math.min(max, current + delta),
 			};
 		}
 
@@ -263,8 +454,7 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 		await saveCharacter($state.snapshot(char) as Character);
 		await syncHpToCombat();
 	}
-		/** Синхронизировать текущий эффективный HP (реальный + временный) в боевой трекер */
-		/** Синхронизировать текущий эффективный HP (реальный + временный) в боевой трекер */
+
 	async function syncHpToCombat() {
 		if (!char || !combat?.active) return;
 		const myP = myCombatParticipant;
@@ -273,24 +463,20 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 		const real = getCurrentResource(char, 'hp', max);
 		const temp = char.tempHp ?? 0;
 		const total = real + temp;
+		if (myP.currentHp === total) return;
 
-		if (myP.currentHp !== total) {
-			// ⚠ Ставим lastCombatHp ДО отправки, чтобы обработчик подписки
-			// не принял наш же апдейт за «лечение от ГМа»
-			lastCombatHp = total;
-			updateParticipant(myP.id, { currentHp: total });
-			combat = getCombat();
-		}
+		lastCombatHp = total;
+		await writeCombatState({
+			...combat,
+			participants: combat.participants.map((p) =>
+				p.id === myP.id ? { ...p, currentHp: total } : p
+			),
+		});
 	}
-		/** Жвч = 0 — при смерти */
-		let atDeathsDoor = $derived.by(() => {
-		if (!char) return false;
-		const max = getResourceMax(char, 'hp');
-		const realHp = getCurrentResource(char, 'hp', max);
-		const temp = char.tempHp ?? 0;
-		return realHp === 0 && temp === 0;
-	});
 
+	// ────────────────────────────────────────────
+	// ГРАНЬ
+	// ────────────────────────────────────────────
 	async function voiceOfBlood() {
 		if (!char) return;
 		if (char.death?.usedVoiceOfBlood) {
@@ -306,12 +492,11 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 
 		lastEdgeResult = {
 			action: 'Голос Крови (Предки)',
-			description: `Временные Жвч: ${temp}. Приходишь в сознание. Когда они кончатся — снова «при смерти». После — 1 уровень Истощения.`
+			description: `Временные Жвч: ${temp}. Приходишь в сознание. Когда они кончатся — снова «при смерти». После — 1 уровень Истощения.`,
 		};
-		showEdge = false;
 		await syncHpToCombat();
 	}
-	
+
 	async function callOfZhiva() {
 		if (!char) return;
 		if (char.death?.usedCallOfZhiva) {
@@ -327,16 +512,15 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 		char.death = {
 			...char.death,
 			usedCallOfZhiva: true,
-			debtMark: (char.death?.debtMark ?? 0) + 1
+			debtMark: (char.death?.debtMark ?? 0) + 1,
 		};
 		char = { ...char };
 		await saveCharacter($state.snapshot(char) as Character);
 
 		lastEdgeResult = {
 			action: 'Зов Живы (Долг)',
-			description: `Восстановлено ${restore} Жвч. Получена метка «Долг Живе» (всего: ${char.death.debtMark}). Каждая метка — −5 к максимуму Жвч навсегда.`
+			description: `Восстановлено ${restore} Жвч. Получена метка «Долг Живе» (всего: ${char.death.debtMark}). Каждая метка — −5 к максимуму Жвч навсегда.`,
 		};
-		showEdge = false;
 		await syncHpToCombat();
 	}
 
@@ -352,33 +536,25 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 
 		if (roll === 1) {
 			success = true;
-			description = `Правь! Приходишь в сознание с 1 Жвч + 1 Истощение.`;
+			description = 'Правь! Приходишь в сознание с 1 Жвч + 1 Истощение.';
 		} else if (roll === 100) {
 			success = false;
-			description = `Навь! Смерть. Персонаж уходит в Навь.`;
+			description = 'Навь! Смерть. Персонаж уходит в Навь.';
 		} else if (roll <= target) {
 			success = true;
-			description = `Успех. Стабилизация: 1 Жвч, без сознания. Через 1 час придёшь в себя + 1 Истощение.`;
+			description = 'Успех. Стабилизация: 1 Жвч, без сознания. Через 1 час придёшь в себя + 1 Истощение.';
 		} else {
 			success = false;
-			description = `Провал. Теряешь 1 Жвч (уходишь в минус). В начале следующего хода повторишь бросок.`;
+			description = 'Провал. Теряешь 1 Жвч (уходишь в минус). В начале следующего хода повторишь бросок.';
 		}
 
 		if (success) {
 			char.currentResources = { ...(char.currentResources ?? {}), hp: 1 };
-			char.death = { ...char.death, deathCount: (char.death?.deathCount ?? 0) };
 			char = { ...char };
 			await saveCharacter($state.snapshot(char) as Character);
 		}
 
-		lastEdgeResult = {
-			action: 'Удержаться (Своя воля)',
-			description,
-			roll,
-			target,
-			success
-		};
-		showEdge = false;
+		lastEdgeResult = { action: 'Удержаться (Своя воля)', description, roll, target, success };
 		await syncHpToCombat();
 	}
 
@@ -389,22 +565,17 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 		const target = Math.min(95, int + restoration);
 		const roll = rollD100();
 		const success = roll <= target;
-
-		if (success) {
-			alert(`Проверка Восстановления: к100 = ${roll} ≤ ${target} — успех! Союзник стабилизирован (без сознания).`);
-		} else {
-			alert(`Проверка Восстановления: к100 = ${roll} > ${target} — провал.`);
-		}
+		alert(
+			success
+				? `Проверка Восстановления: к100 = ${roll} ≤ ${target} — успех! Союзник стабилизирован.`
+				: `Проверка Восстановления: к100 = ${roll} > ${target} — провал.`
+		);
 	}
 
 	async function resetEdge() {
 		if (!char) return;
-		if (!confirm('Сбросить состояние Грани? Использованные шаги снова доступны. Используй после окончания боя.')) return;
-		char.death = {
-			...char.death,
-			usedVoiceOfBlood: false,
-			usedCallOfZhiva: false
-		};
+		if (!confirm('Сбросить состояние Грани? Использованные шаги снова доступны. Используй после боя.')) return;
+		char.death = { ...char.death, usedVoiceOfBlood: false, usedCallOfZhiva: false };
 		char.tempHp = 0;
 		char = { ...char };
 		await saveCharacter($state.snapshot(char) as Character);
@@ -425,85 +596,10 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 		await saveCharacter($state.snapshot(char) as Character);
 		await syncHpToCombat();
 	}
-		type TwoHandsChoice = Record<string, boolean>;
-	let twoHands = $state<TwoHandsChoice>({});
 
-	let lastCast = $state<{
-		spell: string;
-		roll: number;
-		target: number;
-		outcome: SpellOutcome;
-		cost?: number;
-		resource?: 'mana' | 'grace';
-		effect?: SpellEffectRoll | null;
-	} | null>(null);
-	
-		// ─── БОЙ ───
-	let attackType = $state<AttackType>('normal');
-	let targetArmor = $state(15);
-	let useTwoHandsWeapon = $state(false);
-	// Производные значения боя
-	let currentWeapon = $derived(char ? getEquippedWeapon(char) : undefined);
-	let armorInfo = $derived.by(() => {
-		if (!char) return { total: 0, dexMod: 0, armor: 0, shield: 0 };
-		const base = getArmorValue(char);
-		const condArmor = condMods.armor ?? 0;
-		return {
-			...base,
-			total: Math.max(0, base.total + condArmor)
-		};
-	});
-		let condMods = $derived(
-		char
-			? getConditionModifiers(char)
-			: { characteristics: 0, attacks: 0, skills: 0, saves: 0, armor: 0, speed: 0, maxStamina: 0, skipTurn: false, canAct: true }
-	);
-		let enemiesInCombat = $derived(
-		combat?.active ? combat.participants.filter((p) => !p.isPlayer) : []
-	);
-	let myCombatParticipant = $derived(
-		combat && char ? findParticipantBySource(combat, char.id) : null
-	);
-	let isMyTurnInCombat = $derived(
-		combat && myCombatParticipant && combat.active
-			? (() => {
-				const sorted = [...combat.participants].sort((a, b) => b.initiative - a.initiative);
-				const idx = combat.currentTurnIndex % sorted.length;
-				return sorted[idx]?.id === myCombatParticipant.id;
-			})()
-			: false
-	);
-	let attackInfo = $derived(
-		char && currentWeapon
-			? getAttackTarget(char, currentWeapon, attackType, targetArmor, useTwoHandsWeapon)
-			: null
-	);
-	let lastInitiative = $state<{ roll: number; mod: number; total: number } | null>(null);
-
-		let lastAttack = $state<{
-		weapon: string;
-		attackType: AttackType;
-		target: number;
-		parts: { label: string; value: number }[];
-		attacks: SingleAttackRoll[];
-	} | null>(null);
-
-	const attackOutcomeLabel: Record<AttackOutcome, string> = {
-		hit: 'Попадание',
-		miss: 'Промах',
-		critical_hit: 'Правь! Максимальный урон + эффект',
-		critical_miss: 'Навь! Оружие может застрять/сломаться',
-		double: 'Явь! Дубль — особый эффект'
-	};
-
-	const attackOutcomeColor: Record<AttackOutcome, string> = {
-		hit: 'text-green-700',
-		miss: 'text-gray-500',
-		critical_hit: 'text-green-700 font-bold',
-		critical_miss: 'text-red-700 font-bold',
-		double: 'text-blue-700 font-bold'
-	};
-
+	// ────────────────────────────────────────────
+	// БОЙ
+	// ────────────────────────────────────────────
 	function rollInit() {
 		if (!char) return;
 		lastInitiative = rollInitiative(char);
@@ -511,7 +607,7 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 			publishToActiveRoom(char.name || 'Безымянный', 'initiative', {
 				roll: lastInitiative.roll,
 				modifier: lastInitiative.mod,
-				total: lastInitiative.total
+				total: lastInitiative.total,
 			});
 		}
 	}
@@ -523,7 +619,7 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 		await saveCharacter($state.snapshot(char) as Character);
 	}
 
-		async function attack() {
+	async function attack() {
 		if (!char) return;
 		const weapon = getEquippedWeapon(char);
 		if (!weapon) {
@@ -531,7 +627,6 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 			return;
 		}
 
-		// Проверяем стрелы для стрелкового оружия
 		let arrowBonus: BonusDice[] = [];
 		let arrowsEntryId: string | null = null;
 
@@ -539,54 +634,56 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 			const arrowsEntry = char.inventory?.find((i) => i.itemId === 'arrows');
 			const arrowsCount = arrowsEntry?.quantity ?? 0;
 			const needed = attackType === 'fast' ? 2 : 1;
-
 			if (arrowsCount < needed) {
-				alert(`Нет стрел! Нужно ${needed}, есть ${arrowsCount}. Купите или возьмите стрелы в инвентаре.`);
+				alert(`Нет стрел! Нужно ${needed}, есть ${arrowsCount}.`);
 				return;
 			}
-
-			// Боевые стрелы дают +1к6 урона
 			arrowBonus = [{ label: 'Стрелы', count: 1, sides: 6 }];
 			arrowsEntryId = arrowsEntry!.instanceId;
 		}
 
-		// Учитываем штраф от состояний к атакам
 		const adjustedTargetArmor = targetArmor - (condMods.attacks ?? 0);
 		const { target, parts } = getAttackTarget(char, weapon, attackType, adjustedTargetArmor, useTwoHandsWeapon);
 		const attacks = rollAttack(char, weapon, attackType, adjustedTargetArmor, useTwoHandsWeapon, arrowBonus);
 
-		lastAttack = {
-			weapon: weapon.name,
-			attackType,
-			target,
-			parts,
-			attacks
-		};
-				// Отправляем броски атаки в комнату
+		lastAttack = { weapon: weapon.name, attackType, target, parts, attacks };
+
 		for (const atk of attacks) {
 			publishToActiveRoom(char.name || 'Безымянный', 'attack', {
 				weaponName: weapon.name,
 				attackType,
 				roll: atk.roll,
 				target: atk.target,
-				result: atk.outcome === 'hit' ? 'success'
+				result:
+					atk.outcome === 'hit' ? 'success'
 					: atk.outcome === 'critical_hit' ? 'crit_success'
 					: atk.outcome === 'critical_miss' ? 'crit_fail'
 					: atk.outcome === 'double' ? 'double'
 					: 'fail',
-				damage: atk.damage?.total
+				damage: atk.damage?.total,
 			});
 		}
-		// Если бой активен и выбрана цель — списываем урон с врага
+
+		// Если бой активен и цель выбрана — списываем урон
 		if (combat?.active && targetEnemyId) {
+			let totalDamage = 0;
 			for (const atk of attacks) {
 				if (atk.damage && (atk.outcome === 'hit' || atk.outcome === 'critical_hit' || atk.outcome === 'double')) {
-					damageParticipant(targetEnemyId, -atk.damage.total);
+					totalDamage += atk.damage.total;
 				}
 			}
-			combat = getCombat();
+			if (totalDamage > 0) {
+				await writeCombatState({
+					...combat,
+					participants: combat.participants.map((p) =>
+						p.id === targetEnemyId
+							? { ...p, currentHp: Math.max(0, p.currentHp - totalDamage) }
+							: p
+					),
+				});
+			}
 		}
-		// Списываем стрелы
+
 		if (weapon.category === 'ranged' && arrowsEntryId) {
 			const spent = attackType === 'fast' ? 2 : 1;
 			char = adjustItemQuantity(char, arrowsEntryId, -spent);
@@ -594,13 +691,9 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 		}
 	}
 
-	const spellOutcomeLabel: Record<SpellOutcome, string> = {
-		critical_success: 'Правь! Ресурсы не тратятся, эффект максимален',
-		success: 'Заклинание сработало',
-		failure: 'Провал — ресурсы потрачены',
-		critical_failure: 'Навь! 1к4 урона, школа недоступна 1 раунд'
-	};
-
+	// ────────────────────────────────────────────
+	// МАГИЯ
+	// ────────────────────────────────────────────
 	async function toggleSpell(spellId: string) {
 		if (!char) return;
 		const isKnown = char.spells.includes(spellId);
@@ -611,7 +704,7 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 		await saveCharacter($state.snapshot(char) as Character);
 	}
 
-		async function castSpell(spellId: string, school: string, useTwoHands: boolean) {
+	async function castSpell(spellId: string, school: string, useTwoHands: boolean) {
 		if (!char) return;
 		const spell = SPELLS_BY_SCHOOL[school].find((s) => s.id === spellId);
 		if (!spell) return;
@@ -622,36 +715,36 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 		const outcome = classifySpellRoll(roll, target);
 		const costInfo = getSpellCost(char, spell, useTwoHands);
 
-		const resourceId = char.useGraceForSpells ? 'grace' : (costInfo.resource === 'grace' ? 'grace' : 'mana');
+		const resourceId = char.useGraceForSpells ? 'grace' : costInfo.resource === 'grace' ? 'grace' : 'mana';
 		const resourceMax = getResourceMax(char, resourceId);
 		const current = getCurrentResource(char, resourceId, resourceMax);
 
 		let actuallySpent = 0;
 		if (outcome === 'success' || outcome === 'failure' || outcome === 'critical_failure') {
-			const total = outcome === 'critical_failure'
-				? costInfo.reduced + (Math.floor(Math.random() * 4) + 1)
-				: costInfo.reduced;
+			const total =
+				outcome === 'critical_failure'
+					? costInfo.reduced + (Math.floor(Math.random() * 4) + 1)
+					: costInfo.reduced;
 			actuallySpent = Math.min(current, total);
 			spendResource(char, resourceId, total, resourceMax);
 		}
 
-		// Бросаем эффект заклинания при успехе
 		let effectResult: SpellEffectRoll | null = null;
 		if (outcome === 'success' || outcome === 'critical_success') {
 			effectResult = rollSpellEffect(char, spell, useTwoHands, char.useGraceForSpells);
 		}
 
-		// ⬇⬇⬇ ЕСЛИ бой активен, цель выбрана и заклинание наносит урон — бьём
 		let damageApplied = 0;
-		if (
-			combat?.active &&
-			targetEnemyId &&
-			effectResult &&
-			spell.damage // это атакующее заклинание, не лечение
-		) {
+		if (combat?.active && targetEnemyId && effectResult && spell.damage) {
 			damageApplied = effectResult.total;
-			damageParticipant(targetEnemyId, -damageApplied);
-			combat = getCombat();
+			await writeCombatState({
+				...combat,
+				participants: combat.participants.map((p) =>
+					p.id === targetEnemyId
+						? { ...p, currentHp: Math.max(0, p.currentHp - damageApplied) }
+						: p
+				),
+			});
 		}
 
 		lastCast = {
@@ -661,30 +754,31 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 			outcome,
 			cost: actuallySpent,
 			resource: char.useGraceForSpells ? 'grace' : costInfo.resource,
-			effect: effectResult
+			effect: effectResult,
+			damageApplied,
 		};
-				// Отправляем бросок заклинания в комнату
+
 		publishToActiveRoom(char.name || 'Безымянный', 'spell', {
 			spellName: spell.name,
 			school,
 			roll,
 			target,
-			result: outcome === 'success' ? 'success'
+			result:
+				outcome === 'success' ? 'success'
 				: outcome === 'critical_success' ? 'crit_success'
 				: outcome === 'critical_failure' ? 'crit_fail'
 				: 'fail',
-			damage: effectResult?.total
+			damage: effectResult?.total,
 		});
-
-		// Добавим отметку о нанесённом уроне в lastCast
-		if (damageApplied > 0) {
-			(lastCast as any).damageApplied = damageApplied;
-		}
 
 		char = { ...char, currentResources: { ...(char.currentResources ?? {}) } };
 		await saveCharacter($state.snapshot(char) as Character);
 	}
-		async function updateBio(patch: Partial<Character['bio']>) {
+
+	// ────────────────────────────────────────────
+	// ЛИЧНОСТЬ
+	// ────────────────────────────────────────────
+	async function updateBio(patch: Partial<Character['bio']>) {
 		if (!char) return;
 		char = { ...char, bio: { ...char.bio, ...patch } };
 		await saveCharacter($state.snapshot(char) as Character);
@@ -698,10 +792,7 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 		if (!char) return;
 		const option = findOption(list, key);
 		const text = option ? option.description : char.bio[`${field}Text` as const];
-		updateBio({
-			[`${field}Key`]: key,
-			[`${field}Text`]: text
-		} as Partial<Character['bio']>);
+		updateBio({ [`${field}Key`]: key, [`${field}Text`]: text } as Partial<Character['bio']>);
 	}
 
 	async function setInspiration(value: number) {
@@ -710,16 +801,18 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 		char = { ...char, inspiration: clamped };
 		await saveCharacter($state.snapshot(char) as Character);
 	}
-		function getCharValueForCondition(charId: string): number {
+
+	// ────────────────────────────────────────────
+	// СОСТОЯНИЯ
+	// ────────────────────────────────────────────
+	function getCharValueForCondition(charId: string): number {
 		if (!char) return 0;
 		return getCharacteristicValue(char, charId);
 	}
-
 	function getSkillForCondition(skillId: string): number {
 		if (!char) return 0;
 		return getSkillTotal(char, skillId);
 	}
-
 	function getConditionSaveTarget(def: any, useAlternative: boolean): { target: number; label: string } | null {
 		if (!char || !def.save) return null;
 		const charId = useAlternative && def.save.charB ? def.save.charB : def.save.charA;
@@ -727,10 +820,10 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 		const charValue = getCharValueForCondition(charId);
 		const skillBonus = skillId ? getSkillForCondition(skillId) : 0;
 		const charShort = CHARACTERISTICS.find((c) => c.id === charId)?.short ?? charId;
-		const skillName = skillId ? (SKILLS.find((s) => s.id === skillId)?.name ?? skillId) : '';
+		const skillName = skillId ? SKILLS.find((s) => s.id === skillId)?.name ?? skillId : '';
 		return {
 			target: Math.min(95, charValue + skillBonus),
-			label: `${charShort}${skillId ? ` + ${skillName}` : ''} = ${charValue + skillBonus}`
+			label: `${charShort}${skillId ? ` + ${skillName}` : ''} = ${charValue + skillBonus}`,
 		};
 	}
 
@@ -755,18 +848,17 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 
 	async function adjustConditionRounds(conditionId: string, delta: number) {
 		if (!char) return;
-		const next = (char.conditions ?? []).map((c) => {
-			if (c.id !== conditionId) return c;
-			if (c.roundsLeft === null) return c;
-			const newRounds = Math.max(0, c.roundsLeft + delta);
-			return { ...c, roundsLeft: newRounds };
-		}).filter((c) => c.roundsLeft === null || c.roundsLeft > 0);
+		const next = (char.conditions ?? [])
+			.map((c) => {
+				if (c.id !== conditionId) return c;
+				if (c.roundsLeft === null) return c;
+				return { ...c, roundsLeft: Math.max(0, c.roundsLeft + delta) };
+			})
+			.filter((c) => c.roundsLeft === null || c.roundsLeft > 0);
 		char.conditions = next;
 		char = { ...char };
 		await saveCharacter($state.snapshot(char) as Character);
 	}
-
-	let lastSave = $state<{ condition: string; roll: number; target: number; label: string; success: boolean } | null>(null);
 
 	async function attemptSave(conditionId: string, useAlternative: boolean) {
 		if (!char) return;
@@ -779,18 +871,8 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 		}
 		const roll = rollD100();
 		const success = roll <= targetInfo.target;
-
-		lastSave = {
-			condition: def.name,
-			roll,
-			target: targetInfo.target,
-			label: targetInfo.label,
-			success
-		};
-
-		if (success) {
-			await removeCondition(conditionId);
-		}
+		lastSave = { condition: def.name, roll, target: targetInfo.target, label: targetInfo.label, success };
+		if (success) await removeCondition(conditionId);
 	}
 
 	async function applyDotDamage() {
@@ -803,17 +885,14 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 		if (!confirm(`Урон в конце хода:\n\n${details.join('\n')}\n\nИтого: ${total} Жвч`)) return;
 		const max = getResourceMax(char, 'hp');
 		const current = getCurrentResource(char, 'hp', max);
-		char.currentResources = {
-			...(char.currentResources ?? {}),
-			hp: Math.max(0, current - total)
-		};
+		char.currentResources = { ...(char.currentResources ?? {}), hp: Math.max(0, current - total) };
 		char = { ...char };
 		await saveCharacter($state.snapshot(char) as Character);
 	}
 
-	let showConditionPicker = $state(false);
-	let newConditionId = $state<string>('');
-	let newConditionRounds = $state<number | null>(null);
+	// ────────────────────────────────────────────
+	// ОТДЫХ
+	// ────────────────────────────────────────────
 	async function shortRest() {
 		if (!char) return;
 		if (char.shortRestUsed) {
@@ -832,7 +911,6 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 
 			let ratio = 0;
 			let resultLabel = '';
-
 			if (roll === 1) {
 				ratio = 2 / 3;
 				resultLabel = 'Правь! ⅔ максимума';
@@ -851,7 +929,6 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 			const restored = Math.floor(max * ratio);
 			const current = getCurrentResource(char, r.id, max);
 			const next = Math.min(max, current + restored);
-
 			updates[r.id] = next;
 
 			results.push({
@@ -864,7 +941,7 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 				restored,
 				before: current,
 				after: next,
-				max
+				max,
 			});
 		}
 
@@ -872,58 +949,27 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 		char.shortRestUsed = true;
 		char = { ...char };
 		await saveCharacter($state.snapshot(char) as Character);
-
 		lastRest = { type: 'short', results };
 	}
 
 	async function longRest() {
 		if (!char) return;
-		if (!confirm('Продолжительный отдых (8 часов)? Все ресурсы восстановятся полностью. Состояния (Отрава, Хворь, Руда и т.д.) НЕ снимаются.')) return;
+		if (!confirm('Продолжительный отдых (8 часов)? Все ресурсы восстановятся полностью.')) return;
 
 		const updates: Record<string, number> = {};
 		for (const r of RESOURCES) {
-			const max = getResourceMax(char, r.id);
-			updates[r.id] = max;
+			updates[r.id] = getResourceMax(char, r.id);
 		}
-
 		char.currentResources = { ...(char.currentResources ?? {}), ...updates };
 		char.shortRestUsed = false;
 		char = { ...char };
 		await saveCharacter($state.snapshot(char) as Character);
-
 		lastRest = { type: 'long', results: [] };
 	}
-	const resultLabel: Record<RollResult, string> = {
-		crit_success: 'Правь! Критический успех',
-		success: 'Успех',
-		fail: 'Провал',
-		crit_fail: 'Навь! Критический провал',
-		double: 'Явь! Дубль'
-	};
 
-	const resultColor: Record<RollResult, string> = {
-		crit_success: 'text-green-700',
-		success: 'text-green-600',
-		fail: 'text-gray-500',
-		crit_fail: 'text-red-700',
-		double: 'text-blue-700'
-	};
-
-	async function removeChar() {
-		if (!char) return;
-		if (!confirm('Удалить персонажа?')) return;
-		await deleteCharacter(char.id);
-		goto('/');
-	}
-		// ─── ИНВЕНТАРЬ ───
-	let showItemPicker = $state(false);
-	let itemFilter = $state<ItemCategory | 'all'>('all');
-
-	let inventoryEntries = $derived(char ? listInventory(char) : []);
-	let totalWeight = $derived(char ? getTotalWeight(char) : 0);
-	let arrowsCount = $derived(
-		char?.inventory?.find((i) => i.itemId === 'arrows')?.quantity ?? 0);
-
+	// ────────────────────────────────────────────
+	// ИНВЕНТАРЬ
+	// ────────────────────────────────────────────
 	async function persistInventory() {
 		if (!char) return;
 		char = { ...char };
@@ -954,10 +1000,8 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 		if (!char) return;
 		const entry = inventoryEntries.find((e) => e.instance.instanceId === instanceId);
 		if (!entry) return;
-
 		const item = entry.item;
 
-		// Применяем эффект
 		if (item.restoresHp && item.useDice) {
 			const m = item.useDice.match(/^(\d+)[кd](\d+)([+-]\d+)?$/i);
 			if (m) {
@@ -969,11 +1013,8 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 				const healed = sum + bonus;
 				const max = getResourceMax(char, 'hp');
 				const current = getCurrentResource(char, 'hp', max);
-				char.currentResources = {
-					...(char.currentResources ?? {}),
-					hp: Math.min(max, current + healed)
-				};
-				alert(`Восстановлено ${healed} живучести (${sum} на кубах + ${bonus}).`);
+				char.currentResources = { ...(char.currentResources ?? {}), hp: Math.min(max, current + healed) };
+				alert(`Восстановлено ${healed} живучести.`);
 			}
 		}
 
@@ -986,22 +1027,16 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 				for (let i = 0; i < count; i++) sum += Math.floor(Math.random() * sides) + 1;
 				const max = getResourceMax(char, 'mana');
 				const current = getCurrentResource(char, 'mana', max);
-				char.currentResources = {
-					...(char.currentResources ?? {}),
-					mana: Math.min(max, current + sum)
-				};
+				char.currentResources = { ...(char.currentResources ?? {}), mana: Math.min(max, current + sum) };
 				alert(`Восстановлено ${sum} живы.`);
 			}
 		}
 
-		// Расходник — уменьшаем количество
-		if (item.consumable) {
-			char = adjustItemQuantity(char, instanceId, -1);
-		}
+		if (item.consumable) char = adjustItemQuantity(char, instanceId, -1);
 		await persistInventory();
 	}
 
-		async function adjustMoney(type: 'copper' | 'silver' | 'gold', delta: number) {
+	async function adjustMoney(type: 'copper' | 'silver' | 'gold', delta: number) {
 		if (!char) return;
 		if (!char.money) char.money = { copper: 0, silver: 0, gold: 0 };
 		const next = { ...char.money, [type]: Math.max(0, char.money[type] + delta) };
@@ -1027,15 +1062,18 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 		char = addItemToInventory(char, itemId, qty);
 		await persistInventory();
 	}
-		onDestroy(() => {
-		unsubscribe?.();
-	});
 
-	function rollD20(): number {
-		return Math.floor(Math.random() * 20) + 1;
+	// ────────────────────────────────────────────
+	// ПРОЧЕЕ
+	// ────────────────────────────────────────────
+	async function removeChar() {
+		if (!char) return;
+		if (!confirm('Удалить персонажа?')) return;
+		await deleteCharacter(char.id);
+		goto('/');
 	}
 
-		function respondToRequest() {
+	function respondToRequest() {
 		if (!char || !session) return;
 		if (session.results[char.id]) return;
 
@@ -1050,8 +1088,6 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 			modifier = getModifier(getCharacteristicValue(char, 'dexterity'));
 			target = 0;
 			result = 'success';
-
-			// Синхронизируем с боевым трекером
 			setParticipantInitiative(char.id, roll, modifier);
 		} else if (skillId) {
 			target = getSkillCheckTarget(char, skillId);
@@ -1067,17 +1103,16 @@ import { SPELLS_BY_SCHOOL, SCHOOL_STABILITY_THRESHOLDS, getSpellLevelThreshold }
 			target,
 			modifier,
 			result,
-			timestamp: Date.now()
+			timestamp: Date.now(),
 		});
 		session = getSession();
 	}
 
-	const typeLabel: Record<SessionRequestType, string> = {
-		initiative: 'прыть',
-		stealth: 'Скрытность',
-		perception: 'Наблюдательность',
-		survival: 'Выживание'
-	};
+	// ────────────────────────────────────────────
+	// ПРОКРУТКА (функции для HTML, объявленные ниже — на случай если Svelte ругается)
+	// ────────────────────────────────────────────
+	function openItemPicker() { showItemPicker = true; }
+	function closeItemPicker() { showItemPicker = false; }
 </script>
 
 <main class="max-w-4xl mx-auto p-6 space-y-6">

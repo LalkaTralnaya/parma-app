@@ -5,11 +5,13 @@
 	import {
 	findRoomByCode, joinRoom, getRoomParticipants, getRecentRolls,
 	leaveRoom, updateCharacterSnapshot, subscribeToRoom,
-	setCurrentRoom, clearCurrentRoom,
+	setCurrentRoom, clearCurrentRoom, deleteRoom, listMyMasterRooms,
+	setPendingCharacter, clearPendingCharacter,
 	type Room, type RoomParticipant, type RoomRoll
 } from '../../../lib/engine/rooms';
-	import { listCharacters, getCharacter } from '../../../lib/db/characters';
+	import { listCharacters, getCharacter, saveCharacter } from '../../../lib/db/characters';
 	import { getDeviceId } from '../../../lib/supabase/client';
+	import { RACES } from '../../../lib/rules/races';
 	import type { Character } from '../../../lib/types';
 
 	let room = $state<Room | null>(null);
@@ -21,6 +23,100 @@
 	let showCharPicker = $state(false);
 	let selectedCharacterId = $state<string>('');
 	let unsubscribe: (() => void) | null = null;
+	// ─── Передача персонажа ───
+// ─── Передача персонажа ───
+let showGiftForm = $state(false);
+let giftTarget = $state<RoomParticipant | null>(null);
+let giftBusy = $state(false);
+
+function openGiftForm(p: RoomParticipant) {
+	giftTarget = p;
+	showGiftForm = true;
+}
+
+/** Передать существующий чарлист игроку */
+async function confirmGift(char: Character) {
+	if (!room || !giftTarget || giftBusy) return;
+	giftBusy = true;
+
+	// 1. Снимаем реактивную обёртку (иначе Supabase получит Proxy и упадёт)
+	const plain = $state.snapshot(char) as Character;
+
+	// 2. Клонируем с новым id, чтобы не перетереть чарлистов игрока
+	const copy: Character = {
+		...plain,
+		id:
+			typeof crypto !== 'undefined' && 'randomUUID' in crypto
+				? crypto.randomUUID()
+				: `gift-${Date.now()}-${Math.random().toString(36).slice(2)}`
+	};
+
+	const targetName = giftTarget.display_name ?? 'игроку';
+	const targetId = giftTarget.id;
+
+	try {
+		await setPendingCharacter(targetId, copy);
+		participants = await getRoomParticipants(room.id);
+		showGiftForm = false;
+		giftTarget = null;
+		alert(`Персонаж «${copy.name || '(без имени)'}» передан ${targetName}.`);
+	} catch (e) {
+		alert((e as Error).message);
+	} finally {
+		giftBusy = false;
+	}
+	// Запоминаем, что этот персонаж отдан
+		const { data: roomData } = await supabase
+			.from('rooms')
+			.select('gifted_character_ids')
+			.eq('id', room.id)
+			.maybeSingle();
+
+		const gifted = new Set(roomData?.gifted_character_ids ?? []);
+		gifted.add(char.id);
+
+		await supabase
+			.from('rooms')
+			.update({ gifted_character_ids: Array.from(gifted) })
+			.eq('id', room.id);
+}
+
+async function acceptGift(p: RoomParticipant) {
+	if (!p.pending_character || !room) return;
+
+	// Снимаем Proxy с реактивного объекта — иначе IndexedDB падает с DataCloneError
+	const plainCharacter = $state.snapshot(p.pending_character) as Character;
+
+	try {
+		// 1. Сохраняем в локальную базу игрока — теперь у него есть полноценный чарлист
+		await saveCharacter(plainCharacter);
+
+		// 2. Становимся «активным» участником с этим персонажем в комнате
+		await joinRoom(room.id, p.display_name ?? 'Игрок', plainCharacter);
+
+		// 3. Убираем «подарок» — он больше не pending
+		await clearPendingCharacter(p.id);
+
+		// 4. Обновляем данные
+		participants = await getRoomParticipants(room.id);
+		myCharacters = await listCharacters();
+
+		alert(`Персонаж принят! Он появился в вашем списке на главной странице.`);
+	} catch (e) {
+		alert((e as Error).message);
+	}
+}
+
+async function declineGift(p: RoomParticipant) {
+	if (!confirm('Отклонить персонажа от мастера?')) return;
+	if (!room) return;
+	try {
+		await clearPendingCharacter(p.id);
+		participants = await getRoomParticipants(room.id);
+	} catch (e) {
+		alert((e as Error).message);
+	}
+}
 
 	const deviceId = getDeviceId();
 	const isMaster = $derived(room?.master_device_id === deviceId);
@@ -171,6 +267,17 @@
 		}
 		return { text: JSON.stringify(d), resultClass: 'text-gray-700' };
 	}
+	async function deleteThisRoom() {
+	if (!room) return;
+	if (!confirm(`Удалить комнату «${room.name || room.code}»? Все данные (участники, броски) будут стёрты безвозвратно.`)) return;
+	try {
+		await deleteRoom(room.id);
+		clearCurrentRoom();
+		goto('/room');
+	} catch (e) {
+		alert((e as Error).message);
+	}
+}
 </script>
 
 <main class="max-w-4xl mx-auto p-6">
@@ -211,6 +318,13 @@
 					onclick={handleLeave}>
 					Выйти
 				</button>
+				{#if isMaster}
+					<button
+						class="px-3 py-2 text-red-700 border border-red-400 rounded hover:bg-red-50 text-sm"
+						onclick={deleteThisRoom}>
+						Удалить комнату
+					</button>
+				{/if}
 			</div>
 		</header>
 
@@ -251,6 +365,39 @@
 										<span class="text-xs text-blue-700 ml-2">вы</span>
 									{/if}
 								</div>
+								<!-- Кнопка мастера: подарить персонажа игроку -->
+								{#if isMaster && p.device_id !== deviceId && p.role !== 'master'}
+									<button
+										class="mt-2 px-2 py-1 text-xs bg-purple-600 text-white rounded hover:bg-purple-700"
+										onclick={() => openGiftForm(p)}>
+										🎁 Дать персонажа
+									</button>
+								{/if}
+
+								<!-- Уведомление для игрока: мастер передал персонажа -->
+								{#if p.device_id === deviceId && p.pending_character}
+									<div class="mt-2 border-2 border-purple-400 bg-purple-50 rounded-lg p-2">
+										<div class="text-xs font-semibold text-purple-900 mb-1">
+											🎁 Мастер передал вам персонажа
+										</div>
+										<div class="text-sm font-medium">{p.pending_character.name || '(без имени)'}</div>
+										<div class="text-xs text-purple-700 mb-2">
+											{p.pending_character.level} ур. · {RACES.find(r => r.id === p.pending_character?.raceId)?.name ?? '—'}
+										</div>
+										<div class="flex gap-1">
+											<button
+												class="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
+												onclick={() => acceptGift(p)}>
+												Принять
+											</button>
+											<button
+												class="px-2 py-1 text-xs text-red-600 border border-red-300 rounded hover:bg-red-50"
+												onclick={() => declineGift(p)}>
+												Отклонить
+											</button>
+										</div>
+									</div>
+								{/if}
 							</div>
 							{#if p.character_snapshot}
 								<div class="text-sm text-gray-600">
@@ -290,6 +437,56 @@
 					</div>
 				{/if}
 			</section>
+		</div>
+	{/if}
+	{#if showGiftForm && giftTarget}
+		<div
+			class="fixed inset-0 bg-black/50 z-[9998] flex items-center justify-center p-4"
+			onclick={() => (showGiftForm = false)}
+			role="presentation"
+		>
+			<div
+				class="bg-white rounded-lg max-w-md w-full p-4 max-h-[90vh] overflow-y-auto z-[9999]"
+				onclick={(e) => e.stopPropagation()}
+				role="dialog"
+			>
+				<h3 class="text-lg font-semibold mb-3">
+					Передать персонажа игроку
+					<span class="text-purple-700">{giftTarget.display_name || 'без имени'}</span>
+				</h3>
+
+				{#if myCharacters.length === 0}
+					<p class="text-sm text-gray-500 mb-4">
+						У вас нет сохранённых персонажей.
+						<a href="/new" class="text-blue-600 hover:underline">Создать персонажа</a>
+					</p>
+				{:else}
+					<div class="text-xs text-gray-500 mb-2">
+						Выберите чарлист для передачи. Копия появится у игрока, ваш оригинал останется у вас.
+					</div>
+					<div class="space-y-1 max-h-[60vh] overflow-y-auto mb-3">
+						{#each myCharacters as c (c.id)}
+							{#if !(room?.gifted_character_ids ?? []).includes(c.id)}
+								<button onclick={() => confirmGift(c)}>
+									{c.name || '(без имени)'} · {c.level} ур.
+								</button>
+							{/if}
+						{/each}
+					</div>
+				{/if}
+
+				<div class="flex gap-2">
+					<button
+						class="flex-1 px-3 py-2 border rounded hover:bg-gray-50"
+						onclick={() => {
+							showGiftForm = false;
+							giftTarget = null;
+						}}
+					>
+						Отмена
+					</button>
+				</div>
+			</div>
 		</div>
 	{/if}
 </main>

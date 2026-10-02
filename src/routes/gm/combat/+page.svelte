@@ -1,4 +1,12 @@
 <script lang="ts">
+	import { RACES } from '$lib/rules/races';
+	import {
+	findRoomByCode, getRoomParticipants,
+	getRoomCombatState, saveRoomCombatState, subscribeToRoomCombat,
+	subscribeToRoom,
+	getCurrentRoom,
+	type RoomParticipant
+} from '../../../lib/engine/rooms';
 	import Dialog from '$lib/components/Dialog.svelte';
 	import { listCharacters, getCurrentResource } from '../../../lib/db/characters';
 	import { createRequest, SESSION_LABELS } from '../../../lib/sync/session';
@@ -17,12 +25,13 @@
 		type CombatState, type CombatParticipant, type MonsterAttackData
 	} from '../../../lib/sync/combat';
 	import type { Character } from '$lib/type';
-
+	let unsubRoomParticipants: (() => void) | null = null;
 	let combatState = $state<CombatState>(createEmptyCombat());
 	let characters = $state<Character[]>([]);
 	let unsubscribe: (() => void) | null = null;
 	let showAddEnemy = $state(false);
 	let showAddPlayers = $state(false);
+	let selectedParticipantIds = $state<Set<string>>(new Set());
 	let attackResult = $state<{
 		attackerName: string;
 		attackName: string;
@@ -32,6 +41,11 @@
 		outcome: 'hit' | 'miss' | 'critical_hit' | 'critical_miss' | 'double';
 		damageRoll?: { rolls: number[]; mod: number; total: number; diceString: string; type: string };
 	} | null>(null);
+	let roomId = $state<string | null>(null);
+	let roomParticipants = $state<RoomParticipant[]>([]);
+	let roomCode = $state<string | null>(null);
+	let unsubRoomCombat: (() => void) | null = null;
+	const isRoomMode = $derived(!!roomId);
 
 	let pendingAttack = $state<{
 		attacker: CombatParticipant;
@@ -60,7 +74,7 @@
 		pendingAttack = { attacker, attack };
 	}
 
-		function confirmAttack(target: CombatParticipant) {
+		async function confirmAttack(target: CombatParticipant) {
 		if (!pendingAttack) return;
 		const { attacker, attack } = pendingAttack;
 		const roll = rollD100();
@@ -97,7 +111,7 @@
 
 			// ⬇ ВОТ ЭТО ГЛАВНОЕ — списываем урон с цели
 			damageParticipant(target.id, -appliedDamage);
-			combatState = getCombat()!;
+			await persist(getCombat()!);
 		}
 
 		attackResult = {
@@ -147,32 +161,125 @@
 		characters = await listCharacters();
 	}
 
-			onMount(async () => {
-		await loadCharacters();
+	onMount(async () => {
+	await loadCharacters();
+
+	// Проверяем, есть ли активная комната
+	const code = getCurrentRoom();
+	if (code) {
+		try {
+			const room = await findRoomByCode(code);
+			if (room) {
+				roomId = room.id;
+				roomCode = room.code;
+				roomParticipants = await getRoomParticipants(room.id);
+				// Подписка на изменения участников — чтобы видеть, кто зашёл в комнату
+				const unsubParticipants = subscribeToRoom(
+					room.id,
+					async () => {
+						roomParticipants = await getRoomParticipants(room.id);
+					},
+					() => {} // броски в бою нам не нужны
+				);
+				unsubRoomParticipants = unsubParticipants;
+				// Загружаем бой из комнаты (если есть)
+				const remote = await getRoomCombatState(room.id);
+				if (remote) {
+					combatState = remote;
+				} else {
+					// Пустой бой — инициализируем в БД
+					const empty = createEmptyCombat();
+					combatState = empty;
+					await saveRoomCombatState(room.id, empty);
+				}
+
+				// Подписываемся на изменения боя в комнате
+				unsubRoomCombat = subscribeToRoomCombat(room.id, (newState) => {
+					if (newState) combatState = newState;
+				});
+			}
+		} catch (e) {
+			console.warn('Не удалось подключиться к комнате:', e);
+		}
+	}
+
+	// Локальная синхронизация (между вкладками) — только вне комнаты
+	if (!isRoomMode) {
 		const s = getCombat();
 		if (s) combatState = s;
 		unsubscribe = subscribeCombat((newState) => {
 			combatState = newState ?? createEmptyCombat();
 		});
-	});
-
-	onDestroy(() => unsubscribe?.());
-
-	function persist(newState: CombatState) {
-		combatState = newState;
-		saveCombat(newState);
 	}
+});
+
+	onDestroy(() => {
+	unsubscribe?.();
+	unsubRoomCombat?.();
+	unsubRoomParticipants?.();
+});
+
+	async function persist(newState: CombatState) {
+	combatState = newState;
+	saveCombat(newState); // локально всегда — на случай офлайна
+
+	if (roomId) {
+		try {
+			await saveRoomCombatState(roomId, newState);
+		} catch (e) {
+			console.warn('Не удалось синхронизировать бой:', e);
+		}
+	}
+}
 
 	function rollD20(): number {
 		return Math.floor(Math.random() * 20) + 1;
 	}
 
 	/** Добавить всех персонажей, которых ещё нет в бою */
-	function addAllPlayers() {
-		if (!combatState || !characters.length) return;
-		const s = getCombat() ?? createEmptyCombat();
-		const existingSourceIds = new Set(s.participants.map((p) => p.sourceId).filter(Boolean));
+async function addSelectedPlayers() {
+	const s = getCombat() ?? createEmptyCombat();
 
+	if (isRoomMode) {
+		for (const p of roomParticipants) {
+			if (!selectedParticipantIds.has(p.id)) continue;
+			if (!p.character_snapshot) continue;
+			const c = p.character_snapshot;
+
+			// Проверка на дубли: и по sourceId, и по имени+уровню
+			const alreadyExists = s.participants.some(
+				(x) =>
+					x.sourceId === c.id ||
+					(x.name === (c.name || p.display_name) && x.isPlayer)
+			);
+			if (alreadyExists) continue;
+
+			const dexMod = getModifier(getCharacteristicValue(c, 'dexterity'));
+			const armorInfo = getArmorValue(c);
+			const hpMax = getResourceMax(c, 'hp');
+			const realHp = getCurrentResource(c, 'hp', hpMax);
+			const tempHp = (c as any).tempHp ?? 0;
+			const roll = rollD20();
+
+			s.participants.push({
+				id: crypto.randomUUID(),
+				name: c.name || p.display_name || 'Игрок',
+				playerName: p.display_name || null,
+				sourceId: c.id,
+				isPlayer: true,
+				maxHp: hpMax,
+				currentHp: realHp + tempHp,
+				armor: armorInfo.total,
+				initiative: roll + dexMod,
+				initiativeRoll: roll,
+				initiativeMod: dexMod
+			});
+		}
+	} else {
+		// Одиночный режим — как раньше, добавить всех локальных
+		const existingSourceIds = new Set(
+			s.participants.map((p) => p.sourceId).filter(Boolean)
+		);
 		for (const c of characters) {
 			if (existingSourceIds.has(c.id)) continue;
 			const dexMod = getModifier(getCharacteristicValue(c, 'dexterity'));
@@ -194,11 +301,14 @@
 				initiativeMod: dexMod
 			});
 		}
-		persist(s);
-		showAddPlayers = false;
 	}
 
-	function addEnemy() {
+	await persist(s);
+	showAddPlayers = false;
+	selectedParticipantIds = new Set();
+}
+
+	async function addEnemy() {
 		const base = BESTIARY.find((m) => m.id === enemyMonsterId);
 		if (!base) return;
 		const scaled = scaleMonster(base, enemyLevel);
@@ -226,58 +336,53 @@
 			})),
 			primaryMod: scaled.scaledMods[base.primaryStat]
 		});
-		persist(s);
-		enemyName = '';
-		showAddEnemy = false;
+		await persist(s);
+			enemyName = '';
+			showAddEnemy = false;
 	}
 	/** Отправить игрокам запрос на бросок прыти. Их результаты придут
 	 *  через broadcast и обновят участников боя автоматически. */
 	function requestAllInitiatives() {
 		createRequest('initiative', SESSION_LABELS.initiative);
 	}
-	function rerollAll() {
-		const s = getCombat() ?? createEmptyCombat();
-		s.participants = s.participants.map((p) => {
-			const roll = rollD20();
-			return {
-				...p,
-				initiativeRoll: roll,
-				initiative: roll + (p.initiativeMod ?? 0)
-			};
-		});
-		s.currentTurnIndex = 0;
-		persist(s);
-	}
+	async function rerollAll() {
+	const s = getCombat() ?? createEmptyCombat();
+	s.participants = s.participants.map((p) => {
+		const roll = rollD20();
+		return { ...p, initiativeRoll: roll, initiative: roll + (p.initiativeMod ?? 0) };
+	});
+	s.currentTurnIndex = 0;
+	await persist(s);
+}
 
-	function begin() {
-		startCombat();
-		combatState = getCombat()!;
-	}
+	async function begin() {
+	startCombat();
+	await persist(getCombat()!);
+}
 
 	/** Завершить бой (участники и прыть сохраняются) */
-	function end() {
-		if (!confirm('Завершить бой? Участники и прыть сохранятся.')) return;
-		endCombat();
-		combatState = getCombat() ?? createEmptyCombat();
-	}
+	async function end() {
+	if (!confirm('Завершить бой? Участники и прыть сохранятся.')) return;
+	endCombat();
+	await persist(getCombat() ?? createEmptyCombat());
+}
 
 	/** Полностью очистить (убрать всех участников) */
-	function clearAll() {
-		if (!confirm('Убрать всех участников из боя?')) return;
-		clearCombat();
-		combatState = createEmptyCombat();
-	}
+	async function clearAll() {
+	if (!confirm('Убрать всех участников из боя?')) return;
+	clearCombat();
+	await persist(createEmptyCombat());
+}
 
-	function next() {
-		const prevRound = combatState.round;
-		nextTurn();
-		combatState = getCombat()!;
-
-		// Если начался новый круг — тикаем состояния
-		if (combatState.round > prevRound) {
-			tickConditionsForPlayers();
-		}
+	async function next() {
+	const prevRound = combatState.round;
+	nextTurn();
+	const s = getCombat()!;
+	await persist(s); // ← отправили в комнату
+	if (s.round > prevRound) {
+		tickConditionsForPlayers(); // это про персонажей — оставляем как есть
 	}
+}
 		/** Уменьшить все активные состояния у всех игроков на 1 раунд.
 	 *  Удаляет те, где осталось 0. */
 	async function tickConditionsForPlayers() {
@@ -306,19 +411,31 @@
 	}
 
 	async function removeParticipant_click(id: string) {
-		const prevRound = combatState.round;
-		removeParticipant(id);
-		combatState = getCombat()!;
-		if (combatState.round > prevRound) await tickConditionsForPlayers();
-	}
+	const prevRound = combatState.round;
+	removeParticipant(id);
+	const s = getCombat()!;
+	await persist(s);
+	if (s.round > prevRound) await tickConditionsForPlayers();
+}
 
 	async function hp(id: string, delta: number) {
-		const p = combatState.participants.find((x) => x.id === id);
-		if (!p) return;
-		const next = Math.max(0, Math.min(p.maxHp, p.currentHp + delta));
+	const p = combatState.participants.find((x) => x.id === id);
+	if (!p) return;
+	const next = Math.max(0, Math.min(p.maxHp, p.currentHp + delta));
+
+	// В комнатном режиме обновляем напрямую через persist
+	if (roomId) {
+		const s = getCombat()!;
+		const idx = s.participants.findIndex((x) => x.id === id);
+		if (idx >= 0) {
+			s.participants[idx] = { ...s.participants[idx], currentHp: next };
+			await persist(s);
+		}
+	} else {
 		updateParticipant(id, { currentHp: next });
 		combatState = getCombat()!;
 	}
+}
 
 	const sorted = $derived(sortedParticipants(combatState));
 	const currentParticipant = $derived(combatState.active ? getCurrentParticipant(combatState) : null);
@@ -343,6 +460,13 @@
 				{#if combatState.active} · раунд {combatState.round}{/if}
 			</p>
 		</div>
+		<div class="text-xs text-gray-400 mb-2 p-2 bg-gray-50 rounded">
+	Отладка: участников в комнате = {roomParticipants.length} ·
+	с персонажем = {roomParticipants.filter((p) => p.character_snapshot && p.role !== 'master').length}
+	{#each roomParticipants as p}
+		<div>{p.display_name} (role={p.role}, есть персонаж={!!p.character_snapshot})</div>
+	{/each}
+</div>
 		<div class="flex gap-2 flex-wrap">
 			<button
 				class="px-4 py-2 border rounded hover:bg-gray-50"
@@ -427,7 +551,13 @@
 						<div class="border rounded-lg bg-white p-3 {p.currentHp <= 0 ? 'opacity-50' : ''}">
 							<div class="flex justify-between items-start mb-2">
 								<div>
-									<div class="font-semibold">{p.name}</div>
+									<div class="font-semibold">
+										{#if p.playerName}
+											<span class="text-blue-700">{p.playerName}</span>
+											<span class="text-gray-400"> — </span>
+										{/if}
+										{p.name}
+									</div>
 									<div class="text-xs text-gray-500">Броня {p.armor} · прыть {p.initiative}</div>
 								</div>
 								<button
@@ -465,7 +595,13 @@
 						<div class="border rounded-lg bg-white p-3 {p.currentHp <= 0 ? 'opacity-50' : ''}">
 							<div class="flex justify-between items-start mb-2">
 								<div>
-									<div class="font-semibold">{p.name}</div>
+									<div class="font-semibold">
+										{#if p.playerName}
+											<span class="text-blue-700">{p.playerName}</span>
+											<span class="text-gray-400"> — </span>
+										{/if}
+										{p.name}
+									</div>
 									<div class="text-xs text-gray-500">Броня {p.armor} · прыть {p.initiative}</div>
 								</div>
 								<button
@@ -536,21 +672,59 @@
 
 	<!-- Модалка: добавить игроков -->
 	{#if showAddPlayers}
-		<Dialog label="Добавить игроков" onclose={() => showAddPlayers = false}>
-				<h3 class="text-lg font-semibold mb-3">Добавить игроков</h3>
-				<p class="text-sm text-gray-500 mb-4">
-					Будут добавлены все персонажи из базы, которых ещё нет в бою.
-				</p>
-				<div class="flex gap-2 justify-end">
-					<button
-						class="px-4 py-2 border rounded hover:bg-gray-50"
-						onclick={() => (showAddPlayers = false)}>Отмена</button>
-					<button
-						class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-						onclick={addAllPlayers}>Добавить всех</button>
+	<Dialog label="Добавить игроков" onclose={() => { showAddPlayers = false; selectedParticipantIds = new Set(); }}>
+		<h3 class="text-lg font-semibold mb-3">Выберите, кого добавить в бой</h3>
+
+		{#if isRoomMode}
+			{#if roomParticipants.filter((p) => p.character_snapshot && p.role !== 'master').length === 0}
+				<p class="text-sm text-gray-500 mb-4">В комнате нет игроков с выбранным персонажем.</p>
+			{:else}
+				<div class="space-y-2 mb-4 max-h-64 overflow-y-auto">
+					{#each roomParticipants as p (p.id)}
+						{#if p.character_snapshot && p.role !== 'master'}
+							<label class="flex items-center gap-3 px-3 py-2 border rounded hover:bg-gray-50 cursor-pointer">
+								<input
+									type="checkbox"
+									checked={selectedParticipantIds.has(p.id)}
+									onchange={(e) => {
+										const next = new Set(selectedParticipantIds);
+										if (e.currentTarget.checked) next.add(p.id);
+										else next.delete(p.id);
+										selectedParticipantIds = next;
+									}}
+								/>
+								<div>
+									<div class="font-medium">
+										{p.character_snapshot.name || p.display_name || 'Игрок'}
+									</div>
+									<div class="text-xs text-gray-500">
+										{p.character_snapshot.level} ур. · {RACES.find((r) => r.id === p.character_snapshot?.raceId)?.name ?? '—'}
+									</div>
+								</div>
+							</label>
+						{/if}
+					{/each}
 				</div>
-		</Dialog>
-	{/if}
+			{/if}
+		{:else}
+			<p class="text-sm text-gray-500 mb-4">Будут добавлены все ваши локальные персонажи.</p>
+		{/if}
+
+		<div class="flex gap-2 justify-end">
+			<button
+				class="px-4 py-2 border rounded hover:bg-gray-50"
+				onclick={() => {
+					showAddPlayers = false;
+					selectedParticipantIds = new Set();
+				}}>Отмена</button>
+			<button
+				class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+				onclick={isRoomMode ? addSelectedPlayers : addSelectedPlayers}>
+				Добавить выбранных
+			</button>
+		</div>
+	</Dialog>
+{/if}
 
 	<!-- Модалка: добавить врага -->
 	{#if showAddEnemy}

@@ -8,6 +8,7 @@ export interface MonsterAttackData {
 export interface CombatParticipant {
 	id: string;
 	name: string;
+	playerName?: string; 
 	sourceId?: string;
 	isPlayer: boolean;
 	maxHp: number;
