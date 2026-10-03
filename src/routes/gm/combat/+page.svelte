@@ -195,7 +195,11 @@
 
 				// Подписываемся на изменения боя в комнате
 				unsubRoomCombat = subscribeToRoomCombat(room.id, (newState) => {
-					if (newState) combatState = newState;
+					if (!newState) return;
+					combatState = newState;
+					// ⬇ КЛЮЧЕВОЕ: держим localStorage в актуальном состоянии,
+					// иначе nextTurn() / updateParticipant() и т.д. читают старые данные
+					saveCombat(newState);
 				});
 			}
 		} catch (e) {
@@ -263,7 +267,7 @@ async function addSelectedPlayers() {
 
 			s.participants.push({
 				id: crypto.randomUUID(),
-				name: c.name || p.display_name || 'Игрок',
+				name: c.name || '(без имени)', 
 				playerName: p.display_name || null,
 				sourceId: c.id,
 				isPlayer: true,
@@ -524,7 +528,13 @@ async function addSelectedPlayers() {
 							<span class="text-xs w-6 text-center {isCurrent ? 'text-purple-100' : 'text-gray-500'}">
 								{i + 1}
 							</span>
-							<span class="font-medium">{p.name}</span>
+							<span class="font-medium">
+								{#if p.playerName}
+									<span class="text-blue-700">{p.playerName}</span>
+									<span class="text-gray-400"> — </span>
+								{/if}
+								{p.name}
+							</span>
 							<span class="text-xs {isCurrent ? 'text-purple-100' : 'text-gray-500'}">
 								{p.isPlayer ? 'игрок' : 'враг'} · ЖВЧ {p.currentHp}/{p.maxHp} · Броня {p.armor}
 							</span>
@@ -776,7 +786,13 @@ async function addSelectedPlayers() {
 						<button
 							class="w-full text-left px-3 py-2 border rounded hover:bg-gray-50"
 							onclick={() => confirmAttack(target)}>
-							<div class="font-medium">{target.name}</div>
+							<div class="font-medium">
+								{#if target.playerName}
+									<span class="text-blue-700">{target.playerName}</span>
+									<span class="text-gray-400"> — </span>
+								{/if}
+								{target.name}
+							</div>
 							<div class="text-xs text-gray-500">
 								Броня {target.armor} · ЖВЧ {target.currentHp}/{target.maxHp}
 								→ цель атаки {30 + pendingAttack!.attack.hitBonus - target.armor}

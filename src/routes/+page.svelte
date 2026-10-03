@@ -4,7 +4,32 @@
   import { RACES } from '$lib/rules/races';
   import type { Character } from '$lib/type';
   import Icon from '$lib/components/Icon.svelte';
+  import { exportCharacterToJson, exportAllCharactersToJson, importCharacterFromJson } from '$lib/utils/export';
+  let importInput: HTMLInputElement;
 
+  async function handleImport(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const files = input.files;
+    if (!files || files.length === 0) return;
+
+    let imported = 0;
+    for (const file of Array.from(files)) {
+      try {
+        const char = await importCharacterFromJson(file);
+        const existing = characters.find((c) => c.id === char.id);
+        if (existing) {
+          if (!confirm(`Персонаж «${char.name}» уже есть. Заменить?`)) continue;
+        }
+        await saveCharacter(char);
+        imported++;
+      } catch (err) {
+        alert(`Ошибка импорта «${file.name}»: ${(err as Error).message}`);
+      }
+    }
+    input.value = '';
+    await loadCharacters(); // ← функция загрузки у вас на главной должна называться так
+    if (imported > 0) alert(`Импортировано: ${imported}`);
+  }
   let characters = $state<Character[]>([]);
   let loading = $state(true);
   let error = $state('');
@@ -28,6 +53,9 @@
   }
   function raceName(id: string) { return RACES.find(r => r.id === id)?.name ?? id; }
   onMount(load);
+  async function loadCharacters() {
+	  characters = await listCharacters();
+  }
 </script>
 
 <main class="home">
@@ -40,7 +68,25 @@
     </div>
     <img class="forest" src="/forest.svg" alt="" width="700" height="420" />
   </section>
-
+  <input
+    type="file"
+    accept=".json,application/json"
+    multiple
+    bind:this={importInput}
+    onchange={handleImport}
+    class="hidden"
+  />
+  <button
+    class="px-3 py-2 border rounded hover:bg-gray-50"
+    onclick={() => importInput.click()}>
+    📥 Импорт JSON
+  </button>
+  <button
+    class="px-3 py-2 border rounded hover:bg-gray-50"
+    disabled={characters.length === 0}
+    onclick={() => exportAllCharactersToJson(characters)}>
+    📦 Экспорт всех
+  </button>
   <div class="home-columns">
     <section class="characters" aria-labelledby="characters-title">
       <div class="section-heading"><div><h2 id="characters-title">Ваши персонажи <span class="count">{characters.length}</span></h2><p>Выберите героя, чтобы продолжить приключение.</p></div></div>

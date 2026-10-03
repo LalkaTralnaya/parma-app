@@ -9,16 +9,38 @@
 	import { PERSONALITY_TRAITS, IDEALS, BONDS, FLAWS, findOption } from '../../lib/rules/personality';
 	import { rollD100, classifyRoll, type RollResult } from '../../lib/engine/dice';
 	import {
-		createRequest, clearSession, getSession, submitResult, subscribe,
+		clearSession, getSession, submitResult, subscribe,
 		SESSION_LABELS, SESSION_SKILLS,
 		type SessionRequest, type SessionRequestType
 	} from '../../lib/sync/session';
+	import {
+		getCurrentRoom,
+		findRoomByCode,
+		createRoomRequest,
+		getActiveRoomRequest,
+		subscribeToRoomRequests,
+		closeRoomRequest,
+		type RoomRequest,
+	} from '../../lib/engine/rooms';
 	import type { Character } from '$lib/type';
 
 	let characters = $state<Character[]>([]);
 	let loading = $state(true);
 	let session = $state<SessionRequest | null>(null);
 	let unsubscribe: (() => void) | null = null;
+
+	// ─── Запросы через Supabase ───
+	let activeRoomId = $state<string | null>(null);
+	let activeRequest = $state<RoomRequest | null>(null);
+	let unsubRequests: (() => void) | null = null;
+
+	// Производные — какой тип запроса и какие результаты показываем
+	const activeType = $derived<SessionRequestType | null>(
+		activeRequest ? (activeRequest.request_type as SessionRequestType) : (session?.type ?? null)
+	);
+	const activeResults = $derived<Record<string, any>>(
+		activeRequest ? activeRequest.results : (session?.results ?? {})
+	);
 
 	async function load() {
 		characters = await listCharacters();
@@ -29,52 +51,81 @@
 		return Math.floor(Math.random() * 20) + 1;
 	}
 
-	function startRequest(type: SessionRequestType) {
-		createRequest(type, SESSION_LABELS[type]);
-		// обновим локально, чтобы не ждать broadcast
-		session = getSession();
+	/** Отправить запрос игрокам — через Supabase, если в комнате; иначе BroadcastChannel */
+	async function startRequest(type: SessionRequestType) {
+		if (activeRoomId) {
+			try {
+				if (activeRequest) await closeRoomRequest(activeRequest.id);
+				await createRoomRequest(activeRoomId, type, SESSION_LABELS[type]);
+			} catch (e) {
+				alert((e as Error).message);
+			}
+		} else {
+			// fallback: старая система
+			alert('Вы не в комнате. Создайте комнату, чтобы запросы долетали до игроков.');
+		}
 	}
 
-	function endSession() {
+	async function endSession() {
 		clearSession();
 		session = null;
+		if (activeRequest) {
+			await closeRoomRequest(activeRequest.id);
+			activeRequest = null;
+		}
 	}
 
-	/** ГМ может бросать сам за игрока (если игрок не в сети) */
-	function gmRoll(characterId: string) {
+	/** ГМ бросает за игрока */
+	async function gmRoll(characterId: string) {
 		const c = characters.find((x) => x.id === characterId);
-		if (!c || !session) return;
+		if (!c) return;
 
-		const skillId = SESSION_SKILLS[session.type];
-		let roll: number;
-		let target: number;
-		let modifier: number;
+		const type = activeType;
+		if (!type) return;
+
+		const skillId = SESSION_SKILLS[type];
+		let roll: number, target: number, modifier: number;
 		let result: RollResult;
 
-		if (session.type === 'initiative') {
+		if (type === 'initiative') {
 			roll = rollD20();
 			modifier = getModifier(getCharacteristicValue(c, 'dexterity'));
-			target = 0; // для инициативы нет целевого числа
-			result = 'success'; // условно
+			target = 0;
+			result = 'success';
 		} else if (skillId) {
 			target = getSkillCheckTarget(c, skillId);
 			roll = rollD100();
 			modifier = 0;
 			result = classifyRoll(roll, target);
-		} else {
-			return;
-		}
+		} else return;
 
-		submitResult({
-			characterId,
-			characterName: c.name,
-			roll,
-			target,
-			modifier,
-			result,
-			timestamp: Date.now()
-		});
-		session = getSession();
+		// Пишем результат в тот же источник, что активен
+		if (activeRequest) {
+			try {
+				const { supabase } = await import('../../lib/supabase/client');
+				const current = { ...(activeRequest.results ?? {}) };
+				current[characterId] = {
+					characterId,
+					characterName: c.name,
+					roll, target, modifier, result,
+					timestamp: Date.now()
+				};
+				await supabase
+					.from('room_requests')
+					.update({ results: current })
+					.eq('id', activeRequest.id);
+			} catch (e) {
+				alert((e as Error).message);
+			}
+		} else if (session) {
+			submitResult({
+				characterId,
+				characterName: c.name,
+				roll, target, modifier, result,
+				timestamp: Date.now()
+			});
+			session = getSession();
+		}
 	}
 
 	function traitName(key: string, list: typeof PERSONALITY_TRAITS): string {
@@ -85,6 +136,7 @@
 	function raceName(id: string): string {
 		return RACES.find((r) => r.id === id)?.name ?? id;
 	}
+
 	const SESSION_TITLES: Record<SessionRequestType, string> = {
 		initiative: 'Прыть',
 		stealth: 'Скрытность',
@@ -92,34 +144,44 @@
 		survival: 'Выживание'
 	};
 
-	/** Целевое число проверки навыка для конкретного персонажа (для отображения в квадрате) */
 	function getTargetFor(char: Character, type: SessionRequestType): number | null {
 		const skillId = SESSION_SKILLS[type];
 		if (!skillId) return null;
 		return getSkillCheckTarget(char, skillId);
 	}
 
-	/** Среднее по группе для проверок (не для инициативы) */
 	function getGroupAverage(): { average: number; count: number } | null {
-		if (!session || session.type === 'initiative') return null;
-		const values = Object.values(session.results);
+		if (!activeType || activeType === 'initiative') return null;
+		const values = Object.values(activeResults);
 		if (values.length === 0) return null;
-		const sum = values.reduce((acc, r) => acc + r.roll, 0);
-		return {
-			average: Math.round(sum / values.length),
-			count: values.length
-		};
+		const sum = values.reduce((acc: number, r: any) => acc + (r.roll ?? 0), 0);
+		return { average: Math.round(sum / values.length), count: values.length };
 	}
+
 	onMount(async () => {
 		await load();
 		session = getSession();
 		unsubscribe = subscribe((s) => {
 			session = s;
 		});
+
+		// Supabase-запросы
+		const code = getCurrentRoom();
+		if (code) {
+			const room = await findRoomByCode(code);
+			if (room) {
+				activeRoomId = room.id;
+				activeRequest = await getActiveRoomRequest(room.id);
+				unsubRequests = subscribeToRoomRequests(room.id, (req) => {
+					activeRequest = req;
+				});
+			}
+		}
 	});
 
 	onDestroy(() => {
 		unsubscribe?.();
+		unsubRequests?.();
 	});
 </script>
 
@@ -150,10 +212,46 @@
 			<button
 				class="px-4 py-2 border rounded hover:bg-gray-50"
 				onclick={load}>↻ Обновить список</button>
-			{#if session}
-				<button
-					class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
-					onclick={endSession}>■ Конец боя</button>
+			{#if activeRequest || session}
+				<div class="mt-4 p-3 bg-amber-50 border border-amber-300 rounded">
+					<div class="flex justify-between items-center mb-2 flex-wrap gap-2">
+						<div>
+							<span class="font-semibold">Активный запрос:</span>
+							{activeRequest ? activeRequest.label : session?.label}
+						</div>
+						<div class="text-sm text-gray-600">
+							Собрано: {activeRequest
+								? Object.keys(activeRequest.results).length
+								: Object.keys(activeResults ?? {}).length} / {characters.length}
+						</div>
+					</div>
+
+					{#if (activeRequest && activeRequest.request_type !== 'initiative') || (session && activeType !== 'initiative')}
+						{@const avg = getGroupAverage()}
+						{#if avg}
+							<div class="mt-2 p-2 bg-white rounded border border-amber-300 flex justify-between items-center">
+								<span class="text-sm text-gray-700">Средний результат по группе:</span>
+								<span class="text-xl font-bold text-purple-700">
+									{avg.average}
+									<span class="text-xs text-gray-500 font-normal">
+										(по {avg.count} {avg.count === 1 ? 'броску' : 'броскам'})
+									</span>
+								</span>
+							</div>
+						{/if}
+					{/if}
+
+					<div class="text-xs text-gray-600 mt-2">
+						Игроки видят запрос в своих листах и могут бросить сами. Если лист игрока не открыт,
+						нажмите 🎲 на его карточке ниже — бросите за него.
+					</div>
+
+					<button
+						class="mt-3 px-3 py-1.5 text-sm bg-red-600 text-white rounded hover:bg-red-700"
+						onclick={endSession}>
+						■ Отменить запрос
+					</button>
+				</div>
 			{/if}
 			<a href="/" class="px-4 py-2 border rounded hover:bg-gray-50">← К игрокам</a>
 		</div>
@@ -177,20 +275,19 @@
 				class="px-3 py-2 bg-green-700 text-white rounded hover:bg-green-800"
 				onclick={() => startRequest('survival')}>Выживание</button>
 		</div>
-
-		{#if session}
+		{#if activeRequest || session}
 			<div class="mt-4 p-3 bg-amber-50 border border-amber-300 rounded">
 				<div class="flex justify-between items-center mb-2 flex-wrap gap-2">
 					<div>
 						<span class="font-semibold">Активный запрос:</span>
-						{session.label}
+						{activeRequest ? activeRequest.label : session?.label}
 					</div>
 					<div class="text-sm text-gray-600">
-						Собрано: {Object.keys(session.results).length} / {characters.length}
+						Собрано: {Object.keys(activeResults).length} / {characters.length}
 					</div>
 				</div>
 
-				{#if session.type !== 'initiative'}
+				{#if activeType !== 'initiative'}
 					{@const avg = getGroupAverage()}
 					{#if avg}
 						<div class="mt-2 p-2 bg-white rounded border border-amber-300 flex justify-between items-center">
@@ -206,9 +303,15 @@
 				{/if}
 
 				<div class="text-xs text-gray-600 mt-2">
-					Откройте листы игроков в других вкладках этого браузера и нажать «Бросить». Если лист игрока не открыт,
+					Игроки видят запрос в своих листах и могут бросить сами. Если лист игрока не открыт,
 					нажмите 🎲 на его карточке ниже — бросите за него.
 				</div>
+
+				<button
+					class="mt-3 px-3 py-1.5 text-sm bg-red-600 text-white rounded hover:bg-red-700"
+					onclick={endSession}>
+					■ Отменить запрос
+				</button>
 			</div>
 		{/if}
 	</section>
@@ -228,14 +331,14 @@
 				{@const armorInfo = getArmorValue(c)}
 				{@const dexMod = armorInfo.dexMod}
 				{@const armor = armorInfo.total}
-				{@const result = session?.results[c.id]}
+				{@const result = activeResults[c.id]}
 				<div class="border rounded-lg bg-white p-4 flex flex-col {result ? 'border-green-400' : ''}">
 					<div class="flex justify-between items-start mb-3">
 						<div>
 							<div class="font-bold text-lg">{c.name || '(без имени)'}</div>
 							<div class="text-sm text-gray-500">{raceName(c.raceId)} · {c.level} ур.</div>
 						</div>
-						{#if session}
+						{#if activeRequest || session}
 							<button
 								class="text-2xl leading-none hover:text-purple-600 transition-colors"
 								title="Бросить за игрока"
@@ -257,14 +360,14 @@
 								   'bg-gray-50 border-gray-300')
 								: (session ? 'bg-amber-50 border-amber-300' : 'bg-gray-50 border-transparent')}">
 							<div class="text-xs text-gray-500 uppercase">
-								{session ? SESSION_TITLES[session.type] : 'Прыть'}
+								{activeType ? SESSION_TITLES[activeType] : 'Прыть'}
 							</div>
-							{#if result && session?.type === 'initiative'}
+							{#if result && activeType === 'initiative'}
 								<div class="text-xl font-bold text-purple-700">
 									{result.roll + result.modifier}
 								</div>
 								<div class="text-xs text-gray-500">{result.roll}+{result.modifier}</div>
-							{:else if result && session?.type !== 'initiative'}
+							{:else if result && activeType !== 'initiative'}
 								<div class="text-xl font-bold text-purple-700">{result.roll}</div>
 								<div class="text-xs text-gray-500">≤ {result.target}</div>
 								<div class="text-xs font-semibold mt-0.5
@@ -275,12 +378,12 @@
 									 result.result === 'double' ? 'Явь' :
 									 result.result === 'crit_fail' ? 'Навь!' : 'Провал'}
 								</div>
-							{:else if session}
-								{#if session.type === 'initiative'}
+							{:else if activeType}
+								{#if activeType === 'initiative'}
 									<div class="text-sm text-gray-500 mt-1">к20+{dexMod}</div>
 									<div class="text-xs text-amber-700 mt-0.5">ожидается</div>
 								{:else}
-									{@const t = getTargetFor(c, session.type)}
+									{@const t = getTargetFor(c, activeType)}
 									{#if t !== null}
 										<div class="text-sm text-gray-500 mt-1">≤ {t}</div>
 									{/if}

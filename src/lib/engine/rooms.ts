@@ -21,6 +21,7 @@ export interface RoomParticipant {
 	role: 'master' | 'player';
 	joined_at: string;
 	last_seen: string;
+	character_locked?: boolean;
 }
 
 export interface RoomRoll {
@@ -529,6 +530,139 @@ export function subscribeToRoomCombat(
 		.subscribe((status) => {
 			console.log('[combat] статус подписки:', status);
 		});
+	return () => {
+		supabase.removeChannel(channel);
+	};
+}
+/** Обновить список подаренных персонажей в комнате */
+export async function updateRoomGifted(
+	roomId: string,
+	giftedIds: string[]
+): Promise<void> {
+	const { error } = await supabase
+		.from('rooms')
+		.update({ gifted_character_ids: giftedIds })
+		.eq('id', roomId);
+	if (error) throw new Error(`Ошибка обновления gifted: ${error.message}`);
+}
+/** Установить/снять замок смены персонажа у участника */
+export async function setCharacterLock(
+	participantId: string,
+	locked: boolean
+): Promise<void> {
+	const { error } = await supabase
+		.from('room_participants')
+		.update({ character_locked: locked })
+		.eq('id', participantId);
+	if (error) throw new Error(`Ошибка замка персонажа: ${error.message}`);
+}
+// ─── Запросы мастера к игрокам (через Supabase) ───
+
+export interface RoomRequestResult {
+	characterId: string;
+	characterName: string;
+	roll: number;
+	target: number;
+	modifier: number;
+	result: string;
+	timestamp: number;
+}
+
+export interface RoomRequest {
+	id: string;
+	room_id: string;
+	request_type: string;
+	label: string;
+	results: Record<string, RoomRequestResult>;
+	created_at: string;
+	closed: boolean;
+}
+
+/** Создать запрос от мастера */
+export async function createRoomRequest(
+	roomId: string,
+	requestType: string,
+	label: string
+): Promise<RoomRequest> {
+	const { data, error } = await supabase
+		.from('room_requests')
+		.insert({ room_id: roomId, request_type: requestType, label })
+		.select()
+		.single();
+	if (error) throw new Error(`Ошибка создания запроса: ${error.message}`);
+	return data as RoomRequest;
+}
+
+/** Получить активный (не закрытый) запрос в комнате */
+export async function getActiveRoomRequest(roomId: string): Promise<RoomRequest | null> {
+	const { data, error } = await supabase
+		.from('room_requests')
+		.select('*')
+		.eq('room_id', roomId)
+		.eq('closed', false)
+		.order('created_at', { ascending: false })
+		.limit(1)
+		.maybeSingle();
+	if (error) return null;
+	return data as RoomRequest | null;
+}
+
+/** Игрок отправляет результат */
+export async function submitRoomRequestResult(
+	requestId: string,
+	characterId: string,
+	result: RoomRequestResult
+): Promise<void> {
+	const { data: existing } = await supabase
+		.from('room_requests')
+		.select('results')
+		.eq('id', requestId)
+		.maybeSingle();
+
+	const current = (existing?.results ?? {}) as Record<string, RoomRequestResult>;
+	current[characterId] = result;
+
+	const { error } = await supabase
+		.from('room_requests')
+		.update({ results: current })
+		.eq('id', requestId);
+	if (error) throw new Error(`Ошибка отправки результата: ${error.message}`);
+}
+
+/** Мастер закрывает запрос */
+export async function closeRoomRequest(requestId: string): Promise<void> {
+	await supabase
+		.from('room_requests')
+		.update({ closed: true })
+		.eq('id', requestId);
+}
+
+/** Подписка на изменения активного запроса */
+export function subscribeToRoomRequests(
+	roomId: string,
+	onUpdate: (request: RoomRequest | null) => void
+): () => void {
+	const uniqueName = `requests:${roomId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+
+	const channel = supabase
+		.channel(uniqueName)
+		.on(
+			'postgres_changes',
+			{
+				event: '*',
+				schema: 'public',
+				table: 'room_requests',
+				filter: `room_id=eq.${roomId}`
+			},
+			async () => {
+				const active = await getActiveRoomRequest(roomId);
+				onUpdate(active);
+			}
+		)
+		.subscribe((status) => {
+			console.log('[requests] статус подписки:', status);
+		});
+
 	return () => {
 		supabase.removeChannel(channel);
 	};

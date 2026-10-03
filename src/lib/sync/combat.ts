@@ -66,7 +66,13 @@ export function saveCombat(state: CombatState | null): void {
 		state.timestamp = Date.now();
 		localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 	}
-	getChannel()?.postMessage({ type: 'update', state });
+	// Безопасная копия для BroadcastChannel — Svelte 5 Proxy не сериализуется
+	try {
+		const safeState = state === null ? null : JSON.parse(JSON.stringify(state));
+		getChannel()?.postMessage({ type: 'update', state: safeState });
+	} catch {
+		// игнорируем — локально уже сохранено
+	}
 }
 
 export function createEmptyCombat(): CombatState {

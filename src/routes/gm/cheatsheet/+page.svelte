@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
+
 	let openSection = $state<string | null>('checks');
 
 	function toggle(id: string) {

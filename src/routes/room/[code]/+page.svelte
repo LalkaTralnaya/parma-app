@@ -7,6 +7,7 @@
 	leaveRoom, updateCharacterSnapshot, subscribeToRoom,
 	setCurrentRoom, clearCurrentRoom, deleteRoom, listMyMasterRooms,
 	setPendingCharacter, clearPendingCharacter,
+	updateRoomGifted, setCharacterLock,
 	type Room, type RoomParticipant, type RoomRoll
 } from '../../../lib/engine/rooms';
 	import { listCharacters, getCharacter, saveCharacter } from '../../../lib/db/characters';
@@ -35,27 +36,43 @@ function openGiftForm(p: RoomParticipant) {
 }
 
 /** Передать существующий чарлист игроку */
+
+async function unlockCharacterFor(p: RoomParticipant) {
+	if (!room) return;
+	if (!confirm(`Разрешить ${p.display_name ?? 'игроку'} сменить персонажа?`)) return;
+	try {
+		await setCharacterLock(p.id, false);
+		participants = await getRoomParticipants(room.id);
+	} catch (e) {
+		alert((e as Error).message);
+	}
+}
 async function confirmGift(char: Character) {
 	if (!room || !giftTarget || giftBusy) return;
 	giftBusy = true;
 
-	// 1. Снимаем реактивную обёртку (иначе Supabase получит Proxy и упадёт)
 	const plain = $state.snapshot(char) as Character;
-
-	// 2. Клонируем с новым id, чтобы не перетереть чарлистов игрока
 	const copy: Character = {
 		...plain,
-		id:
-			typeof crypto !== 'undefined' && 'randomUUID' in crypto
-				? crypto.randomUUID()
-				: `gift-${Date.now()}-${Math.random().toString(36).slice(2)}`
+		id: typeof crypto !== 'undefined' && 'randomUUID' in crypto
+			? crypto.randomUUID()
+			: `gift-${Date.now()}-${Math.random().toString(36).slice(2)}`,
 	};
 
 	const targetName = giftTarget.display_name ?? 'игроку';
 	const targetId = giftTarget.id;
+	const originalId = char.id;
 
 	try {
 		await setPendingCharacter(targetId, copy);
+
+		// ⬇⬇⬇ НОВОЕ: помечаем оригинал как «подаренный»
+		const gifted = new Set(room.gifted_character_ids ?? []);
+		gifted.add(originalId);
+		const giftedArr = Array.from(gifted);
+		await updateRoomGifted(room.id, giftedArr);
+		room = { ...room, gifted_character_ids: giftedArr };
+
 		participants = await getRoomParticipants(room.id);
 		showGiftForm = false;
 		giftTarget = null;
@@ -65,20 +82,6 @@ async function confirmGift(char: Character) {
 	} finally {
 		giftBusy = false;
 	}
-	// Запоминаем, что этот персонаж отдан
-		const { data: roomData } = await supabase
-			.from('rooms')
-			.select('gifted_character_ids')
-			.eq('id', room.id)
-			.maybeSingle();
-
-		const gifted = new Set(roomData?.gifted_character_ids ?? []);
-		gifted.add(char.id);
-
-		await supabase
-			.from('rooms')
-			.update({ gifted_character_ids: Array.from(gifted) })
-			.eq('id', room.id);
 }
 
 async function acceptGift(p: RoomParticipant) {
@@ -120,6 +123,8 @@ async function declineGift(p: RoomParticipant) {
 
 	const deviceId = getDeviceId();
 	const isMaster = $derived(room?.master_device_id === deviceId);
+	const myParticipant = $derived(participants.find((p) => p.device_id === deviceId));
+	
 
 	onMount(async () => {
 		const code = page.params.code;
@@ -173,14 +178,27 @@ async function declineGift(p: RoomParticipant) {
 	});
 
 	async function pickCharacter(charId: string) {
-		selectedCharacterId = charId;
-		if (!room) return;
-		const char = await getCharacter(charId);
-		const displayName = localStorage.getItem('parma_player_name') || 'Гость';
-		await joinRoom(room.id, displayName, char);
-		participants = await getRoomParticipants(room.id);
-		showCharPicker = false;
+	selectedCharacterId = charId;
+	if (!room) return;
+	const char = await getCharacter(charId);
+	const displayName = localStorage.getItem('parma_player_name') || 'Гость';
+	await joinRoom(room.id, displayName, char);
+
+	// После выбора персонажа — блокируем смену (кроме мастера)
+	if (!isMaster) {
+		const me = participants.find((p) => p.device_id === deviceId);
+		if (me) {
+			try {
+				await setCharacterLock(me.id, true);
+			} catch (e) {
+				console.warn('Не удалось заблокировать персонажа:', e);
+			}
+		}
 	}
+
+	participants = await getRoomParticipants(room.id);
+	showCharPicker = false;
+}
 
 	async function syncSnapshot() {
 		if (!room || !selectedCharacterId) return;
@@ -301,11 +319,17 @@ async function declineGift(p: RoomParticipant) {
 				</div>
 			</div>
 			<div class="flex gap-2">
-				<button
-					class="px-3 py-2 border rounded hover:bg-gray-50 text-sm"
-					onclick={() => (showCharPicker = !showCharPicker)}>
-					🎭 Сменить персонажа
-				</button>
+					<button
+						class="px-3 py-2 border rounded hover:bg-gray-50 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+						disabled={!isMaster && !!myParticipant?.character_locked}
+						title={!isMaster && myParticipant?.character_locked ? 'Персонаж закреплён. Попросите мастера разрешить смену.' : ''}
+						onclick={() => (showCharPicker = !showCharPicker)}>
+						{#if !isMaster && myParticipant?.character_locked}
+							🔒 Персонаж закреплён
+						{:else}
+							🎭 Сменить персонажа
+						{/if}
+					</button>
 				{#if selectedCharacterId}
 					<button
 						class="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
@@ -367,11 +391,20 @@ async function declineGift(p: RoomParticipant) {
 								</div>
 								<!-- Кнопка мастера: подарить персонажа игроку -->
 								{#if isMaster && p.device_id !== deviceId && p.role !== 'master'}
-									<button
-										class="mt-2 px-2 py-1 text-xs bg-purple-600 text-white rounded hover:bg-purple-700"
-										onclick={() => openGiftForm(p)}>
-										🎁 Дать персонажа
-									</button>
+									<div class="flex gap-2 mt-2 flex-wrap">
+										<button
+											class="px-2 py-1 text-xs bg-purple-600 text-white rounded hover:bg-purple-700"
+											onclick={() => openGiftForm(p)}>
+											🎁 Дать персонажа
+										</button>
+										{#if p.character_locked}
+											<button
+												class="px-2 py-1 text-xs bg-amber-600 text-white rounded hover:bg-amber-700"
+												onclick={() => unlockCharacterFor(p)}>
+												🔓 Разрешить смену
+											</button>
+										{/if}
+									</div>
 								{/if}
 
 								<!-- Уведомление для игрока: мастер передал персонажа -->
@@ -455,26 +488,30 @@ async function declineGift(p: RoomParticipant) {
 					<span class="text-purple-700">{giftTarget.display_name || 'без имени'}</span>
 				</h3>
 
-				{#if myCharacters.length === 0}
+				{#if myCharacters.filter((c) => !(room?.gifted_character_ids ?? []).includes(c.id)).length === 0}
 					<p class="text-sm text-gray-500 mb-4">
-						У вас нет сохранённых персонажей.
-						<a href="/new" class="text-blue-600 hover:underline">Создать персонажа</a>
+						Все ваши персонажи уже переданы игрокам.
+						<a href="/new" class="text-blue-600 hover:underline">Создать нового</a>
 					</p>
 				{:else}
 					<div class="text-xs text-gray-500 mb-2">
 						Выберите чарлист для передачи. Копия появится у игрока, ваш оригинал останется у вас.
 					</div>
 					<div class="space-y-1 max-h-[60vh] overflow-y-auto mb-3">
-						{#each myCharacters as c (c.id)}
-							{#if !(room?.gifted_character_ids ?? []).includes(c.id)}
-								<button onclick={() => confirmGift(c)}>
-									{c.name || '(без имени)'} · {c.level} ур.
-								</button>
-							{/if}
+						{#each myCharacters.filter((c) => !(room?.gifted_character_ids ?? []).includes(c.id)) as c (c.id)}
+							<button
+								class="w-full text-left px-3 py-2 border rounded hover:bg-purple-50 transition-colors disabled:opacity-50"
+								disabled={giftBusy}
+								onclick={() => confirmGift(c)}
+							>
+								<div class="font-semibold">{c.name || '(без имени)'}</div>
+								<div class="text-xs text-gray-500">
+									{c.level} ур. · {RACES.find((r) => r.id === c.raceId)?.name ?? '—'}
+								</div>
+							</button>
 						{/each}
 					</div>
 				{/if}
-
 				<div class="flex gap-2">
 					<button
 						class="flex-1 px-3 py-2 border rounded hover:bg-gray-50"

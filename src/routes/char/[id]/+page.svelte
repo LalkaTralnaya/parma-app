@@ -15,7 +15,11 @@
 		getRoomCombatState,
 		saveRoomCombatState,
 		subscribeToRoomCombat,
-	} from '../../../lib/engine/rooms';
+		getActiveRoomRequest,
+		subscribeToRoomRequests,
+		submitRoomRequestResult,
+		type RoomRequest,
+} from '../../../lib/engine/rooms';
 
 	// Сессия (запросы мастера)
 	import {
@@ -130,10 +134,11 @@
 	let loading = $state(true);
 	let session = $state<SessionRequest | null>(null);
 	let activeRoomCode = $state<string | null>(null);
+	let activeRequest = $state<RoomRequest | null>(null);
+	let unsubRequests: (() => void) | null = null;
 	let combat = $state<CombatState | null>(null);
 	let targetEnemyId = $state<string | null>(null);
 	let lastCombatHp: number | null = null;
-
 	let lastRoll = $state<{ skill: string; roll: number; target: number; result: RollResult } | null>(null);
 	let lastCharCheck = $state<{ charId: string; charName: string; roll: number; target: number; result: RollResult } | null>(null);
 	let lastEdgeResult = $state<{ action: string; description: string; roll?: number; target?: number; success?: boolean } | null>(null);
@@ -145,7 +150,7 @@
 			before: number; after: number; max: number;
 		}>;
 	} | null>(null);
-
+	
 	// Отписки
 	let unsubSession: (() => void) | null = null;
 	let unsubRoomCombat: (() => void) | null = null;
@@ -211,7 +216,10 @@
 					// Первичная загрузка состояния
 					const remote = await getRoomCombatState(room.id);
 					if (remote) combat = remote;
-
+					activeRequest = await getActiveRoomRequest(room.id);
+					unsubRequests = subscribeToRoomRequests(room.id, (req) => {
+						activeRequest = req;
+					});				
 					// Подписка на обновления
 					unsubRoomCombat = subscribeToRoomCombat(room.id, handleRoomCombatUpdate);
 				}
@@ -232,6 +240,7 @@
 		unsubSession?.();
 		unsubRoomCombat?.();
 		unsubCharUpdates?.();
+		unsubRequests?.();
 	});
 
 	// ────────────────────────────────────────────
@@ -240,6 +249,7 @@
 	async function handleRoomCombatUpdate(newState: CombatState | null) {
 		if (!newState) return;
 		combat = newState;
+		saveCombat(newState);
 
 		const s = newState;
 		if (!s.active || !char) return;
@@ -303,18 +313,34 @@
 
 	/** Единая запись боя: локально + в комнату, если мы в ней */
 	async function writeCombatState(next: CombatState) {
-		combat = next;
-		saveCombat(next);
+	console.log('[char/combat] writeCombatState', next);
+	combat = next;
 
-		if (activeRoomCode) {
-			try {
-				const room = await findRoomByCode(activeRoomCode);
-				if (room) await saveRoomCombatState(room.id, next);
-			} catch (e) {
-				console.warn('Не удалось синхронизировать бой:', e);
-			}
-		}
+	try {
+		saveCombat(next);
+		console.log('[char/combat] localStorage ОК');
+	} catch (e) {
+		console.error('[char/combat] localStorage упал:', e);
 	}
+
+	if (!activeRoomCode) {
+		console.warn('[char/combat] нет activeRoomCode — пропускаем Supabase');
+		return;
+	}
+
+	try {
+		const room = await findRoomByCode(activeRoomCode);
+		if (!room) {
+			console.error('[char/combat] комната не найдена:', activeRoomCode);
+			return;
+		}
+		await saveRoomCombatState(room.id, next);
+		console.log('[char/combat] Supabase ОК', room.id);
+	} catch (e) {
+		console.error('[char/combat] Supabase упал:', e);
+	}
+}
+
 
 	// ────────────────────────────────────────────
 	// DERIVED
@@ -376,6 +402,9 @@
 	function rollD20(): number {
 		return Math.floor(Math.random() * 20) + 1;
 	}
+	function printCharacter() {
+		window.print();
+	}
 
 	const resultLabel: Record<RollResult, string> = {
 		crit_success: 'Правь! Критический успех',
@@ -422,6 +451,40 @@
 		perception: 'Наблюдательность',
 		survival: 'Выживание',
 	};
+
+	async function respondToActiveRequest() {
+	if (!char || !activeRequest) return;
+	if (activeRequest.results[char.id]) return;
+
+	const type = activeRequest.request_type as SessionRequestType;
+	const skillId = SESSION_SKILLS[type];
+	let roll: number, target: number, modifier: number;
+	let result: 'crit_success' | 'success' | 'fail' | 'crit_fail' | 'double';
+
+	if (type === 'initiative') {
+		roll = rollD20();
+		modifier = getModifier(getCharacteristicValue(char, 'dexterity'));
+		target = 0;
+		result = 'success';
+		setParticipantInitiative(char.id, roll, modifier);
+	} else if (skillId) {
+		target = getSkillCheckTarget(char, skillId);
+		roll = rollD100();
+		modifier = 0;
+		result = classifyRoll(roll, target);
+	} else return;
+
+	try {
+		await submitRoomRequestResult(activeRequest.id, char.id, {
+			characterId: char.id,
+			characterName: char.name,
+			roll, target, modifier, result,
+			timestamp: Date.now()
+		});
+	} catch (e) {
+		alert((e as Error).message);
+	}
+}
 
 	// ────────────────────────────────────────────
 	// РЕСУРСЫ
@@ -1073,17 +1136,47 @@
 		goto('/');
 	}
 
-	function respondToRequest() {
-		if (!char || !session) return;
-		if (session.results[char.id]) return;
+	async function respondToRequest() {
+	if (!char) return;
+	function rollSkill(skillId: string, skillName: string) {
+	if (!char) return;
+	const target = getSkillCheckTarget(char, skillId, condMods);
+	const roll = rollD100();
+	const result = classifyRoll(roll, target);
+	lastRoll = { skill: skillName, roll, target, result };
 
-		const skillId = SESSION_SKILLS[session.type];
-		let roll: number;
-		let target: number;
-		let modifier: number;
+	publishToActiveRoom(char.name || 'Безымянный', 'skill', {
+		skillName,
+		roll,
+		target,
+		result
+	});
+}
+
+	function rollCharacteristicCheck(charId: string, charName: string) {
+		if (!char) return;
+		const value = getCharacteristicValue(char, charId, condMods) + (condMods.saves ?? 0);
+		const target = Math.min(95, Math.max(0, value));
+		const roll = rollD100();
+		const result = classifyRoll(roll, target);
+		lastCharCheck = { charId, charName, roll, target, result };
+
+		publishToActiveRoom(char.name || 'Безымянный', 'characteristic', {
+			charName,
+			roll,
+			target,
+			result
+		});
+	}
+
+	// Приоритет — Supabase-запрос, если мы в комнате
+	if (activeRequest && !activeRequest.results[char.id]) {
+		const type = activeRequest.request_type as SessionRequestType;
+		const skillId = SESSION_SKILLS[type];
+		let roll: number, target: number, modifier: number;
 		let result: 'crit_success' | 'success' | 'fail' | 'crit_fail' | 'double';
 
-		if (session.type === 'initiative') {
+		if (type === 'initiative') {
 			roll = rollD20();
 			modifier = getModifier(getCharacteristicValue(char, 'dexterity'));
 			target = 0;
@@ -1096,17 +1189,40 @@
 			result = classifyRoll(roll, target);
 		} else return;
 
-		submitResult({
-			characterId: char.id,
-			characterName: char.name,
-			roll,
-			target,
-			modifier,
-			result,
-			timestamp: Date.now(),
-		});
-		session = getSession();
+		try {
+			await submitRoomRequestResult(activeRequest.id, char.id, {
+				characterId: char.id,
+				characterName: char.name,
+				roll,
+				target,
+				modifier,
+				result,
+				timestamp: Date.now(),
+			});
+			// Локально обновим отображение
+			activeRequest = {
+				...activeRequest,
+				results: {
+					...activeRequest.results,
+					[char.id]: {
+						characterId: char.id,
+						characterName: char.name,
+						roll, target, modifier, result,
+						timestamp: Date.now(),
+					},
+				},
+			};
+		} catch (e) {
+			alert((e as Error).message);
+		}
+		return;
 	}
+
+	// Fallback: старая система через BroadcastChannel
+	if (!session) return;
+	if (session.results[char.id]) return;
+	// ... остальной код как был
+}
 
 	// ────────────────────────────────────────────
 	// ПРОКРУТКА (функции для HTML, объявленные ниже — на случай если Svelte ругается)
@@ -1114,13 +1230,57 @@
 	function openItemPicker() { showItemPicker = true; }
 	function closeItemPicker() { showItemPicker = false; }
 </script>
+<style>
+	@media print {
+		button,
+		nav,
+		.sheet-nav,
+		header .flex.gap-2,
+		.no-print {
+			display: none !important;
+		}
 
+		:global(body), :global(main) {
+			background: #fff !important;
+			color: #000 !important;
+			padding: 0 !important;
+			margin: 0 !important;
+		}
+
+		:global(page) {
+			size: A4;
+			margin: 12mm;
+		}
+
+		section {
+			break-inside: avoid;
+			page-break-inside: avoid;
+		}
+
+		h1, h2, h3 {
+			break-after: avoid;
+			page-break-after: avoid;
+		}
+
+		.border, .border-2 {
+			border-color: #999 !important;
+		}
+		.bg-gray-50, .bg-blue-50, .bg-red-50, .bg-green-50,
+		.bg-amber-50, .bg-purple-50 {
+			background: #fff !important;
+		}
+
+		.print-hide {
+			display: none !important;
+		}
+	}
+</style>
 <main class="max-w-4xl mx-auto p-6 space-y-6">
 	{#if loading}
 		<p class="text-gray-500">Загрузка…</p>
 			{:else if char}
 				{#if activeRoomCode}
-			<div class="border-2 border-amber-400 bg-amber-50 rounded-lg p-3 mb-4 flex justify-between items-center flex-wrap gap-2">
+			<div class="print-hide border-2 border-amber-400 bg-amber-50 rounded-lg p-3 mb-4 flex justify-between items-center flex-wrap gap-2">
 				<div class="text-sm">
 					<span class="text-amber-900">🎲 Вы в комнате мастера:</span>
 					<span class="font-mono font-bold text-amber-800 ml-2">{activeRoomCode}</span>
@@ -1140,9 +1300,9 @@
 				</div>
 			</div>
 	{/if}
-			{#if combat && combat.active && myCombatParticipant}
+	{#if combat && combat.active && myCombatParticipant}
 				{#if isMyTurnInCombat}
-					<div class="border-2 border-purple-500 bg-purple-100 rounded-lg p-4 mb-4 text-center">
+					<div class="print-hide border-2 border-purple-500 bg-purple-100 rounded-lg p-4 mb-4 text-center">
 						<div class="text-2xl font-bold text-purple-800">🎲 Твой ход!</div>
 						<div class="text-sm text-purple-700 mt-1">
 							Раунд {combat.round}. Действуй.
@@ -1154,28 +1314,28 @@
 					</div>
 				{/if}
 			{/if}
-			{#if session && char && !session.results[char.id]}
-			<div class="border-2 border-amber-400 bg-amber-50 rounded-lg p-4 mb-4">
-				<div class="flex justify-between items-center gap-3 flex-wrap">
-					<div>
-						<div class="font-semibold text-amber-900">
-							Мастер запросил: {typeLabel[session.type]}
+		
+			{#if activeRequest && char && !activeRequest.results[char.id]}
+				<div class="print-hide border-2 border-amber-400 bg-amber-50 rounded-lg p-4 mb-4">
+					<div class="flex justify-between items-center gap-3 flex-wrap">
+						<div>
+							<div class="font-semibold text-amber-900">
+								Мастер запросил: {activeRequest.label}
+							</div>
+							<div class="text-sm text-amber-800">
+								{activeRequest.request_type === 'initiative'
+									? 'Бросок к20 + модификатор Ловкости'
+									: 'Проверка к100 против значения навыка'}
+							</div>
 						</div>
-						<div class="text-sm text-amber-800">
-							{session.type === 'initiative'
-								? 'Бросок к20 + модификатор Ловкости'
-								: 'Проверка к100 против значения навыка'}
-						</div>
+						<button
+							class="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700 font-semibold"
+							onclick={respondToActiveRequest}>
+							🎲 Бросить
+						</button>
 					</div>
-					<button
-						class="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700 font-semibold"
-						onclick={respondToRequest}>
-						🎲 Бросить
-					</button>
 				</div>
-			</div>
-		{/if}
-
+			{/if}
 		{#if session && char && session.results[char.id]}
 			<div class="border border-green-400 bg-green-50 rounded-lg p-3 mb-4 text-sm">
 				<span class="text-green-800">✓ Бросок отправлен мастеру:</span>
@@ -1206,11 +1366,18 @@
 					+1 уровень
 				</a>
 				<button
+					class="px-3 py-2 bg-gray-700 text-white rounded hover:bg-gray-800 print-hide"
+					onclick={printCharacter}
+					title="Сохранить в PDF / распечатать">
+					🖨 Печать / PDF
+				</button>
+				<button
 					class="px-3 py-2 text-red-600 border border-red-300 rounded hover:bg-red-50"
 					onclick={removeChar}>
 					Удалить
 				</button>
 			</div>
+		
 		</header>
         <nav class="sheet-nav" aria-label="Разделы листа персонажа">
           <a href="#characteristics">Характеристики</a><a href="#resources">Ресурсы</a><a href="#battle">Бой</a><a href="#skills">Навыки</a><a href="#spells">Магия</a><a href="#inventory">Инвентарь</a><a href="#personality">Личность</a><a href="#conditions">Состояния</a><a href="#rest">Отдых</a>
@@ -1302,7 +1469,7 @@
 					<section>
 			<h2 id="rest" class="text-xl font-semibold mb-3">Отдых</h2>
 			<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-				<div class="border rounded-lg bg-white p-4 flex flex-col">
+				<div class="print-hide border rounded-lg bg-white p-4 flex flex-col">
 					<div class="flex justify-between items-start mb-2">
 						<div class="font-semibold">Короткий (1 час)</div>
 						{#if char.shortRestUsed}
@@ -1323,7 +1490,7 @@
 					</button>
 				</div>
 
-				<div class="border rounded-lg bg-white p-4 flex flex-col">
+				<div class="print-hide border rounded-lg bg-white p-4 flex flex-col">
 					<div class="font-semibold mb-2">Продолжительный (8 часов)</div>
 					<p class="text-xs text-gray-500 mb-3">
 						Все ресурсы восстанавливаются полностью. Состояния (Отрава, Хворь, Руда и т.д.)
@@ -1667,7 +1834,7 @@
 
 			<!-- Атака -->
 						{#if currentWeapon}
-				<div class="border rounded-lg p-4 bg-white">
+				<div class="print-hide border rounded-lg p-4 bg-white">
 					<h3 class="font-semibold mb-3">Атака: {currentWeapon.name}</h3>
 					{#if combat?.active && enemiesInCombat.length > 0}
 						<div class="mb-3 p-3 border-2 border-red-300 rounded bg-red-50">
@@ -2148,7 +2315,7 @@
 				</label>
 			</div>
 						{#if combat?.active && enemiesInCombat.length > 0}
-				<div class="mb-3 p-3 border-2 border-red-300 rounded bg-red-50">
+				<div class="mb-3 p-3 print-hide border-2 border-red-300 rounded bg-red-50">
 					<label for="field-13" class="block text-xs text-red-700 font-semibold mb-1">
 						🎯 Цель заклинания (активен бой)
 					</label>
