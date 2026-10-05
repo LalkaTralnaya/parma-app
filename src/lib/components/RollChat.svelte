@@ -130,7 +130,7 @@
 		}
 		if (roll.roll_type === 'spell') {
 			return {
-				text: `Заклинание ${d.spellName ?? ''}: к100 = ${d.roll} ≤ ${d.target} — ${translateResult(r)}${d.damage ? `, урон ${d.damage}` : ''}`,
+				text: `Магическая атака ${d.spellName ?? ''}: к100 = ${d.roll} ≤ ${d.target} — ${translateResult(r)}${d.damage ? `, эффект ${d.damage}` : ''}`,
 				resultClass: resultColorClass(r)
 			};
 		}

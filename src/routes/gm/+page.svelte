@@ -102,18 +102,13 @@
 		// Пишем результат в тот же источник, что активен
 		if (activeRequest) {
 			try {
-				const { supabase } = await import('../../lib/supabase/client');
-				const current = { ...(activeRequest.results ?? {}) };
-				current[characterId] = {
+				const { submitRoomRequestResult } = await import('../../lib/engine/rooms');
+				await submitRoomRequestResult(activeRequest.id, characterId, {
 					characterId,
 					characterName: c.name,
 					roll, target, modifier, result,
 					timestamp: Date.now()
-				};
-				await supabase
-					.from('room_requests')
-					.update({ results: current })
-					.eq('id', activeRequest.id);
+				});
 			} catch (e) {
 				alert((e as Error).message);
 			}

@@ -1,5 +1,5 @@
 import { supabase, getDeviceId, getPlayerName } from '../supabase/client';
-import type { Character } from '../types';
+import type { Character } from '../type';
 
 export interface Room {
 	id: string;
@@ -613,28 +613,21 @@ export async function submitRoomRequestResult(
 	characterId: string,
 	result: RoomRequestResult
 ): Promise<void> {
-	const { data: existing } = await supabase
-		.from('room_requests')
-		.select('results')
-		.eq('id', requestId)
-		.maybeSingle();
-
-	const current = (existing?.results ?? {}) as Record<string, RoomRequestResult>;
-	current[characterId] = result;
-
-	const { error } = await supabase
-		.from('room_requests')
-		.update({ results: current })
-		.eq('id', requestId);
+	const { error } = await supabase.rpc('submit_room_request_result', {
+		p_request_id: requestId,
+		p_character_id: characterId,
+		p_result: result
+	});
 	if (error) throw new Error(`Ошибка отправки результата: ${error.message}`);
 }
 
 /** Мастер закрывает запрос */
 export async function closeRoomRequest(requestId: string): Promise<void> {
-	await supabase
+	const { error } = await supabase
 		.from('room_requests')
 		.update({ closed: true })
 		.eq('id', requestId);
+	if (error) throw new Error(`Ошибка закрытия запроса: ${error.message}`);
 }
 
 /** Подписка на изменения активного запроса */

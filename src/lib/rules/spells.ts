@@ -18,6 +18,8 @@ export interface Spell {
 	target: SpellTarget;
 	duration: string;
 	damage?: string;
+	/** Casting this spell uses Nezhiva and adds 1 Decay point per cast. */
+	usesNezhiva?: boolean;
 	effect?: string;
 	save?: string;
 	description: string;
@@ -180,6 +182,7 @@ export const SPELLS: Spell[] = [
 	},
 	{
 		id: 'corpse_burst',
+		usesNezhiva: true,
 		name: 'Трупный взрыв',
 		school: 'destruction',
 		skillLevel: 4,
@@ -348,6 +351,7 @@ export const SPELLS: Spell[] = [
 	// ══════════════════════ КОЛДОВСТВО ══════════════════════
 	{
 		id: 'cold_touch',
+		usesNezhiva: true,
 		name: 'Прикосновение холода',
 		school: 'witchcraft',
 		skillLevel: 0,
@@ -363,6 +367,7 @@ export const SPELLS: Spell[] = [
 	},
 	{
 		id: 'pain_word',
+		usesNezhiva: true,
 		name: 'Слово боли',
 		school: 'witchcraft',
 		skillLevel: 1,
@@ -645,6 +650,7 @@ export const SPELLS: Spell[] = [
 	},
 	{
 		id: 'banshee_cry',
+		usesNezhiva: true,
 		name: 'Крик баньши',
 		school: 'witchcraft',
 		skillLevel: 2,
@@ -659,6 +665,7 @@ export const SPELLS: Spell[] = [
 	},
 	{
 		id: 'life_drain',
+		usesNezhiva: true,
 		name: 'Пожирание жизни',
 		school: 'witchcraft',
 		skillLevel: 2,

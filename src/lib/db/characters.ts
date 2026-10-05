@@ -1,13 +1,19 @@
+import { normalizeDecay } from '../engine/decay';
 import Dexie, { type Table } from 'dexie';
 import type { Character } from '$lib/type';
 
 class ParmaDB extends Dexie {
 	characters!: Table<Character, string>;
+	deletions!: Table<{ id: string; deletedAt: number }, string>;
 
 	constructor() {
 		super('parma');
 		this.version(1).stores({
 			characters: 'id, name, raceId, createdAt'
+		});
+		this.version(2).stores({
+			characters: 'id, name, raceId, createdAt',
+			deletions: 'id, deletedAt'
 		});
 	}
 }
@@ -27,10 +33,15 @@ export async function getCharacter(id: string): Promise<Character | undefined> {
 export async function saveCharacter(char: Character): Promise<void> {
 	char.updatedAt = Date.now();
 	await db.characters.put(char);
+	await db.deletions.delete(char.id);
+	void import('$lib/sync/cloudCharacters').then(({ queueCharacterSync }) => queueCharacterSync(char));
 }
 
 export async function deleteCharacter(id: string): Promise<void> {
 	await db.characters.delete(id);
+	const deletedAt = Date.now();
+	await db.deletions.put({ id, deletedAt });
+	void import('$lib/sync/cloudCharacters').then(({ queueCharacterDeletion }) => queueCharacterDeletion(id, deletedAt));
 }
 
 export function createEmptyCharacter(): Character {
@@ -231,6 +242,7 @@ export function migrateCharacter(c: Character): Character {
 	};
 
 	const tempHp = (c as any).tempHp ?? 0;
+	const decay = normalizeDecay((c as any).decay);
 
 	return {
 		...c,
@@ -248,6 +260,7 @@ export function migrateCharacter(c: Character): Character {
 			goals: bio.goals ?? ''
 		},
 		conditions,
+		decay,
 		death,
 		tempHp
 	};

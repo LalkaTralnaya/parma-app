@@ -43,7 +43,8 @@
 
 	// Правила
 	import { CONDITIONS, findCondition } from '../../../lib/rules/conditions';
-	import { getConditionModifiers, rollConditionsDotDamage } from '../../../lib/engine/conditions';
+import { getConditionModifiers, getConditionSaveTarget as calculateConditionSaveTarget, rollConditionsDotDamage } from '../../../lib/engine/conditions';
+	import { adjustDecayPoints, getDecayStage } from '../../../lib/engine/decay';
 	import { PERSONALITY_TRAITS, IDEALS, BONDS, FLAWS, findOption } from '../../../lib/rules/personality';
 	import { ITEMS, CATEGORY_LABEL, type ItemCategory } from '../../../lib/rules/items';
 	import { BACKGROUNDS } from '../../../lib/rules/backgrounds';
@@ -102,6 +103,7 @@
 
 	import {
 		getSpellCastTarget,
+		getSpellAttackTarget,
 		getSpellCost,
 		getSpellSkillLevel,
 		getSpellsWithAccess,
@@ -138,6 +140,7 @@
 	let unsubRequests: (() => void) | null = null;
 	let combat = $state<CombatState | null>(null);
 	let targetEnemyId = $state<string | null>(null);
+	let decayDelta = $state(1);
 	let lastCombatHp: number | null = null;
 	let lastRoll = $state<{ skill: string; roll: number; target: number; result: RollResult } | null>(null);
 	let lastCharCheck = $state<{ charId: string; charName: string; roll: number; target: number; result: RollResult } | null>(null);
@@ -173,7 +176,7 @@
 	let lastCast = $state<{
 		spell: string; roll: number; target: number; outcome: SpellOutcome;
 		cost?: number; resource?: 'mana' | 'grace';
-		effect?: SpellEffectRoll | null; damageApplied?: number;
+		effect?: SpellEffectRoll | null; damageApplied?: number; decayGained?: number;
 	} | null>(null);
 
 	// Инвентарь
@@ -767,16 +770,27 @@
 		await saveCharacter($state.snapshot(char) as Character);
 	}
 
+	async function changeDecayPoints(delta: number) {
+		if (!char || !Number.isFinite(delta)) return;
+		char = adjustDecayPoints(char, delta);
+		await saveCharacter($state.snapshot(char) as Character);
+	}
+
 	async function castSpell(spellId: string, school: string, useTwoHands: boolean) {
 		if (!char) return;
 		const spell = SPELLS_BY_SCHOOL[school].find((s) => s.id === spellId);
 		if (!spell) return;
 
-		const targetBase = getSpellCastTarget(char, school);
-		const target = Math.max(0, targetBase + (condMods.skills ?? 0));
+		const selectedTarget = combat?.active && targetEnemyId
+			? combat.participants.find((participant) => participant.id === targetEnemyId && !participant.isPlayer)
+			: undefined;
+		const targetArmor = selectedTarget?.armor ?? 0;
+		const target = getSpellAttackTarget(char, school, targetArmor, condMods.attacks ?? 0);
 		const roll = rollD100();
 		const outcome = classifySpellRoll(roll, target);
 		const costInfo = getSpellCost(char, spell, useTwoHands);
+		const decayGained = spell.usesNezhiva ? 1 : 0;
+		if (decayGained) char = adjustDecayPoints(char, decayGained);
 
 		const resourceId = char.useGraceForSpells ? 'grace' : costInfo.resource === 'grace' ? 'grace' : 'mana';
 		const resourceMax = getResourceMax(char, resourceId);
@@ -819,6 +833,7 @@
 			resource: char.useGraceForSpells ? 'grace' : costInfo.resource,
 			effect: effectResult,
 			damageApplied,
+			decayGained,
 		};
 
 		publishToActiveRoom(char.name || 'Безымянный', 'spell', {
@@ -877,17 +892,8 @@
 		return getSkillTotal(char, skillId);
 	}
 	function getConditionSaveTarget(def: any, useAlternative: boolean): { target: number; label: string } | null {
-		if (!char || !def.save) return null;
-		const charId = useAlternative && def.save.charB ? def.save.charB : def.save.charA;
-		const skillId = useAlternative && def.save.skillB ? def.save.skillB : def.save.skillA;
-		const charValue = getCharValueForCondition(charId);
-		const skillBonus = skillId ? getSkillForCondition(skillId) : 0;
-		const charShort = CHARACTERISTICS.find((c) => c.id === charId)?.short ?? charId;
-		const skillName = skillId ? SKILLS.find((s) => s.id === skillId)?.name ?? skillId : '';
-		return {
-			target: Math.min(95, charValue + skillBonus),
-			label: `${charShort}${skillId ? ` + ${skillName}` : ''} = ${charValue + skillBonus}`,
-		};
+		if (!char) return null;
+		return calculateConditionSaveTarget(char, def, useAlternative);
 	}
 
 	async function addCondition(conditionId: string, roundsLeft: number | null) {
@@ -1137,37 +1143,7 @@
 	}
 
 	async function respondToRequest() {
-	if (!char) return;
-	function rollSkill(skillId: string, skillName: string) {
-	if (!char) return;
-	const target = getSkillCheckTarget(char, skillId, condMods);
-	const roll = rollD100();
-	const result = classifyRoll(roll, target);
-	lastRoll = { skill: skillName, roll, target, result };
-
-	publishToActiveRoom(char.name || 'Безымянный', 'skill', {
-		skillName,
-		roll,
-		target,
-		result
-	});
-}
-
-	function rollCharacteristicCheck(charId: string, charName: string) {
 		if (!char) return;
-		const value = getCharacteristicValue(char, charId, condMods) + (condMods.saves ?? 0);
-		const target = Math.min(95, Math.max(0, value));
-		const roll = rollD100();
-		const result = classifyRoll(roll, target);
-		lastCharCheck = { charId, charName, roll, target, result };
-
-		publishToActiveRoom(char.name || 'Безымянный', 'characteristic', {
-			charName,
-			roll,
-			target,
-			result
-		});
-	}
 
 	// Приоритет — Supabase-запрос, если мы в комнате
 	if (activeRequest && !activeRequest.results[char.id]) {
@@ -1218,11 +1194,57 @@
 		return;
 	}
 
-	// Fallback: старая система через BroadcastChannel
-	if (!session) return;
-	if (session.results[char.id]) return;
-	// ... остальной код как был
-}
+		// Fallback: старая система через BroadcastChannel
+		if (!session || session.results[char.id]) return;
+		const skillId = SESSION_SKILLS[session.type];
+		let roll: number;
+		let target: number;
+		let modifier: number;
+		let result: 'crit_success' | 'success' | 'fail' | 'crit_fail' | 'double';
+
+		if (session.type === 'initiative') {
+			roll = rollD20();
+			modifier = getModifier(getCharacteristicValue(char, 'dexterity'));
+			target = 0;
+			result = 'success';
+			setParticipantInitiative(char.id, roll, modifier);
+		} else if (skillId) {
+			target = getSkillCheckTarget(char, skillId);
+			roll = rollD100();
+			modifier = 0;
+			result = classifyRoll(roll, target);
+		} else return;
+
+		submitResult({
+			characterId: char.id,
+			characterName: char.name,
+			roll,
+			target,
+			modifier,
+			result,
+			timestamp: Date.now()
+		});
+		session = getSession();
+	}
+
+	function rollSkill(skillId: string, skillName: string, checkContext?: string) {
+		if (!char) return;
+		const target = getSkillCheckTarget(char, skillId, condMods, checkContext);
+		const roll = rollD100();
+		const result = classifyRoll(roll, target);
+		lastRoll = { skill: skillName, roll, target, result };
+		publishToActiveRoom(char.name || 'Безымянный', 'skill', { skillName, roll, target, result });
+	}
+
+	function rollCharacteristicCheck(charId: string, charName: string) {
+		if (!char) return;
+		const value = getCharacteristicValue(char, charId, condMods) + (condMods.saves ?? 0);
+		const target = Math.min(95, Math.max(0, value));
+		const roll = rollD100();
+		const result = classifyRoll(roll, target);
+		lastCharCheck = { charId, charName, roll, target, result };
+		publishToActiveRoom(char.name || 'Безымянный', 'characteristic', { charName, roll, target, result });
+	}
 
 	// ────────────────────────────────────────────
 	// ПРОКРУТКА (функции для HTML, объявленные ниже — на случай если Svelte ругается)
@@ -1232,7 +1254,7 @@
 </script>
 <style>
 	@media print {
-		button,
+		button:not(.print-characteristic),
 		nav,
 		.sheet-nav,
 		header .flex.gap-2,
@@ -1247,9 +1269,16 @@
 			margin: 0 !important;
 		}
 
-		:global(page) {
+		@page {
 			size: A4;
 			margin: 12mm;
+		}
+
+		button.print-characteristic {
+			display: block !important;
+			width: 100% !important;
+			color: #000 !important;
+			cursor: default !important;
 		}
 
 		section {
@@ -1380,7 +1409,7 @@
 		
 		</header>
         <nav class="sheet-nav" aria-label="Разделы листа персонажа">
-          <a href="#characteristics">Характеристики</a><a href="#resources">Ресурсы</a><a href="#battle">Бой</a><a href="#skills">Навыки</a><a href="#spells">Магия</a><a href="#inventory">Инвентарь</a><a href="#personality">Личность</a><a href="#conditions">Состояния</a><a href="#rest">Отдых</a>
+          <a href="#characteristics">Характеристики</a><a href="#resources">Ресурсы</a><a href="#battle">Бой</a><a href="#skills">Навыки</a><a href="#spells">Магия</a><a href="#inventory">Инвентарь</a><a href="#personality">Личность</a><a href="#conditions">Состояния</a><a href="#decay">Тлен</a><a href="#rest">Отдых</a>
         </nav>
 
 
@@ -1393,7 +1422,7 @@
 					{@const mod = getModifier(effVal)}
 					<button
 						type="button"
-						class="border rounded-lg p-3 text-center bg-white hover:bg-blue-50 hover:border-blue-400 active:scale-95 transition-all cursor-pointer w-full
+						class="print-characteristic border rounded-lg p-3 text-center bg-white hover:bg-blue-50 hover:border-blue-400 active:scale-95 transition-all cursor-pointer w-full
 							{effVal < baseVal ? 'border-red-300 bg-red-50' : effVal > baseVal ? 'border-green-300 bg-green-50' : ''}"
 						onclick={() => rollCharacteristicCheck(c.id, c.name)}
 						title="Бросить проверку характеристики: к100 ≤ {effVal + (condMods.saves ?? 0)}">
@@ -1467,6 +1496,28 @@
 			</div>
 		</section>
 					<section>
+			<h2 id="decay" class="text-xl font-semibold mb-3">Тлен</h2>
+			<div class="border rounded-lg bg-white p-4 space-y-2">
+				<div class="flex items-baseline justify-between gap-3 flex-wrap">
+					<div class="font-semibold">{getDecayStage(char.decay?.points ?? 0).name}</div>
+					<div><strong>{char.decay?.points ?? 0}</strong> ОТ</div>
+				</div>
+				<ul class="list-disc pl-5 text-sm text-gray-700 space-y-1">
+					{#each getDecayStage(char.decay?.points ?? 0).effects as effect}<li>{effect}</li>{/each}
+				</ul>
+				<div class="print-hide border-t pt-3 space-y-2">
+					<div class="text-xs text-gray-500">Нежива автоматически добавляет 1 ОТ за каждое сотворение. Другие источники ОТ отмечает Сказитель. Дневной счётчик не ведётся автоматически.</div>
+					<div class="flex items-center gap-2 flex-wrap">
+						<label class="text-sm" for="decay-change">Изменить ОТ на</label>
+						<input id="decay-change" type="number" min="1" step="1" bind:value={decayDelta} class="w-20 border rounded px-2 py-1 text-sm" />
+						<button class="px-2 py-1 border rounded" onclick={() => changeDecayPoints(Math.max(1, Math.floor(decayDelta || 1)))}>+ добавить</button>
+						<button class="px-2 py-1 border rounded" onclick={() => changeDecayPoints(-Math.max(1, Math.floor(decayDelta || 1)))}>− снять</button>
+					</div>
+				</div>
+			</div>
+		</section>
+
+		<section>
 			<h2 id="rest" class="text-xl font-semibold mb-3">Отдых</h2>
 			<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
 				<div class="print-hide border rounded-lg bg-white p-4 flex flex-col">
@@ -1919,7 +1970,12 @@
 									<div class="text-lg mt-1">
 										Выпало <span class="font-bold">{atk.roll}</span>, цель ≤ {atk.target} —
 										<span class={attackOutcomeColor[atk.outcome]}>{attackOutcomeLabel[atk.outcome]}</span>
-									</div>
+					</div>
+					{#if atk.effect}
+						<div class="mt-1 rounded bg-amber-50 border border-amber-200 p-2 text-sm text-amber-900">
+							{atk.effect.table} · к{atk.effect.table === 'Явь' ? 10 : 12}: {atk.effect.roll} — {atk.effect.label}
+						</div>
+					{/if}
 									{#if atk.damage}
 										<div class="mt-1">
 											<span class="text-sm text-gray-500">Урон: </span>
@@ -2103,11 +2159,11 @@
 		{#if lastCast}
 			<section class="border-2 rounded-lg p-4 bg-white space-y-2">
 				<div>
-					<div class="text-sm text-gray-500">Последнее сотворение</div>
+					<div class="text-sm text-gray-500">Последняя магическая атака</div>
 					<div class="text-lg font-semibold">{lastCast.spell}</div>
 				</div>
 				<div class="text-lg">
-					<div class="text-sm text-gray-500">Проверка сотворения</div>
+					<div class="text-sm text-gray-500">Бросок атаки = попадание</div>
 					Выпало <span class="font-bold">{lastCast.roll}</span>, цель ≤ {lastCast.target} —
 					<span class="font-bold {lastCast.outcome === 'success' || lastCast.outcome === 'critical_success' ? 'text-green-700' : 'text-red-700'}">
 						{spellOutcomeLabel[lastCast.outcome]}
@@ -2134,6 +2190,9 @@
 							{/if}
 						</div>
 					</div>
+				{/if}
+				{#if lastCast.decayGained}
+					<div class="text-sm text-purple-800 border-t pt-2">Получено: +{lastCast.decayGained} ОТ за использование Неживы.</div>
 				{/if}
 				{#if lastCast.cost}
 					<div class="text-sm text-gray-600 border-t pt-2">
@@ -2177,6 +2236,8 @@
 						{@const target = getSkillCheckTarget(char, s.id, condMods)}
 						{@const bonusDetails = getSkillBonusDetails(char, s.id)}
 						{@const bonusSum = bonusDetails.reduce((a, b) => a + b.value, 0)}
+						{@const trackingBonus = s.id === 'perception' ? getSkillBonusDetails(char, s.id, 'tracking').reduce((a, b) => a + b.value, 0) - bonusSum : 0}
+						{@const trackingTarget = s.id === 'perception' ? getSkillCheckTarget(char, s.id, condMods, 'tracking') : target}
 						<tr class="border-t hover:bg-gray-50">
 							<td class="px-3 py-1">
 								{s.name}
@@ -2198,6 +2259,14 @@
 									onclick={() => rollSkill(s.id, s.name)}>
 									к100
 								</button>
+								{#if trackingBonus > 0}
+									<button
+										class="px-2 py-0.5 bg-green-700 text-white text-xs rounded hover:bg-green-800"
+										title="Проверка Наблюдательности при поиске следов: ≤ {trackingTarget}"
+										onclick={() => rollSkill(s.id, `${s.name} (поиск следов)`, 'tracking')}>
+										Следы +{trackingBonus}
+									</button>
+								{/if}
 							</td>
 						</tr>
 					{/each}
@@ -2331,9 +2400,9 @@
 					</select>
 					<div class="text-xs text-gray-500 mt-1">
 						{#if targetEnemyId}
-							Урон уйдёт цели автоматически при успешном сотворении.
+							Магическая атака учитывает Броню цели; урон спишется только при попадании.
 						{:else}
-							Без выбора цели заклинание сработает, но урон не спишется.
+							Без выбранной цели бросок не вычитает Броню и урон не будет списан.
 						{/if}
 					</div>
 				</div>
@@ -2427,7 +2496,7 @@
 													<button
 														class="px-2 py-0.5 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
 														onclick={() => castSpell(spell.id, schoolId, useTwo)}>
-														Сотворить (к100)
+														Магическая атака (к100)
 													</button>
 												</div>
 											{:else}

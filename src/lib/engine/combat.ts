@@ -1,5 +1,6 @@
 import { WEAPONS, ARMORS, SHIELDS, type Weapon, type Armor, type Shield, type AttackType, ATTACK_SPEED_BONUS } from '../rules/weapons';
 import { getCharacteristicValue, getModifier, getSkillTotal } from './character';
+import { SKILLS } from '../rules/skills';
 import type { Character } from '$lib/type';
 
 /** Прыть (инициатива): d20 + мод Ловкости */
@@ -41,22 +42,28 @@ export function getAttackTarget(
 	useTwoHands: boolean
 ): { target: number; parts: { label: string; value: number }[] } {
 	const charValue = getCharacteristicValue(char, weapon.parent);
-	const charMod = getModifier(charValue);
+	const skill = SKILLS.find((item) => item.id === weapon.skill);
+	const skillParentValue = skill ? getCharacteristicValue(char, skill.parent) : charValue;
+	const skillModifier = getModifier(skillParentValue);
+	const skillValue = char.skillPoints[weapon.skill] ?? 0;
 	const skillTotal = getSkillTotal(char, weapon.skill);
+	const otherSkillBonuses = skillTotal - skillModifier - skillValue;
 	const speedBonus = ATTACK_SPEED_BONUS[attackType];
 	const weaponBonus = weapon.attackBonus ?? 0;
 
-	// Атака = 30 + мод.хар + мод.навыка (как бонус от умений) + скорость + оружие - Броня цели
-	// В системе из книги: 30 + мод.хар + бонус скорости - Броня.
-	// Но навык тоже даёт бонус к попаданию, поэтому учитываем его.
-	const target = 30 + charMod + skillTotal + speedBonus + weaponBonus - targetArmor;
+	// Атака: значение характеристики + модификатор навыка + вложенное значение навыка (если есть)
+	// + скорость и прочие применимые бонусы − Броня цели.
+	const target = charValue + skillTotal + speedBonus + weaponBonus - targetArmor;
+	const characteristicLabel = weapon.parent === 'strength' ? 'Сила' : 'Ловкость';
+	const skillLabel = skill?.name ?? weapon.skill;
 
 	return {
 		target,
 		parts: [
-			{ label: 'база', value: 30 },
-			{ label: `мод. ${weapon.parent === 'strength' ? 'СИЛ' : 'ЛОВ'}`, value: charMod },
-			{ label: `навык ${weapon.skill}`, value: skillTotal },
+			{ label: `значение ${characteristicLabel}`, value: charValue },
+			{ label: `мод. навыка ${skillLabel}`, value: skillModifier },
+			...(skillValue ? [{ label: `значение навыка ${skillLabel}`, value: skillValue }] : []),
+			...(otherSkillBonuses ? [{ label: 'расовые бонусы и умения', value: otherSkillBonuses }] : []),
 			{ label: `скорость (${attackType})`, value: speedBonus },
 			...(weaponBonus ? [{ label: 'бонус оружия', value: weaponBonus }] : []),
 			{ label: 'Броня цели', value: -targetArmor }
@@ -167,6 +174,55 @@ export interface SingleAttackRoll {
 	target: number;
 	outcome: AttackOutcome;
 	damage?: DamageRoll;
+	effect?: CombatAttackEffect;
+}
+
+export interface CombatAttackEffect {
+	table: 'Правь' | 'Явь' | 'Навь';
+	roll: number;
+	label: string;
+	extraDamageRolls?: number[];
+	extraDamageFormula?: string;
+}
+
+/** Бросить эффект по таблицам Прави/Яви/Нави из боевого раздела книги. */
+export function rollCombatAttackEffect(
+	outcome: AttackOutcome,
+	weaponCategory?: Weapon['category']
+): CombatAttackEffect | undefined {
+	if (outcome !== 'critical_hit' && outcome !== 'double' && outcome !== 'critical_miss') return undefined;
+	const critical = outcome === 'critical_hit';
+	const fumble = outcome === 'critical_miss';
+	const roll = Math.floor(Math.random() * (fumble || critical ? 12 : 10)) + 1;
+	let label = '';
+	let extraDamageFormula: string | undefined;
+	let extraDamageRolls: number[] | undefined;
+	if (critical) {
+		if (roll <= 2) { label = 'Сокрушительный удар'; extraDamageFormula = weaponCategory === 'two_handed' ? '1к8' : '1к6'; }
+		else if (roll <= 4) label = 'Отсечение конечности';
+		else if (roll <= 6) label = 'Слом щита/доспеха';
+		else if (roll <= 8) label = 'Руда: кровотечение на 3 раунда';
+		else if (roll <= 10) label = 'Оглушение: цель пропускает следующий ход';
+		else label = 'Отбрасывание на 2 сажени и падение ничком';
+	} else if (!fumble) {
+		if (roll <= 2) { label = 'Точный удар'; extraDamageFormula = weaponCategory === 'two_handed' ? '1к6' : '1к4'; }
+		else if (roll <= 4) label = 'Выбивание оружия';
+		else if (roll <= 6) label = 'Оружие/доспех получает 1 Очко Резонанса';
+		else if (roll <= 8) label = 'Стойка: +5 к Броне до конца следующего раунда';
+		else label = 'Знамение: −5 к следующей проверке Наблюдательности цели';
+	} else {
+		if (roll <= 2) label = 'Потеря оружия';
+		else if (roll <= 4) label = 'Потеря равновесия: падение ничком';
+		else if (roll <= 6) label = 'Застревание оружия: действие на извлечение';
+		else if (roll <= 8) label = 'Удар по союзнику: половина обычного урона';
+		else if (roll <= 10) label = 'Трещина в оружии: −2 прочности';
+		else label = 'Растяжение: Изнеможение на 1 раунд';
+	}
+	if (extraDamageFormula) {
+		const match = extraDamageFormula.match(/^(\d+)[кd](\d+)$/i)!;
+		extraDamageRolls = Array.from({ length: Number(match[1]) }, () => Math.floor(Math.random() * Number(match[2])) + 1);
+	}
+	return { table: critical ? 'Правь' : fumble ? 'Навь' : 'Явь', roll, label, extraDamageFormula, extraDamageRolls };
 }
 
 /** Бросок полной атаки — для быстрой две, для остальных одна */
@@ -185,13 +241,23 @@ export function rollAttack(
 	for (let i = 0; i < attackCount; i++) {
 		const roll = Math.floor(Math.random() * 100) + 1;
 		const outcome = classifyAttack(roll, target);
+		const effect = rollCombatAttackEffect(outcome, weapon.category);
 
 		let damage: DamageRoll | undefined;
 		if (outcome === 'hit' || outcome === 'critical_hit' || outcome === 'double') {
 			damage = rollWeaponDamage(char, weapon, attackType, useTwoHands, outcome === 'critical_hit', bonus);
+			if (effect?.extraDamageRolls?.length && effect.extraDamageFormula) {
+				const [count, sides] = effect.extraDamageFormula.match(/^(\d+)[кd](\d+)$/i)!.slice(1).map(Number);
+				const sum = effect.extraDamageRolls.reduce((a, b) => a + b, 0);
+				damage.total += sum;
+				damage.extraRolls = [
+					...(damage.extraRolls ?? []),
+					{ label: effect.label, rolls: effect.extraDamageRolls, sum, diceCount: count, diceSides: sides }
+				];
+			}
 		}
 
-		attacks.push({ roll, target, outcome, damage });
+		attacks.push({ roll, target, outcome, damage, effect });
 	}
 
 	return attacks;

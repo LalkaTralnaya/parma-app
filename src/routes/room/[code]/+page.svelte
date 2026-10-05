@@ -13,7 +13,7 @@
 	import { listCharacters, getCharacter, saveCharacter } from '../../../lib/db/characters';
 	import { getDeviceId } from '../../../lib/supabase/client';
 	import { RACES } from '../../../lib/rules/races';
-	import type { Character } from '../../../lib/types';
+	import type { Character } from '../../../lib/type';
 
 	let room = $state<Room | null>(null);
 	let participants = $state<RoomParticipant[]>([]);
@@ -148,7 +148,7 @@ async function declineGift(p: RoomParticipant) {
 
 			// Присоединяемся (если уже в комнате — обновляем)
 			const displayName = localStorage.getItem('parma_player_name') || 'Гость';
-			const char = selectedCharacterId ? await getCharacter(selectedCharacterId) : null;
+			const char = selectedCharacterId ? (await getCharacter(selectedCharacterId)) ?? null : null;
 			await joinRoom(r.id, displayName, char);
 
 			// Загружаем всех участников и броски
@@ -180,7 +180,7 @@ async function declineGift(p: RoomParticipant) {
 	async function pickCharacter(charId: string) {
 	selectedCharacterId = charId;
 	if (!room) return;
-	const char = await getCharacter(charId);
+	const char = (await getCharacter(charId)) ?? null;
 	const displayName = localStorage.getItem('parma_player_name') || 'Гость';
 	await joinRoom(room.id, displayName, char);
 
@@ -279,7 +279,7 @@ async function declineGift(p: RoomParticipant) {
 		}
 		if (roll.roll_type === 'spell') {
 			return {
-				text: `Заклинание ${d.spellName ?? ''}: к100 = ${d.roll} ≤ ${d.target} — ${translateResult(r)}${d.damage ? `, урон ${d.damage}` : ''}`,
+				text: `Магическая атака ${d.spellName ?? ''}: к100 = ${d.roll} ≤ ${d.target} — ${translateResult(r)}${d.damage ? `, эффект ${d.damage}` : ''}`,
 				resultClass: resultColorClass(r)
 			};
 		}
@@ -481,7 +481,10 @@ async function declineGift(p: RoomParticipant) {
 			<div
 				class="bg-white rounded-lg max-w-md w-full p-4 max-h-[90vh] overflow-y-auto z-[9999]"
 				onclick={(e) => e.stopPropagation()}
+				onkeydown={(e) => e.stopPropagation()}
 				role="dialog"
+				aria-modal="true"
+				tabindex="-1"
 			>
 				<h3 class="text-lg font-semibold mb-3">
 					Передать персонажа игроку

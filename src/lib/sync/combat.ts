@@ -1,6 +1,9 @@
 export interface MonsterAttackData {
 	name: string;
 	hitBonus: number;
+	hitTarget?: number;
+	damageModifier?: number;
+	attackStat?: 'strength' | 'intelligence' | 'dexterity' | 'eloquence' | 'religion';
 	damageDice: string;
 	damageType: string;
 }

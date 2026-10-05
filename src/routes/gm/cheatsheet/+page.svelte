@@ -57,7 +57,7 @@
 							<tbody>
 								<tr class="border-b"><td class="py-1 font-semibold">Навык</td><td>Хар-ка + мод. + очки</td><td class="text-gray-500">Взлом: 36+6+2 = 44</td></tr>
 								<tr class="border-b"><td class="py-1 font-semibold">Избавление</td><td>Хар-ка + бонус навыка</td><td class="text-gray-500">Стойкость: 42+8 = 50</td></tr>
-								<tr><td class="py-1 font-semibold">Атака</td><td>30 + мод. + бонус − Броня</td><td class="text-gray-500">Меч: 30+8−5 = 23</td></tr>
+								<tr><td class="py-1 font-semibold">Атака</td><td>Хар-ка + мод. навыка + навык (если есть) + бонусы − Броня</td><td class="text-gray-500">Для существ: хар-ка + её мод.</td></tr>
 							</tbody>
 						</table>
 					</div>

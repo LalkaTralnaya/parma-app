@@ -15,6 +15,8 @@ export interface Ability {
 	/** Для прогрессирующих умений (например, «Острый глаз I/II/III»).
 	 *  Работает только максимальный бонус в группе, не суммируется. */
 	progressiveGroup?: string;
+	/** Context-only bonus: it applies only to that kind of check, not every check for the skill. */
+	bonusContext?: string;
 }
 
 export const ABILITY_THRESHOLDS: Record<AbilityTier, number> = {
@@ -206,12 +208,12 @@ export const ABILITIES: Ability[] = [
 		description: 'Находите пропитание для группы из 4 человек за 1 час без проверки в обычной местности.' },
 	{ id: 'survival_tracker', name: 'Умелый следопыт', skillId: 'survival', tier: 1, type: 'passive',
 		description: '+5 к проверкам Наблюдательности при поиске следов людей или животных.',
-		skillBonus: 5, bonusTo: 'perception', progressiveGroup: 'survival_tracker' },
+		skillBonus: 5, bonusTo: 'perception', progressiveGroup: 'survival_tracker', bonusContext: 'tracking' },
 	{ id: 'survival_camp', name: 'Привал', skillId: 'survival', tier: 1, type: 'active',
 		description: 'За 1 час и 2 бодрости организуете лагерь: +5 к Скрытности для всех в нём до утра.' },
 	{ id: 'survival_master_tracker', name: 'Мастер следопыт', skillId: 'survival', tier: 2, type: 'passive',
 		description: '+10 к поиску следов; определяете состояние существа (ранено, несёт груз, бежит).',
-		skillBonus: 10, bonusTo: 'perception', progressiveGroup: 'survival_tracker' },
+		skillBonus: 10, bonusTo: 'perception', progressiveGroup: 'survival_tracker', bonusContext: 'tracking' },
 	{ id: 'survival_shelter', name: 'Надёжное убежище', skillId: 'survival', tier: 2, type: 'active',
 		description: 'За 2 часа и 3 бодрости укрытие: короткий отдых даёт +1к4 живучести, длительный снимает +1 Истощение.' },
 	{ id: 'survival_terrain', name: 'Чтение местности', skillId: 'survival', tier: 2, type: 'passive',

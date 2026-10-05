@@ -27,6 +27,19 @@ export function getSpellCastTarget(char: Character, school: string): number {
 	return Math.min(MAX_CHECK_TARGET, charValue + skillTotal);
 }
 
+/** Цель магической атаки: значение характеристики + полный итог навыка школы + бонусы − Броня цели. */
+export function getSpellAttackTarget(
+	char: Character,
+	school: string,
+	targetArmor: number,
+	attackBonus = 0
+): number {
+	const skill = SKILLS.find((s) => s.id === school);
+	if (!skill) return 0;
+	const charValue = getCharacteristicValue(char, skill.parent);
+	return Math.max(0, charValue + getSkillTotal(char, school) + attackBonus - targetArmor);
+}
+
 /** Уровень владения школой у персонажа (0 — не умеет, 1+ — умеет) */
 export function getSpellSkillLevel(char: Character, school: string): number {
 	return char.skillPoints[school] ?? 0;

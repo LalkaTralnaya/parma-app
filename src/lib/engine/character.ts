@@ -50,7 +50,8 @@ export function getCharacteristicValue(
 export function getSkillTotal(
 	char: Character,
 	skillId: string,
-	condMods?: CondModsInput
+	condMods?: CondModsInput,
+	checkContext?: string
 ): number {
 	const skill = SKILLS.find((s) => s.id === skillId);
 	if (!skill) return 0;
@@ -70,13 +71,13 @@ export function getSkillTotal(
 		}
 	}
 
-	total += getAbilityBonusToSkill(char, skillId);
+	total += getAbilityBonusToSkill(char, skillId, checkContext);
 
 	return total;
 }
 
 /** Собрать бонусы от открытых умений к конкретному навыку */
-export function getAbilityBonusToSkill(char: Character, skillId: string): number {
+export function getAbilityBonusToSkill(char: Character, skillId: string, checkContext?: string): number {
 	const progressiveGroups: Record<string, number> = {};
 	let flatSum = 0;
 
@@ -88,6 +89,7 @@ export function getAbilityBonusToSkill(char: Character, skillId: string): number
 
 			const target = a.bonusTo ?? a.skillId;
 			if (target !== skillId) continue;
+			if (a.bonusContext && a.bonusContext !== checkContext) continue;
 			if (!a.skillBonus) continue;
 
 			if (a.progressiveGroup) {
@@ -103,7 +105,7 @@ export function getAbilityBonusToSkill(char: Character, skillId: string): number
 }
 
 /** Детализация бонусов от умений: откуда что взялось */
-export function getSkillBonusDetails(char: Character, skillId: string): Array<{ name: string; value: number }> {
+export function getSkillBonusDetails(char: Character, skillId: string, checkContext?: string): Array<{ name: string; value: number }> {
 	const details: Array<{ name: string; value: number }> = [];
 	const progressiveGroups = new Map<string, { name: string; value: number }>();
 	const flat: Array<{ name: string; value: number }> = [];
@@ -115,6 +117,7 @@ export function getSkillBonusDetails(char: Character, skillId: string): Array<{ 
 			if (ABILITY_THRESHOLDS[a.tier] > charValue) continue;
 			const target = a.bonusTo ?? a.skillId;
 			if (target !== skillId) continue;
+			if (a.bonusContext && a.bonusContext !== checkContext) continue;
 			if (!a.skillBonus) continue;
 
 			if (a.progressiveGroup) {
@@ -138,12 +141,13 @@ export function getSkillBonusDetails(char: Character, skillId: string): Array<{ 
 export function getSkillCheckTarget(
 	char: Character,
 	skillId: string,
-	condMods?: CondModsInput
+	condMods?: CondModsInput,
+	checkContext?: string
 ): number {
 	const skill = SKILLS.find((s) => s.id === skillId);
 	if (!skill) return 0;
 	const charValue = getCharacteristicValue(char, skill.parent, condMods);
-	const skillTotal = getSkillTotal(char, skillId, condMods);
+	const skillTotal = getSkillTotal(char, skillId, condMods, checkContext);
 	const base = charValue + skillTotal;
 	const withState = base + (condMods?.skills ?? 0);
 	return Math.min(MAX_CHECK_TARGET, Math.max(0, withState));

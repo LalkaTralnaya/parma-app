@@ -39,7 +39,7 @@
 			.map(([k, v]) => `${k}: ${modS(v as number)}`)
 			.join('\n');
 		const attacks = s.scaledAttacks
-			.map((a) => `${a.name}: попадание ≤ ${30 + a.hitBonus}, урон ${a.damageDice} + ${modS(s.scaledMods[s.base.primaryStat])} ${a.damageType}${a.notes ? ' (' + a.notes + ')' : ''}`)
+			.map((a) => `${a.name}: попадание ≤ ${a.hitTarget ?? (30 + a.hitBonus)}, урон ${a.damageDice}${(a.damageModifier ?? s.scaledMods[a.attackStat ?? s.base.primaryStat]) ? ' ' + modS(a.damageModifier ?? s.scaledMods[a.attackStat ?? s.base.primaryStat]) : ''} ${a.damageType}${a.notes ? ' (' + a.notes + ')' : ''}`)
 			.join('\n');
 		const text = `${s.base.name} (уровень ${s.level}, +${s.levelsGained} от базового)\nЖВЧ: ${s.scaledHp}\nБроня: ${s.scaledArmor}\nСкорость: ${s.base.speed} саженей\n\nМодификаторы:\n${mods}\n\nАтаки:\n${attacks}\n\nУмения:\n${s.base.traits.join('\n')}`;
 		try {
@@ -170,12 +170,12 @@
 						<div class="border-b pb-2 last:border-b-0">
 							<div class="font-medium">{atk.name}</div>
 							<div class="text-sm text-gray-600">
-								Попадание: ≤ <span class="font-bold">{30 + atk.hitBonus}</span>
-								(30 {modSign(atk.hitBonus)})
+								Попадание: ≤ <span class="font-bold">{atk.hitTarget ?? (30 + atk.hitBonus)}</span>
+								(характеристика + модификатор)
 							</div>
 							{#if atk.damageDice !== '0'}
 								<div class="text-sm text-gray-600">
-									Урон: <span class="font-bold">{atk.damageDice} {modSign(primaryMod)}</span>
+									Урон: <span class="font-bold">{atk.damageDice}{(atk.damageModifier ?? scaled.scaledMods[atk.attackStat ?? scaled.base.primaryStat]) !== 0 ? ` ${modSign(atk.damageModifier ?? scaled.scaledMods[atk.attackStat ?? scaled.base.primaryStat])}` : ''}</span>
 									{atk.damageType}
 								</div>
 							{/if}

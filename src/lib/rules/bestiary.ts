@@ -1,10 +1,14 @@
 export interface MonsterAttack {
 	name: string;
-	hitBonus: number;      // добавляется к 30
+	hitBonus: number;      // модификатор характеристики атаки + отдельный бонус, если указан
 	damageDice: string;    // '1к6', '2к8'
 	damageType: string;    // 'колющий', 'рубящий', 'нежива'
 	notes?: string;
 	save?: string;
+	attackStat?: 'strength' | 'intelligence' | 'dexterity' | 'eloquence' | 'religion';
+	attackBonus?: number;
+	hitTarget?: number;
+	damageModifier?: number;
 }
 
 export interface BaseMonster {
@@ -302,15 +306,15 @@ export const BESTIARY: BaseMonster[] = [
 		baseLevel: 3,
 		dangerLabel: '2-3',
 		primaryStat: 'strength',
-		baseMods: { strength: 6, dexterity: 2, intelligence: 2, eloquence: -1, religion: 1 },
-		hp: 50,
-		armor: 15,
-		speed: 6,
+		baseMods: { strength: 9, dexterity: 7, intelligence: 7, eloquence: 6, religion: 7 },
+		hp: 40,
+		armor: 13,
+		speed: 8,
 		attacks: [
-			{ name: 'Гнилая ветвь', hitBonus: 6, damageDice: '1к8', damageType: 'дробящий' },
+			{ name: 'Гнилая ветвь', hitBonus: 9, damageDice: '1к8', damageType: 'дробящий' },
 			{
-				name: 'Плевок гнилью', hitBonus: 2, damageDice: '1к6', damageType: 'кислотный',
-				notes: 'Даль. Избавление Стойкости — иначе Хворь на 1 день'
+				name: 'Плевок гнилью', hitBonus: 7, attackStat: 'dexterity', damageModifier: 0, damageDice: '1к6', damageType: 'кислотный',
+				notes: 'Даль. Избавление Стойкости со штрафом −10 — иначе Хворь на 1 день'
 			}
 		],
 		traits: [
@@ -388,18 +392,19 @@ export const BESTIARY: BaseMonster[] = [
 		baseLevel: 2,
 		dangerLabel: '2',
 		primaryStat: 'strength',
-		baseMods: { strength: 6, dexterity: 0, intelligence: -3, eloquence: -4, religion: -3 },
-		hp: 42,
+		baseMods: { strength: 9, dexterity: 6, intelligence: 3, eloquence: 2, religion: 3 },
+		hp: 40,
 		armor: 14,
 		speed: 4,
 		attacks: [
 			{
-				name: 'Цепкая рука', hitBonus: 6, damageDice: '1к6', damageType: 'дробящий',
+				name: 'Цепкая рука', hitBonus: 9, damageDice: '1к6', damageType: 'дробящий',
 				notes: 'При успехе — Избавление Силы или утащен в болото'
 			}
 		],
 		traits: [
-			'Регенерация в болоте: 1к6+4 ЖВЧ в начале хода (только в болоте)',
+			'Регенерация в болоте: 1к6+9 ЖВЧ в начале хода (только в болоте)',
+			'Скорость в болоте: 8 саженей',
 			'Засада в тине: если не двигался — +10 Скрытность, атака из засады +10 к попаданию'
 		]
 	},

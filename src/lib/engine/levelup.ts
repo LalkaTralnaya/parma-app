@@ -25,23 +25,25 @@ function rollDice(dice: string): number {
 function getModWithBonus(
 	char: Character,
 	parentId: string,
-	levelUpBonusToChar: string | null
+	levelUpBonusToChar: string | null,
+	characteristicIncrease = 6
 ): number {
 	let value = getCharacteristicValue(char, parentId);
 	// Если сейчас раздаём +1 именно этой характеристике — учитываем
-	if (levelUpBonusToChar === parentId) value += 1;
+	if (levelUpBonusToChar === parentId) value += characteristicIncrease;
 	return getModifier(value);
 }
 
 /** Бросок роста всех 5 ресурсов.
- *  charStatBonus — какая характеристика получит +1 в этом уровне (для правильного модификатора). */
+ *  charStatBonus — какая характеристика получит +6 в этом уровне (для правильного модификатора). */
 export function rollResourceGrowth(
 	char: Character,
-	charStatBonus: string | null
+	charStatBonus: string | null,
+	characteristicIncrease = 6
 ): ResourceLevelRoll[] {
 	return RESOURCES.map((res) => {
 		const dieResult = rollDice(res.perLevelDice);
-		const modValue = getModWithBonus(char, res.parent, charStatBonus);
+		const modValue = getModWithBonus(char, res.parent, charStatBonus, characteristicIncrease);
 		return {
 			resourceId: res.id,
 			resourceName: res.name,
@@ -54,22 +56,23 @@ export function rollResourceGrowth(
 	});
 }
 
-/** Применить левелап: +1 к уровню, +1 к характеристике, записать броски в историю */
+/** Применить левелап: +1 к уровню, +6 к выбранной характеристике, записать броски в историю */
 export function applyLevelUp(
 	char: Character,
 	charStatBonus: string,
-	rolls: ResourceLevelRoll[]
+	rolls: ResourceLevelRoll[],
+	characteristicIncrease = 6
 ): Character {
 	const updated = JSON.parse(JSON.stringify(char)) as Character;
 
 	// Уровень +1
 	updated.level += 1;
 
-	// +1 к характеристике
+	// +6 к характеристике по правилу сюжетного роста
 	if (!updated.characteristics[charStatBonus]) {
 		updated.characteristics[charStatBonus] = { levelUpBonus: 0 };
 	}
-	updated.characteristics[charStatBonus].levelUpBonus += 1;
+	updated.characteristics[charStatBonus].levelUpBonus += characteristicIncrease;
 
 	// Записать броски в историю
 	if (!updated.resourceRolls) updated.resourceRolls = {};

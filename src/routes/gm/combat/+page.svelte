@@ -16,6 +16,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { getCharacteristicValue, getModifier, getResourceMax } from '../../../lib/engine/character';
 	import { getArmorValue } from '../../../lib/engine/combat';
+	import { rollCombatAttackEffect } from '../../../lib/engine/combat';
 	import { BESTIARY } from '../../../lib/rules/bestiary';
 	import { scaleMonster } from '../../../lib/engine/bestiary';
 	import {
@@ -39,6 +40,7 @@
 		roll: number;
 		target: number;
 		outcome: 'hit' | 'miss' | 'critical_hit' | 'critical_miss' | 'double';
+		effect?: { table: string; roll: number; label: string; extraDamageRolls?: number[]; extraDamageFormula?: string };
 		damageRoll?: { rolls: number[]; mod: number; total: number; diceString: string; type: string };
 	} | null>(null);
 	let roomId = $state<string | null>(null);
@@ -78,13 +80,15 @@
 		if (!pendingAttack) return;
 		const { attacker, attack } = pendingAttack;
 		const roll = rollD100();
-		const targetValue = 30 + attack.hitBonus - target.armor;
+		const targetValue = (attack.hitTarget ?? 30 + attack.hitBonus) - target.armor;
 
 		let outcome: 'hit' | 'miss' | 'critical_hit' | 'critical_miss' | 'double';
 		if (roll === 1) outcome = 'critical_hit';
 		else if (roll === 100) outcome = 'critical_miss';
 		else if (roll % 11 === 0 && roll <= 99 && roll <= targetValue) outcome = 'double';
 		else outcome = roll <= targetValue ? 'hit' : 'miss';
+		const weaponCategory = /двуруч/i.test(attack.name) ? 'two_handed' : undefined;
+		const effect = rollCombatAttackEffect(outcome, weaponCategory);
 
 		let damageRoll;
 		let appliedDamage = 0;
@@ -92,7 +96,7 @@
 		if ((outcome === 'hit' || outcome === 'critical_hit' || outcome === 'double') && attack.damageDice !== '0') {
 			const rolls = rollDice(attack.damageDice);
 			const baseSum = rolls.reduce((a, b) => a + b, 0);
-			const mod = attacker.primaryMod ?? 0;
+			const mod = attack.damageModifier ?? attacker.primaryMod ?? 0;
 			appliedDamage = baseSum + mod;
 
 			// Крит — максимум кубиков
@@ -100,6 +104,7 @@
 				const maxRoll = rolls.length * Number(attack.damageDice.match(/[кd](\d+)/i)?.[1] ?? 0);
 				appliedDamage = maxRoll + mod;
 			}
+			appliedDamage += effect?.extraDamageRolls?.reduce((a, b) => a + b, 0) ?? 0;
 
 			damageRoll = {
 				rolls,
@@ -121,6 +126,7 @@
 			roll,
 			target: targetValue,
 			outcome,
+			effect,
 			damageRoll
 		};
 
@@ -131,7 +137,7 @@
 		if (attack.damageDice === '0') return;
 		const rolls = rollDice(attack.damageDice);
 		const baseSum = rolls.reduce((a, b) => a + b, 0);
-		const mod = attacker.primaryMod ?? 0;
+		const mod = attack.damageModifier ?? attacker.primaryMod ?? 0;
 		attackResult = {
 			attackerName: attacker.name,
 			attackName: attack.name + ' (только урон)',
@@ -268,7 +274,7 @@ async function addSelectedPlayers() {
 			s.participants.push({
 				id: crypto.randomUUID(),
 				name: c.name || '(без имени)', 
-				playerName: p.display_name || null,
+				playerName: p.display_name || undefined,
 				sourceId: c.id,
 				isPlayer: true,
 				maxHp: hpMax,
@@ -335,6 +341,9 @@ async function addSelectedPlayers() {
 			attacks: scaled.scaledAttacks.map((a) => ({
 				name: a.name,
 				hitBonus: a.hitBonus,
+				hitTarget: a.hitTarget,
+				attackStat: a.attackStat,
+				damageModifier: a.damageModifier ?? scaled.scaledMods[a.attackStat ?? base.primaryStat],
 				damageDice: a.damageDice,
 				damageType: a.damageType
 			})),
@@ -644,9 +653,9 @@ async function addSelectedPlayers() {
 												<div class="flex-1 min-w-0">
 													<div class="font-medium truncate">{attack.name}</div>
 													<div class="text-gray-500">
-														≤ {30 + attack.hitBonus}
+														≤ {attack.hitTarget ?? (30 + attack.hitBonus)}
 														{#if attack.damageDice !== '0'}
-															· {attack.damageDice}{#if (p.primaryMod ?? 0) !== 0} {(p.primaryMod ?? 0) >= 0 ? '+' : ''}{p.primaryMod}{/if} {attack.damageType}
+											· {attack.damageDice}{#if (attack.damageModifier ?? p.primaryMod ?? 0) !== 0} {(attack.damageModifier ?? p.primaryMod ?? 0) >= 0 ? '+' : ''}{attack.damageModifier ?? p.primaryMod}{/if} {attack.damageType}
 														{/if}
 													</div>
 												</div>
@@ -779,7 +788,7 @@ async function addSelectedPlayers() {
 					{pendingAttack.attacker.name} атакует: {pendingAttack.attack.name}
 				</h3>
 				<p class="text-sm text-gray-500 mb-4">
-					Попадание ≤ {30 + pendingAttack.attack.hitBonus}. Выбери цель:
+					Попадание ≤ {pendingAttack.attack.hitTarget ?? (30 + pendingAttack.attack.hitBonus)}. Выбери цель:
 				</p>
 				<div class="space-y-2 mb-4 max-h-64 overflow-y-auto">
 					{#each players as target (target.id)}
@@ -795,7 +804,7 @@ async function addSelectedPlayers() {
 							</div>
 							<div class="text-xs text-gray-500">
 								Броня {target.armor} · ЖВЧ {target.currentHp}/{target.maxHp}
-								→ цель атаки {30 + pendingAttack!.attack.hitBonus - target.armor}
+								→ цель атаки {(pendingAttack!.attack.hitTarget ?? (30 + pendingAttack!.attack.hitBonus)) - target.armor}
 							</div>
 						</button>
 					{/each}
@@ -826,6 +835,15 @@ async function addSelectedPlayers() {
 								{attackLabel[attackResult.outcome]}
 							</span>
 						</div>
+					</div>
+				{/if}
+				{#if attackResult.effect}
+					<div class="mb-3 rounded bg-amber-50 border border-amber-200 p-3 text-amber-900">
+						<strong>{attackResult.effect.table} · к{attackResult.effect.table === 'Явь' ? 10 : 12}: {attackResult.effect.roll}</strong>
+						<div>{attackResult.effect.label}</div>
+						{#if attackResult.effect.extraDamageRolls?.length}
+							<small>Дополнительный урон {attackResult.effect.extraDamageFormula}: [{attackResult.effect.extraDamageRolls.join(', ')}]</small>
+						{/if}
 					</div>
 				{/if}
 

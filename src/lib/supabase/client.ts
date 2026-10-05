@@ -1,11 +1,29 @@
 import { createClient } from '@supabase/supabase-js';
-import { PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY } from '$env/static/public';
+import { env } from '$env/dynamic/public';
+
+const PUBLIC_SUPABASE_URL = env.PUBLIC_SUPABASE_URL;
+const PUBLIC_SUPABASE_ANON_KEY = env.PUBLIC_SUPABASE_ANON_KEY;
 
 if (!PUBLIC_SUPABASE_URL || !PUBLIC_SUPABASE_ANON_KEY) {
 	throw new Error('Не заданы PUBLIC_SUPABASE_URL или PUBLIC_SUPABASE_ANON_KEY в .env');
 }
 
 export const supabase = createClient(PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY, {
+	global: {
+		fetch: (input, init = {}) => {
+			const headers = new Headers(typeof Request !== 'undefined' && input instanceof Request ? input.headers : undefined);
+			new Headers(init.headers).forEach((value, key) => headers.set(key, value));
+			if (typeof window !== 'undefined') {
+				let deviceId = window.localStorage.getItem('parma_device_id');
+				if (!deviceId) {
+					deviceId = crypto.randomUUID();
+					window.localStorage.setItem('parma_device_id', deviceId);
+				}
+				headers.set('x-device-id', deviceId);
+			}
+			return fetch(input, { ...init, headers });
+		}
+	},
 	realtime: {
 		params: {
 			eventsPerSecond: 10

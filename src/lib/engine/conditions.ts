@@ -1,5 +1,9 @@
 import { findCondition, type ConditionDef, type ConditionModifiers } from '../rules/conditions';
+import { CHARACTERISTICS } from '../rules/characteristics';
+import { SKILLS } from '../rules/skills';
+import { getCharacteristicValue, getSkillCheckTarget } from './character';
 import type { Character } from '$lib/type';
+import { getDecaySaveBonus } from './decay';
 
 /** Собрать суммарные модификаторы от всех активных состояний */
 export function getConditionModifiers(char: Character): ConditionModifiers {
@@ -45,56 +49,18 @@ export function getConditionSaveTarget(
 	const charId = useAlternative && def.save.charB ? def.save.charB : def.save.charA;
 	const skillId = useAlternative && def.save.skillB ? def.save.skillB : def.save.skillA;
 
-	const charValue = getCharValue(char, charId);
-	const skillBonus = skillId ? getSkillBonus(char, skillId) : 0;
+	const modifiers = getConditionModifiers(char);
+	const charValue = getCharacteristicValue(char, charId, modifiers);
+	const baseTarget = skillId ? getSkillCheckTarget(char, skillId, modifiers) : charValue + (modifiers.skills ?? 0);
 
-	const charName = getCharShort(charId);
-	const skillName = skillId ? getSkillShort(skillId) : '';
+	const decayBonus = getDecaySaveBonus(char.decay?.points ?? 0, def.id);
+	const charName = CHARACTERISTICS.find((item) => item.id === charId)?.short ?? charId;
+	const skillName = skillId ? SKILLS.find((item) => item.id === skillId)?.name ?? skillId : '';
 
 	return {
-		target: Math.min(95, charValue + skillBonus),
-		label: `${charName}${skillBonus > 0 ? ` + ${skillName} ${skillBonus >= 0 ? '+' : ''}${skillBonus}` : ''}`
+			target: Math.min(95, Math.max(0, baseTarget + (modifiers.saves ?? 0) + decayBonus)),
+			label: `${charName}${skillId ? ` + ${skillName}` : ''} = ${baseTarget + (modifiers.saves ?? 0) + decayBonus}${decayBonus ? ` (Тлен +${decayBonus})` : ''}`
 	};
-}
-
-// Небольшие хелперы, чтобы не тянуть тяжёлый engine/character
-function getCharValue(char: Character, charId: string): number {
-	// 36 + расовый бонус + levelUpBonus
-	const base = 36;
-	const raceBonus = 0; // упрощённо — реальный расчёт в engine/character
-	const levelBonus = char.characteristics[charId]?.levelUpBonus ?? 0;
-	return base + raceBonus + levelBonus;
-}
-
-function getSkillBonus(char: Character, skillId: string): number {
-	return char.skillPoints[skillId] ?? 0;
-}
-
-function getCharShort(charId: string): string {
-	const map: Record<string, string> = {
-		strength: 'СИЛ',
-		intelligence: 'ИНТ',
-		dexterity: 'ЛОВ',
-		eloquence: 'КРА',
-		religion: 'РЕЛ'
-	};
-	return map[charId] ?? charId;
-}
-
-function getSkillShort(skillId: string): string {
-	// Возвращаем название навыка — грубо, для отображения
-	const map: Record<string, string> = {
-		fortitude: 'Стойкость',
-		blocking: 'Блокирование',
-		restoration: 'Восстановление',
-		eloquence: 'Красноречие',
-		witchcraft: 'Колдовство',
-		enchantment: 'Зачарование',
-		light_armor: 'Лёгкая броня',
-		heavy_armor: 'Тяжёлая броня',
-		prayer: 'Молитва'
-	};
-	return map[skillId] ?? skillId;
 }
 
 /** Бросить урон в конце хода от всех DOT-эффектов */

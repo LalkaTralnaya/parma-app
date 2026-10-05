@@ -156,8 +156,9 @@ onMount(() => {
 			<h2 class="text-xl font-semibold">Создать комнату</h2>
 
 			<div>
-				<label class="block text-sm text-gray-600 mb-1">Ваше имя</label>
+				<label for="master-name" class="block text-sm text-gray-600 mb-1">Ваше имя</label>
 				<input
+					id="master-name"
 					type="text"
 					bind:value={name}
 					placeholder="Например, Мастер Владислав"
@@ -165,8 +166,9 @@ onMount(() => {
 			</div>
 
 			<div>
-				<label class="block text-sm text-gray-600 mb-1">Название комнаты (необязательно)</label>
+				<label for="room-name" class="block text-sm text-gray-600 mb-1">Название комнаты (необязательно)</label>
 				<input
+					id="room-name"
 					type="text"
 					bind:value={roomName}
 					placeholder="Погоня за полуденницей"
@@ -196,8 +198,9 @@ onMount(() => {
 			<h2 class="text-xl font-semibold">Войти в комнату</h2>
 
 			<div>
-				<label class="block text-sm text-gray-600 mb-1">Ваше имя</label>
+				<label for="player-name" class="block text-sm text-gray-600 mb-1">Ваше имя</label>
 				<input
+					id="player-name"
 					type="text"
 					bind:value={name}
 					placeholder="Например, Радомир"
@@ -205,8 +208,9 @@ onMount(() => {
 			</div>
 
 			<div>
-				<label class="block text-sm text-gray-600 mb-1">Код комнаты</label>
+				<label for="room-code" class="block text-sm text-gray-600 mb-1">Код комнаты</label>
 				<input
+					id="room-code"
 					type="text"
 					bind:value={code}
 					placeholder="ABC123"

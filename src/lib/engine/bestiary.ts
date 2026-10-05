@@ -42,14 +42,31 @@ export function scaleMonster(base: BaseMonster, targetLevel: number): ScaledMons
 		hp += roll + primaryBaseMod;
 	}
 
-	// Атаки — растёт попадание и урон (модификатор вырос)
-	const scaledAttacks: MonsterAttack[] = base.attacks.map((a) => ({
-		...a,
-		hitBonus: a.hitBonus + growth,
-		notes: a.notes
-			? `${a.notes} (+${growth} к урону)`
-			: growth > 0 ? `+${growth} к урону` : undefined
-	}));
+	// Значение атаки существа = значение используемой характеристики + её модификатор + бонус атаки.
+	// Старые hitBonus содержали модификатор характеристики и возможный отдельный бонус.
+	const scaledAttacks: MonsterAttack[] = base.attacks.map((a) => {
+		const primaryMod = base.baseMods[base.primaryStat] ?? 0;
+		const matchingStats = Object.entries(base.baseMods)
+			.filter(([, mod]) => mod === a.hitBonus)
+			.map(([stat]) => stat as NonNullable<MonsterAttack['attackStat']>);
+		const inferredStat = a.attackStat ?? (
+			a.hitBonus >= primaryMod || matchingStats.length !== 1 ? base.primaryStat : matchingStats[0]
+		);
+		const baseStatMod = base.baseMods[inferredStat] ?? primaryMod;
+		const attackBonus = a.attackBonus ?? (a.hitBonus - baseStatMod);
+		const statMod = scaledMods[inferredStat] ?? baseStatMod;
+		const hitBonus = statMod + attackBonus;
+		return {
+			...a,
+			attackStat: inferredStat,
+			attackBonus,
+			hitBonus,
+			hitTarget: statMod * 6 + hitBonus,
+			notes: a.notes
+				? `${a.notes} (+${growth} к урону)`
+				: growth > 0 ? `+${growth} к урону` : undefined
+		};
+	});
 
 	return {
 		base,
