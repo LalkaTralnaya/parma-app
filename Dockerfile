@@ -13,6 +13,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=builder /app/build ./build
+COPY server.mjs ./server.mjs
 EXPOSE 8080
 USER node
-CMD ["node", "build"]
+CMD ["node", "server.mjs"]

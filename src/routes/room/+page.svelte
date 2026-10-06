@@ -17,7 +17,22 @@
 	let code = $state('');
 	let name = $state('');
 	let busy = $state(false);
+	let joinStage = $state<'lookup' | 'navigation'>('lookup');
 	let error = $state('');
+
+	async function openJoinedRoom(roomCode: string) {
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		try {
+			await Promise.race([
+				goto(`/room/${roomCode}`),
+				new Promise<never>((_, reject) => {
+					timer = setTimeout(() => reject(new Error('Не удалось открыть страницу комнаты за 15 секунд. Попробуйте повторить вход или сменить сеть.')), 15_000);
+				})
+			]);
+		} finally {
+			clearTimeout(timer);
+		}
+	}
 
 	onMount(() => {
 		name = getPlayerName();
@@ -52,6 +67,7 @@
 		}
 		error = '';
 		busy = true;
+		joinStage = 'lookup';
 		try {
 			setPlayerName(name.trim());
 			const room = await findRoomByCode(code.trim());
@@ -59,7 +75,8 @@
 				error = 'Комната с таким кодом не найдена';
 				return;
 			}
-			await goto(`/room/${room.code}`);
+			joinStage = 'navigation';
+			await openJoinedRoom(room.code);
 		} catch (e) {
 			error = (e as Error).message;
 		} finally {
@@ -221,13 +238,14 @@ onMount(() => {
 			{#if error}
 				<div class="text-sm text-red-600 p-2 bg-red-50 rounded">{error}</div>
 			{/if}
+			{#if busy}<p class="text-sm text-gray-500">{joinStage === 'lookup' ? 'Проверяем код и связь с сервером комнат…' : 'Открываем страницу комнаты…'}</p>{/if}
 
 			<div class="flex gap-2">
 				<button
 					class="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-300"
 					disabled={busy}
 					onclick={handleJoin}>
-					{busy ? 'Входим…' : 'Войти'}
+					{busy ? (joinStage === 'lookup' ? 'Ищем комнату…' : 'Открываем комнату…') : 'Войти'}
 				</button>
 				<button
 					class="px-4 py-2 border rounded hover:bg-gray-50"

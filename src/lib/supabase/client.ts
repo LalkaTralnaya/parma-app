@@ -8,7 +8,14 @@ if (!PUBLIC_SUPABASE_URL || !PUBLIC_SUPABASE_ANON_KEY) {
 	throw new Error('Не заданы PUBLIC_SUPABASE_URL или PUBLIC_SUPABASE_ANON_KEY в .env');
 }
 
-export const supabase = createClient(PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY, {
+const supabaseUrl = typeof window === 'undefined'
+	? PUBLIC_SUPABASE_URL
+	: `${window.location.origin}/api/supabase`;
+
+export const supabase = createClient(supabaseUrl, PUBLIC_SUPABASE_ANON_KEY, {
+	auth: {
+		storageKey: `sb-${new URL(PUBLIC_SUPABASE_URL).hostname.split('.')[0]}-auth-token`
+	},
 	global: {
 		fetch: (input, init = {}) => {
 			const headers = new Headers(typeof Request !== 'undefined' && input instanceof Request ? input.headers : undefined);

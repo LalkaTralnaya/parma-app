@@ -1,6 +1,32 @@
 import { supabase, getDeviceId, getPlayerName } from '../supabase/client';
 import type { Character } from '../type';
 
+const ROOM_REQUEST_TIMEOUT_MS = 15_000;
+const ROOM_CONNECTION_ERROR = 'Нет связи с сервером комнат. Проверьте мобильную сеть, Wi-Fi или VPN и повторите попытку.';
+
+function isNetworkError(message: string): boolean {
+	return /failed to fetch|fetch failed|load failed|network|timeout|timed out|abort/i.test(message);
+}
+
+async function roomRequest<T>(query: (signal: AbortSignal) => PromiseLike<T>): Promise<T> {
+	const controller = new AbortController();
+	let timeoutId: ReturnType<typeof setTimeout> | undefined;
+	const timeout = new Promise<never>((_, reject) => {
+		timeoutId = setTimeout(() => {
+			reject(new Error(`Нет ответа от сервера комнат за ${ROOM_REQUEST_TIMEOUT_MS / 1000} секунд. Проверьте мобильную сеть, Wi-Fi или VPN и повторите попытку.`));
+			controller.abort();
+		}, ROOM_REQUEST_TIMEOUT_MS);
+	});
+	try {
+		return await Promise.race([Promise.resolve(query(controller.signal)), timeout]);
+	} catch (error) {
+		if (isNetworkError((error as Error).message ?? '')) throw new Error(ROOM_CONNECTION_ERROR);
+		throw error;
+	} finally {
+		clearTimeout(timeoutId);
+	}
+}
+
 export interface Room {
 	id: string;
 	code: string;
@@ -84,13 +110,14 @@ export async function createRoom(name: string): Promise<Room> {
 
 /** Найти комнату по коду */
 export async function findRoomByCode(code: string): Promise<Room | null> {
-	const { data, error } = await supabase
+	const { data, error } = await roomRequest((signal) => supabase
 		.from('rooms')
 		.select('*')
 		.eq('code', code.toUpperCase())
-		.maybeSingle();
+		.abortSignal(signal)
+		.maybeSingle());
 
-	if (error) throw new Error(`Ошибка поиска: ${error.message}`);
+	if (error) throw new Error(isNetworkError(error.message) ? ROOM_CONNECTION_ERROR : `Ошибка поиска: ${error.message}`);
 	return data as Room | null;
 }
 
@@ -104,25 +131,30 @@ export async function joinRoom(
 	const deviceId = getDeviceId();
 
 	// Сначала узнаём, кто мы в этой комнате
-	const { data: room } = await supabase
+	const { data: room, error: roomError } = await roomRequest((signal) => supabase
 		.from('rooms')
 		.select('master_device_id')
 		.eq('id', roomId)
-		.maybeSingle();
+		.abortSignal(signal)
+		.maybeSingle());
+	if (roomError) throw new Error(isNetworkError(roomError.message) ? ROOM_CONNECTION_ERROR : `Ошибка загрузки комнаты: ${roomError.message}`);
+	if (!room) throw new Error('Комната не найдена');
 
 	const role: 'master' | 'player' =
 		room?.master_device_id === deviceId ? 'master' : 'player';
 
 	// Проверяем, не участник ли уже
-	const { data: existing } = await supabase
+	const { data: existing, error: existingError } = await roomRequest((signal) => supabase
 		.from('room_participants')
 		.select('*')
 		.eq('room_id', roomId)
 		.eq('device_id', deviceId)
-		.maybeSingle();
+		.abortSignal(signal)
+		.maybeSingle());
+	if (existingError) throw new Error(isNetworkError(existingError.message) ? ROOM_CONNECTION_ERROR : `Ошибка проверки участника: ${existingError.message}`);
 
 	if (existing) {
-		const { data, error } = await supabase
+		const { data, error } = await roomRequest((signal) => supabase
 			.from('room_participants')
 			.update({
 				display_name: displayName,
@@ -132,14 +164,15 @@ export async function joinRoom(
 			})
 			.eq('id', existing.id)
 			.select()
-			.single();
+			.abortSignal(signal)
+			.single());
 
-		if (error) throw new Error(`Ошибка обновления: ${error.message}`);
+		if (error) throw new Error(isNetworkError(error.message) ? ROOM_CONNECTION_ERROR : `Ошибка обновления: ${error.message}`);
 		return data as RoomParticipant;
 	}
 
 	// Новый участник
-	const { data, error } = await supabase
+	const { data, error } = await roomRequest((signal) => supabase
 		.from('room_participants')
 		.insert({
 			room_id: roomId,
@@ -149,21 +182,23 @@ export async function joinRoom(
 			role
 		})
 		.select()
-		.single();
+		.abortSignal(signal)
+		.single());
 
-	if (error) throw new Error(`Ошибка входа: ${error.message}`);
+	if (error) throw new Error(isNetworkError(error.message) ? ROOM_CONNECTION_ERROR : `Ошибка входа: ${error.message}`);
 	return data as RoomParticipant;
 }
 
 /** Список участников комнаты */
 export async function getRoomParticipants(roomId: string): Promise<RoomParticipant[]> {
-	const { data, error } = await supabase
+	const { data, error } = await roomRequest((signal) => supabase
 		.from('room_participants')
 		.select('*')
 		.eq('room_id', roomId)
-		.order('joined_at', { ascending: true });
+		.order('joined_at', { ascending: true })
+		.abortSignal(signal));
 
-	if (error) throw new Error(`Ошибка загрузки участников: ${error.message}`);
+	if (error) throw new Error(isNetworkError(error.message) ? ROOM_CONNECTION_ERROR : `Ошибка загрузки участников: ${error.message}`);
 	return (data ?? []) as RoomParticipant[];
 }
 
@@ -203,14 +238,15 @@ export async function publishRoll(
 
 /** Последние N бросков комнаты */
 export async function getRecentRolls(roomId: string, limit = 30): Promise<RoomRoll[]> {
-	const { data, error } = await supabase
+	const { data, error } = await roomRequest((signal) => supabase
 		.from('room_rolls')
 		.select('*')
 		.eq('room_id', roomId)
 		.order('created_at', { ascending: false })
-		.limit(limit);
+		.limit(limit)
+		.abortSignal(signal));
 
-	if (error) throw new Error(`Ошибка загрузки бросков: ${error.message}`);
+	if (error) throw new Error(isNetworkError(error.message) ? ROOM_CONNECTION_ERROR : `Ошибка загрузки бросков: ${error.message}`);
 	return (data ?? []) as RoomRoll[];
 }
 
