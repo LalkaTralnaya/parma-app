@@ -5,9 +5,8 @@ import {
 	getSpellLevelThreshold,
 	SCHOOL_STABILITY_THRESHOLDS
 } from '../rules/spells';
-import { ABILITIES, ABILITY_THRESHOLDS } from '../rules/abilities';
 import { MAX_CHECK_TARGET } from '../rules/characteristics';
-import { getCharacteristicValue, getSkillTotal } from './character';
+import { getCharacteristicValue, getSkillTotal, isAbilityLearned } from './character';
 import type { Character } from '$lib/type';
 /** Пороги характеристик для уровней заклинаний (1 — 42+, 2 — 54+, 3 — 72+, 4 — 84+) */
 export const SPELL_LEVEL_THRESHOLDS: Record<number, number> = {
@@ -32,12 +31,19 @@ export function getSpellAttackTarget(
 	char: Character,
 	school: string,
 	targetArmor: number,
-	attackBonus = 0
+	attackBonus = 0,
+	spell?: Spell
 ): number {
 	const skill = SKILLS.find((s) => s.id === school);
 	if (!skill) return 0;
 	const charValue = getCharacteristicValue(char, skill.parent);
-	return Math.max(0, charValue + getSkillTotal(char, school) + attackBonus - targetArmor);
+	let abilityBonus = 0;
+	if (spell?.school === 'illusion') {
+		if (spell.id === 'calm' && isAbilityLearned(char, 'illusion_hypnosis')) abilityBonus += 5;
+		if (spell.id === 'rage' && isAbilityLearned(char, 'illusion_frenzy')) abilityBonus += 5;
+		if (['minor_illusion', 'invisibility'].includes(spell.id) && isAbilityLearned(char, 'illusion_eyes')) abilityBonus += 5;
+	}
+	return Math.max(0, charValue + getSkillTotal(char, school) + attackBonus + abilityBonus - targetArmor);
 }
 
 /** Уровень владения школой у персонажа (0 — не умеет, 1+ — умеет) */
@@ -62,8 +68,6 @@ export function getSpellCost(
 	const skill = SKILLS.find((s) => s.id === spell.school);
 	if (!skill) return { base, reduced: base, reduction: 0, resource: 'mana' };
 
-	const charValue = getCharacteristicValue(char, skill.parent);
-
 	// Скидки от умений «Ученик/Адепт/Мастер школы»
 	const reductions: Array<{ id: string; value: number }> = [
 		{ id: `${spell.school}_apprentice`, value: 1 },
@@ -73,8 +77,7 @@ export function getSpellCost(
 
 	let maxReduction = 0;
 	for (const r of reductions) {
-		const ability = ABILITIES.find((a) => a.id === r.id);
-		if (ability && ABILITY_THRESHOLDS[ability.tier] <= charValue) {
+		if (isAbilityLearned(char, r.id)) {
 			maxReduction = Math.max(maxReduction, r.value);
 		}
 	}
@@ -233,6 +236,7 @@ export interface SpellEffectRoll {
 	modId: string | null;
 	typeLabel: string;
 	extraDice: number; // добавленные умениями
+	abilityBonus: number; // плоский бонус к урону или лечению
 }
 
 /** Какая характеристика даёт мод к эффекту заклинания */
@@ -253,7 +257,8 @@ export function rollSpellEffect(
 	char: Character,
 	spell: Spell,
 	useTwoHands: boolean,
-	useGrace: boolean
+	useGrace: boolean,
+	die: (sides: number) => number = (sides) => Math.floor(Math.random() * sides) + 1
 ): SpellEffectRoll | null {
 	const source = spell.damage ?? spell.effect;
 	if (!source) return null;
@@ -261,40 +266,34 @@ export function rollSpellEffect(
 	const parsed = parseSpellEffect(source, useTwoHands);
 	if (!parsed) return null;
 
-	const skill = SKILLS.find((s) => s.id === spell.school);
 	let extraDice = 0;
+	const doubleId = `${spell.school}_double`;
+	if (useTwoHands && ['destruction', 'restoration'].includes(spell.school) && isAbilityLearned(char, doubleId)) {
+		extraDice += 1;
+	}
 
-	if (skill) {
-		const charValue = getCharacteristicValue(char, skill.parent);
+	if (spell.school === 'destruction') {
+		const typeLabel = parsed.typeLabel.toLowerCase();
+		let enhancedId: string | null = null;
+		if (typeLabel.includes('огон')) enhancedId = 'destruction_flame';
+		else if (typeLabel.includes('холод') || typeLabel.includes('мороз')) enhancedId = 'destruction_frost';
+		else if (typeLabel.includes('электр') || typeLabel.includes('молни')) enhancedId = 'destruction_lightning';
 
-		const doubleId = `${spell.school}_double`;
-		const doubleAbility = ABILITIES.find((a) => a.id === doubleId);
-		if (doubleAbility && useTwoHands && ABILITY_THRESHOLDS[doubleAbility.tier] <= charValue) {
+		if (enhancedId && isAbilityLearned(char, enhancedId)) {
 			extraDice += 1;
-		}
-
-		if (spell.school === 'destruction') {
-			const typeLabel = parsed.typeLabel.toLowerCase();
-			let enhancedId: string | null = null;
-			if (typeLabel.includes('огон')) enhancedId = 'destruction_flame';
-			else if (typeLabel.includes('холод') || typeLabel.includes('мороз')) enhancedId = 'destruction_frost';
-			else if (typeLabel.includes('электр') || typeLabel.includes('молни')) enhancedId = 'destruction_lightning';
-
-			if (enhancedId) {
-				const enh = ABILITIES.find((a) => a.id === enhancedId);
-				if (enh && ABILITY_THRESHOLDS[enh.tier] <= charValue) {
-					extraDice += 1;
-				}
-			}
 		}
 	}
 
 	const totalDice = parsed.diceCount + extraDice;
 	const rolls: number[] = [];
 	for (let i = 0; i < totalDice; i++) {
-		rolls.push(Math.floor(Math.random() * parsed.diceSides) + 1);
+		rolls.push(die(parsed.diceSides));
 	}
 	const sum = rolls.reduce((a, b) => a + b, 0);
+	const abilityBonus = spell.school === 'destruction' && spell.damage && isAbilityLearned(char, 'destruction_base')
+		? (char.skillPoints.destruction ?? 0)
+		: spell.school === 'restoration' && ['heal', 'fast_heal'].includes(spell.id) && isAbilityLearned(char, 'restoration_base')
+			? (char.skillPoints.restoration ?? 0) : 0;
 
 	// Модификатор: если в строке явно указан — берём его.
 	// Иначе — по школе и режиму (жива vs благодать).
@@ -302,13 +301,14 @@ export function rollSpellEffect(
 	const modValue = Math.floor(getCharacteristicValue(char, modId) / 6);
 
 	return {
-		total: sum + modValue,
+		total: sum + modValue + abilityBonus,
 		rolls,
 		diceCount: totalDice,
 		diceSides: parsed.diceSides,
 		modValue,
 		modId,
 		typeLabel: parsed.typeLabel,
-		extraDice
+		extraDice,
+		abilityBonus
 	};
 }

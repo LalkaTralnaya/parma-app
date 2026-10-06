@@ -1,9 +1,8 @@
 import { findCondition, type ConditionDef, type ConditionModifiers } from '../rules/conditions';
 import { CHARACTERISTICS } from '../rules/characteristics';
 import { SKILLS } from '../rules/skills';
-import { getCharacteristicValue, getSkillCheckTarget } from './character';
+import { getCharacteristicValue, getSkillCheckTarget, isAbilityLearned } from './character';
 import type { Character } from '$lib/type';
-import { getDecaySaveBonus } from './decay';
 
 /** Собрать суммарные модификаторы от всех активных состояний */
 export function getConditionModifiers(char: Character): ConditionModifiers {
@@ -52,19 +51,25 @@ export function getConditionSaveTarget(
 	const modifiers = getConditionModifiers(char);
 	const charValue = getCharacteristicValue(char, charId, modifiers);
 	const baseTarget = skillId ? getSkillCheckTarget(char, skillId, modifiers) : charValue + (modifiers.skills ?? 0);
+	const fortitudeBonus = ['poisoned', 'diseased', 'exhausted'].includes(def.id) && charId === 'strength'
+		? Math.max(
+			isAbilityLearned(char, 'fortitude_strong_body') ? 5 : 0,
+			isAbilityLearned(char, 'fortitude_strong_body2') ? 10 : 0,
+			isAbilityLearned(char, 'fortitude_strong_body3') ? 15 : 0
+		) : 0;
+	const target = Math.min(95, Math.max(0, baseTarget + (modifiers.saves ?? 0) + fortitudeBonus));
 
-	const decayBonus = getDecaySaveBonus(char.decay?.points ?? 0, def.id);
 	const charName = CHARACTERISTICS.find((item) => item.id === charId)?.short ?? charId;
 	const skillName = skillId ? SKILLS.find((item) => item.id === skillId)?.name ?? skillId : '';
 
 	return {
-			target: Math.min(95, Math.max(0, baseTarget + (modifiers.saves ?? 0) + decayBonus)),
-			label: `${charName}${skillId ? ` + ${skillName}` : ''} = ${baseTarget + (modifiers.saves ?? 0) + decayBonus}${decayBonus ? ` (Тлен +${decayBonus})` : ''}`
+		target,
+		label: `${charName}${skillId ? ` + ${skillName}` : ''} = ${target}${fortitudeBonus ? ` (+${fortitudeBonus} от умений)` : ''}`
 	};
 }
 
 /** Бросить урон в конце хода от всех DOT-эффектов */
-export function rollConditionsDotDamage(char: Character): { total: number; details: string[] } {
+export function rollConditionsDotDamage(char: Character, die: (sides: number) => number = (sides) => Math.floor(Math.random() * sides) + 1): { total: number; details: string[] } {
 	let total = 0;
 	const details: string[] = [];
 
@@ -79,7 +84,7 @@ export function rollConditionsDotDamage(char: Character): { total: number; detai
 		let sum = 0;
 		const rolls: number[] = [];
 		for (let i = 0; i < count; i++) {
-			const r = Math.floor(Math.random() * sides) + 1;
+			const r = die(sides);
 			rolls.push(r);
 			sum += r;
 		}

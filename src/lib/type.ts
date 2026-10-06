@@ -12,6 +12,8 @@ export interface Character {
 	currentResources: Record<string, number>;
 	shortRestUsed?: boolean;
 	abilities: string[];
+	/** Нераспределённые очки умений, полученные при повышении уровня. */
+	abilityPoints?: number;
 	spells: string[];
 	useGraceForSpells: boolean;
 		equipment: {

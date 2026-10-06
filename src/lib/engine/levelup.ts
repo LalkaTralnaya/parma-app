@@ -29,7 +29,7 @@ function getModWithBonus(
 	characteristicIncrease = 6
 ): number {
 	let value = getCharacteristicValue(char, parentId);
-	// Если сейчас раздаём +1 именно этой характеристике — учитываем
+	// Учитываем повышение выбранной характеристики до расчёта роста ресурса.
 	if (levelUpBonusToChar === parentId) value += characteristicIncrease;
 	return getModifier(value);
 }
@@ -67,6 +67,7 @@ export function applyLevelUp(
 
 	// Уровень +1
 	updated.level += 1;
+	updated.abilityPoints = (updated.abilityPoints ?? 0) + 5;
 
 	// +6 к характеристике по правилу сюжетного роста
 	if (!updated.characteristics[charStatBonus]) {

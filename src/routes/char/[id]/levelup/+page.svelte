@@ -43,7 +43,7 @@
 	}
 
 	const newCharValue = $derived(
-		char ? getCharacteristicValue(char, charStatBonus) + 1 : 0
+		char ? getCharacteristicValue(char, charStatBonus) + 6 : 0
 	);
 	const newCharMod = $derived(getModifier(newCharValue));
 </script>
@@ -64,14 +64,13 @@
 		<section class="border rounded-lg p-4 bg-white space-y-3">
 			<h2 class="font-semibold text-lg">Шаг 1. Повышение характеристики</h2>
 			<p class="text-sm text-gray-600">
-				Выбери характеристику, которая получит <strong>+1</strong>. Это даст
-				<strong>+1 к модификатору</strong> и откроет новые умения по порогам 42 / 54 / 72.
+				Выбери характеристику, которая получит <strong>+6</strong>. Навыки вырастут автоматически по её новому модификатору. Умения можно будет изучить за очки по порогам 42 / 54 / 72.
 			</p>
 
 			<div class="grid grid-cols-5 gap-2">
 				{#each CHARACTERISTICS as c}
 					{@const cur = getCharacteristicValue(char, c.id)}
-					{@const wouldBe = c.id === charStatBonus ? cur + 1 : cur}
+					{@const wouldBe = c.id === charStatBonus ? cur + 6 : cur}
 					<label
 						class="border-2 rounded-lg p-3 text-center cursor-pointer transition
 							{c.id === charStatBonus ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-400'}">
@@ -80,12 +79,13 @@
 							name="stat"
 							value={c.id}
 							bind:group={charStatBonus}
+							onchange={() => (rolls = null)}
 							class="sr-only" />
 						<div class="text-xs uppercase text-gray-500">{c.short}</div>
 						<div class="text-lg font-bold">
 							{c.id === charStatBonus ? wouldBe : cur}
 							{#if c.id === charStatBonus}
-								<span class="text-green-700 text-xs">(+1)</span>
+								<span class="text-green-700 text-xs">(+6)</span>
 							{/if}
 						</div>
 						<div class="text-xs text-green-700">
@@ -140,6 +140,7 @@
 				<h2 class="font-semibold text-lg">Шаг 3. Подтвердить</h2>
 				<ul class="text-sm space-y-1">
 					<li>• Уровень: <strong>{char.level} → {char.level + 1}</strong></li>
+					<li>• Очки умений: <strong>+5</strong> → {(char.abilityPoints ?? 0) + 5} доступно для изучения</li>
 					<li>• {CHARACTERISTICS.find((c) => c.id === charStatBonus)?.name}:
 						<strong>+6</strong> → {newCharValue} (мод. +{newCharMod})</li>
 					<li>• ЖВЧ: +{rolls.find((r) => r.resourceId === 'hp')?.total ?? 0}</li>

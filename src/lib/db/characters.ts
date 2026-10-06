@@ -62,6 +62,7 @@ export function createEmptyCharacter(): Character {
 		resourceRolls: { hp: [], mana: [], stamina: [], influence: [], grace: [] },
 		currentResources: { hp: 0, mana: 0, stamina: 0, influence: 0, grace: 0 },
 		abilities: [],
+		abilityPoints: 0,
 		spells: [],
 		useGraceForSpells: false,
 		equipment: { weaponId: 'dagger', armorId: 'none', shieldId: 'none' },
@@ -246,6 +247,10 @@ export function migrateCharacter(c: Character): Character {
 
 	return {
 		...c,
+		abilities: Array.isArray(c.abilities) ? c.abilities : [],
+		abilityPoints: Number.isInteger(c.abilityPoints) && (c.abilityPoints ?? 0) >= 0
+			? c.abilityPoints
+			: Math.max(0, (Math.max(1, c.level) - 1) * 5 - (Array.isArray(c.abilities) ? c.abilities.length : 0)),
 		bio: {
 			appearance: bio.appearance ?? '',
 			personalityKey: bio.personalityKey ?? '',

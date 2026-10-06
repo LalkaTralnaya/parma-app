@@ -261,7 +261,7 @@ async function declineGift(p: RoomParticipant) {
 		}
 		if (roll.roll_type === 'characteristic') {
 			return {
-				text: `${d.charName}: к100 = ${d.roll} ≤ ${d.target} — ${translateResult(r)}`,
+				text: `${d.charName}: к100 = ${d.roll} ≤ ${d.target} — ${translateResult(r)}${d.restored !== undefined ? `, восстановлено ${d.restored}` : ''}`,
 				resultClass: resultColorClass(r)
 			};
 		}
@@ -273,7 +273,7 @@ async function declineGift(p: RoomParticipant) {
 		}
 		if (roll.roll_type === 'attack') {
 			return {
-				text: `Атака ${d.weaponName ?? ''}: к100 = ${d.roll} ≤ ${d.target} — ${translateResult(r)}`,
+				text: `Атака ${d.weaponName ?? ''}: к100 = ${d.roll} ≤ ${d.target} — ${translateResult(r)}${d.damage !== undefined ? `, урон ${d.damage}` : ''}`,
 				resultClass: resultColorClass(r)
 			};
 		}
@@ -282,6 +282,9 @@ async function declineGift(p: RoomParticipant) {
 				text: `Магическая атака ${d.spellName ?? ''}: к100 = ${d.roll} ≤ ${d.target} — ${translateResult(r)}${d.damage ? `, эффект ${d.damage}` : ''}`,
 				resultClass: resultColorClass(r)
 			};
+		}
+		if (roll.roll_type === 'effect') {
+			return { text: `${d.label ?? 'Эффект'}: ${d.details ?? d.total ?? ''}`, resultClass: 'text-gray-700' };
 		}
 		return { text: JSON.stringify(d), resultClass: 'text-gray-700' };
 	}

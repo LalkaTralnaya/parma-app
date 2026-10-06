@@ -10,6 +10,8 @@ export interface Ability {
 	description: string;
 	/** Бонус к значению навыка (по умолчанию — к skillId) */
 	skillBonus?: number;
+	/** Дополнительный бонус к другому навыку за каждое вложенное очко исходного навыка. */
+	skillBonusPerPoint?: number;
 	/** Если бонус идёт к другому навыку, а не к skillId */
 	bonusTo?: string;
 	/** Для прогрессирующих умений (например, «Острый глаз I/II/III»).
@@ -413,7 +415,8 @@ export const ABILITIES: Ability[] = [
 
 	// ─── Лёгкая броня ───
 	{ id: 'light_armor_base', name: 'Базовый эффект', skillId: 'light_armor', tier: 0, type: 'passive',
-		description: 'Каждое очко: +1 к Броне от лёгкой брони (не более +6) и +1 к Скрытности.' },
+		description: 'Каждое очко: +1 к Броне от лёгкой брони (не более +6) и +1 к Скрытности.',
+		skillBonusPerPoint: 1, bonusTo: 'stealth' },
 	{ id: 'light_armor_defense', name: 'Ловкость в обороне', skillId: 'light_armor', tier: 1, type: 'passive',
 		description: 'Броня от лёгкой брони увеличивается на +2.' },
 	{ id: 'light_armor_defense2', name: 'Ловкость в обороне II', skillId: 'light_armor', tier: 2, type: 'passive',

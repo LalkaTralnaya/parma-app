@@ -1,47 +1,54 @@
 import type { Character } from '$lib/type';
 
+/** Поздняя справка основной книги «Парма», таблица «Механика: очки Тлена». */
 export interface DecayStage {
-  level: 0 | 1 | 2 | 3;
+  /** Индекс порога, а не номер сюжетной стадии Чернобога. */
+  level: 0 | 1 | 2 | 3 | 4;
+  bookStage: string;
   name: string;
   effects: string[];
+  isPlayerCharacter: boolean;
+}
+
+function wholePoints(points: number): number {
+  return Number.isFinite(points) ? Math.max(0, Math.floor(points)) : 0;
 }
 
 export function getDecayStage(points: number): DecayStage {
-  const total = Number.isFinite(points) ? Math.max(0, Math.floor(points)) : 0;
+  const total = wholePoints(points);
+  if (total >= 20) return {
+    level: 4,
+    bookStage: '4+',
+    name: 'Поглощённый',
+    effects: ['Персонаж становится неигровым или перерождается как тень; решение принимает Мастер.'],
+    isPlayerCharacter: false
+  };
   if (total >= 10) return {
     level: 3,
-    name: 'Гниющий',
-    effects: [
-      '−15 к социальным проверкам (применяет Сказитель по ситуации).',
-      '+10 к избавлению от Жути и Морока.',
-      'Магическое лечение школы Восстановления требует проверку с −5.',
-      '+10 к Скрытности от нежити и низших духов.',
-      '1/день: игнорировать Ошеломление, Оцепенение или Паралич; затем получить Изнеможение.'
-    ]
+    bookStage: '4',
+    name: 'Слуга Тьмы',
+    effects: ['−15 к Убеждению.', '+15 к Запугиванию.', 'Нельзя использовать Благодать.'],
+    isPlayerCharacter: true
   };
   if (total >= 5) return {
     level: 2,
-    name: 'Отмеченный Навью',
-    effects: [
-      '−10 к социальным проверкам (применяет Сказитель по ситуации).',
-      '+5 к избавлению от Жути и Морока.',
-      '1/день реакцией при атаке живого существа (не нежити): оно проходит Избавление Интеллекта или получает Жуть на 1 раунд; стоимость — 2 Бодрости.'
-    ]
+    bookStage: '3',
+    name: 'Теневой',
+    effects: ['−10 к Убеждению.', '+10 к Запугиванию.', 'Нежить не атакует первой.'],
+    isPlayerCharacter: true
   };
   if (total >= 1) return {
     level: 1,
-    name: 'Тень на душе',
-    effects: [
-      '−5 к Убеждению и Торговле с незнакомыми обычными людьми (применяет Сказитель по ситуации).',
-      'Животные беспокоятся рядом.',
-      '1/день: +5 к проверке Запугивания.'
-    ]
+    bookStage: '1–2',
+    name: 'Отмеченный',
+    effects: ['−5 к Убеждению с добрыми людьми.', '+5 к Запугиванию.'],
+    isPlayerCharacter: true
   };
-  return { level: 0, name: 'Чистый', effects: ['Нет эффектов Тлена.'] };
+  return { level: 0, bookStage: '0', name: 'Чистый', effects: ['Нет эффектов Тлена.'], isPlayerCharacter: true };
 }
 
 export function normalizeDecay(value: Partial<Character['decay']> | null | undefined): Character['decay'] {
-  const points = Number.isFinite(value?.points) ? Math.max(0, Math.floor(value!.points!)) : 0;
+  const points = wholePoints(value?.points ?? 0);
   return { points, stage: getDecayStage(points).level };
 }
 
@@ -51,9 +58,64 @@ export function adjustDecayPoints(char: Character, delta: number): Character {
   return { ...char, decay: { points, stage: getDecayStage(points).level } };
 }
 
-/** The book grants a bonus to saves against Frightened and Charmed at 5+ Tlen. */
-export function getDecaySaveBonus(points: number, conditionId: string): number {
-  if (conditionId !== 'frightened' && conditionId !== 'charmed') return 0;
-  const stage = getDecayStage(points).level;
-  return stage >= 3 ? 10 : stage >= 2 ? 5 : 0;
+/** Штраф Убеждения на 1–4 ОТ действует лишь с добрыми людьми. */
+export function getDecaySkillModifier(points: number, skillId: string, targetIsGoodPerson = false): number {
+  const total = wholePoints(points);
+  if (skillId === 'intimidation') return total >= 10 ? 15 : total >= 5 ? 10 : total >= 1 ? 5 : 0;
+  if (skillId !== 'persuasion') return 0;
+  if (total >= 10) return -15;
+  if (total >= 5) return -10;
+  return total >= 1 && targetIsGoodPerson ? -5 : 0;
+}
+
+export function canUseGraceWithDecay(points: number): boolean {
+  return wholePoints(points) < 10;
+}
+
+export function undeadAttacksFirst(points: number): boolean {
+  return wholePoints(points) < 5;
+}
+
+export type DecaySource =
+  | { kind: 'nezhiva_cast' }
+  | { kind: 'navi_critical_failure'; d4: number }
+  | { kind: 'grave_kon_violation'; points: number }
+  | { kind: 'story'; points: number };
+
+function requireInteger(value: number, min: number, max: number, label: string): number {
+  if (!Number.isInteger(value) || value < min || value > max) {
+    throw new RangeError(`${label}: требуется целое число от ${min} до ${max}`);
+  }
+  return value;
+}
+
+/** Не бросает кости: результат броска или решение Мастера передаётся явно. */
+export function gainDecay(char: Character, source: DecaySource): { character: Character; gained: number; stageChanged: boolean } {
+  const gained = source.kind === 'nezhiva_cast' ? 1
+    : source.kind === 'navi_critical_failure' ? requireInteger(source.d4, 1, 4, 'к4')
+    : source.kind === 'grave_kon_violation' ? requireInteger(source.points, 2, 6, 'Нарушение Кона')
+    : requireInteger(source.points, 1, Number.MAX_SAFE_INTEGER, 'Сюжетное воздействие');
+  const before = getDecayStage(char.decay?.points ?? 0).level;
+  const character = adjustDecayPoints(char, gained);
+  return { character, gained, stageChanged: character.decay.stage !== before };
+}
+
+export interface DecayAtonementResult {
+  character: Character;
+  outcome: 'full' | 'partial' | 'failure';
+  removed: number;
+  stageChanged: boolean;
+}
+
+/** Поздняя справка: к100 = 1 снимает всё, 2–20 снимает 1к4, 21–100 не снимает ОТ.
+ * Фраза «переходит на стадию ниже» противоречит размеру 1к4: стадию всегда определяют оставшиеся ОТ. */
+export function resolveDecayAtonement(char: Character, d100: number, d4?: number): DecayAtonementResult {
+  requireInteger(d100, 1, 100, 'к100');
+  const before = normalizeDecay(char.decay);
+  const outcome = d100 === 1 ? 'full' : d100 <= 20 ? 'partial' : 'failure';
+  const amount = outcome === 'full' ? before.points
+    : outcome === 'partial' ? requireInteger(d4 as number, 1, 4, 'к4') : 0;
+  const removed = Math.min(before.points, amount);
+  const character = adjustDecayPoints(char, -removed);
+  return { character, outcome, removed, stageChanged: character.decay.stage !== before.stage };
 }

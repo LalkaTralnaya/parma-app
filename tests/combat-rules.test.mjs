@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getAttackTarget, classifyAttack, rollWeaponDamage, rollCombatAttackEffect } from '../src/lib/engine/combat.ts';
+import { getAttackTarget, classifyAttack, rollWeaponDamage, rollCombatAttackEffect, rollAttack } from '../src/lib/engine/combat.ts';
 import { applyLevelUp, rollResourceGrowth } from '../src/lib/engine/levelup.ts';
 import { getCharacteristicValue } from '../src/lib/engine/character.ts';
 import { getConditionSaveTarget } from '../src/lib/engine/conditions.ts';
@@ -59,6 +59,18 @@ test('strong attack adds a weapon die before the characteristic modifier', () =>
   } finally {
     Math.random = original;
   }
+});
+
+test('physical attack dice feed the usual hit, effect and damage rules', () => {
+  const supplied = [1, 1, 4];
+  const attacks = rollAttack(char, weapon, 'normal', 15, false, [], () => supplied.shift());
+  assert.equal(attacks.length, 1);
+  assert.equal(attacks[0].outcome, 'critical_hit');
+  assert.equal(attacks[0].effect.roll, 1);
+  assert.deepEqual(attacks[0].effect.extraDamageRolls, [4]);
+  assert.deepEqual(attacks[0].damage.rolls, [6]);
+  assert.equal(attacks[0].damage.total, 17);
+  assert.deepEqual(supplied, []);
 });
 
 test('level-up characteristic increase can be checked against both candidate rules', () => {

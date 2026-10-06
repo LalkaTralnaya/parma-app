@@ -95,3 +95,130 @@
   .sheet-nav a { flex-shrink: 0; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; } }
+
+/* Тлен окрашивает только открытый лист персонажа; стадия меняется вместе с ОТ. */
+#content > main.character-sheet[data-decay-stage="1"] {
+  --decay-control: #bec3c0;
+  --decay-control-text: #25302d;
+  --decay-border: #909b96;
+  --decay-hover: #aeb7b2;
+}
+#content > main.character-sheet[data-decay-stage="2"] {
+  --decay-card: #d7ddda;
+  --decay-text: #24302d;
+  --decay-muted: #4e5c57;
+  --decay-control: #737d78;
+  --decay-control-text: #f7f8f5;
+  --decay-border: #89938e;
+  --decay-hover: #616d67;
+}
+#content > main.character-sheet[data-decay-stage="3"] {
+  --decay-card: #495451;
+  --decay-text: #edf0ec;
+  --decay-muted: #c2cbc5;
+  --decay-control: #171c1b;
+  --decay-control-text: #eef0ed;
+  --decay-border: #737e77;
+  --decay-hover: #252e2b;
+}
+#content > main.character-sheet[data-decay-stage="4"] {
+  --decay-card: #171c1d;
+  --decay-text: #adb5b0;
+  --decay-muted: #89938d;
+  --decay-control: #101415;
+  --decay-control-text: #aeb6b0;
+  --decay-border: #38413c;
+  --decay-hover: #1d2423;
+}
+#content > main.character-sheet[data-decay-stage]:not([data-decay-stage="0"]) :is(button, .sheet-nav a, header a[class*="px-"]) {
+  background-color: var(--decay-control) !important;
+  border-color: var(--decay-border) !important;
+  color: var(--decay-control-text) !important;
+  filter: grayscale(1);
+  transition: background-color .25s ease, border-color .25s ease, color .25s ease;
+}
+#content > main.character-sheet[data-decay-stage]:not([data-decay-stage="0"]) :is(button, .sheet-nav a, header a[class*="px-"]):hover {
+  background-color: var(--decay-hover) !important;
+}
+#content > main.character-sheet[data-decay-stage]:not([data-decay-stage="0"]) :is(svg, img) { filter: grayscale(1); }
+#content > main.character-sheet[data-decay-stage]:not([data-decay-stage="0"]) .decay-stage-label {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 2px 10px;
+  border: 1px solid var(--decay-border);
+  border-radius: 999px;
+  color: var(--decay-control-text);
+  background: var(--decay-control);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+body:has(#content > main.character-sheet[data-decay-stage="2"]) { background: #aeb8b4; }
+body:has(#content > main.character-sheet[data-decay-stage="3"]) { background: #323b3a; }
+body:has(#content > main.character-sheet[data-decay-stage="4"]) { background: #0b0f10; }
+#content:has(> main.character-sheet[data-decay-stage="2"]) {
+  background: radial-gradient(ellipse at 20% 12%, #e0e5e188, transparent 52%), linear-gradient(150deg, #bbc5c0, #9ba7a3 70%, #b0b8b3);
+}
+#content:has(> main.character-sheet[data-decay-stage="3"]) {
+  background: radial-gradient(ellipse at 75% 8%, #75827b77, transparent 52%), linear-gradient(160deg, #43504d, #293332 72%, #36403d);
+}
+#content:has(> main.character-sheet[data-decay-stage="4"]) {
+  background: radial-gradient(ellipse at 50% 0%, #2c343244, transparent 42%), linear-gradient(170deg, #111717, #090d0e 78%);
+}
+#content > main.character-sheet:is([data-decay-stage="2"], [data-decay-stage="3"], [data-decay-stage="4"]) {
+  color: var(--decay-text);
+}
+#content > main.character-sheet:is([data-decay-stage="2"], [data-decay-stage="3"], [data-decay-stage="4"]) :is([class*="bg-"], table, details, .sheet-nav) {
+  background-color: var(--decay-card) !important;
+  border-color: var(--decay-border) !important;
+}
+#content > main.character-sheet:is([data-decay-stage="2"], [data-decay-stage="3"], [data-decay-stage="4"]) :is(input, select, textarea) {
+  background-color: var(--decay-card) !important;
+  border-color: var(--decay-border) !important;
+  color: var(--decay-text) !important;
+}
+#content > main.character-sheet:is([data-decay-stage="2"], [data-decay-stage="3"], [data-decay-stage="4"]) :is(.text-gray-400, .text-gray-500, .text-gray-600, .text-gray-700) {
+  color: var(--decay-muted) !important;
+}
+#content > main.character-sheet:is([data-decay-stage="3"], [data-decay-stage="4"]) [class*="text-"]:not(button):not(a) {
+  color: var(--decay-text) !important;
+}
+#content > main.character-sheet:is([data-decay-stage="3"], [data-decay-stage="4"]) :is(.text-gray-400, .text-gray-500, .text-gray-600, .text-gray-700) {
+  color: var(--decay-muted) !important;
+}
+#content > main.character-sheet:is([data-decay-stage="2"], [data-decay-stage="3"], [data-decay-stage="4"]) :is(button, .sheet-nav a, header a[class*="px-"]) {
+  background-color: var(--decay-control) !important;
+  border-color: var(--decay-border) !important;
+  color: var(--decay-control-text) !important;
+}
+#content > main.character-sheet:is([data-decay-stage="2"], [data-decay-stage="3"], [data-decay-stage="4"]) :is(button, .sheet-nav a, header a[class*="px-"]):hover {
+  background-color: var(--decay-hover) !important;
+}
+#content > main.character-sheet[data-decay-stage]:not([data-decay-stage="0"]) :is(button, .sheet-nav a, header a[class*="px-"]) * {
+  color: inherit !important;
+}
+body:has(#content > main.character-sheet:is([data-decay-stage="2"], [data-decay-stage="3"], [data-decay-stage="4"])) :is(.app-header, .app-footer) {
+  background-color: var(--decay-header-bg, #d7ddda);
+  border-color: var(--decay-header-border, #89938e);
+  color: var(--decay-header-text, #24302d);
+}
+body:has(#content > main.character-sheet[data-decay-stage="3"]) { --decay-header-bg: #27312f; --decay-header-border: #56625b; --decay-header-text: #dce4dd; }
+body:has(#content > main.character-sheet[data-decay-stage="4"]) { --decay-header-bg: #111617; --decay-header-border: #303936; --decay-header-text: #9aa69e; }
+body:has(#content > main.character-sheet:is([data-decay-stage="2"], [data-decay-stage="3"], [data-decay-stage="4"])) .app-header :is(a, small, svg) {
+  color: var(--decay-header-text) !important;
+  filter: grayscale(1);
+}
+body:has(#content > main.character-sheet[data-decay-stage]:not([data-decay-stage="0"])) :is(.app-header, .app-footer) svg {
+  filter: grayscale(1);
+}
+
+@media print {
+  body:has(#content > main.character-sheet), #content:has(> main.character-sheet) { background: #fff !important; }
+  #content > main.character-sheet[data-decay-stage] :is(button, a, table, details, .sheet-nav, [class*="bg-"], input, select, textarea) {
+    background: #fff !important;
+    color: #000 !important;
+    border-color: #999 !important;
+    filter: none !important;
+  }
+  #content > main.character-sheet[data-decay-stage] [class*="text-"] { color: #000 !important; }
+}

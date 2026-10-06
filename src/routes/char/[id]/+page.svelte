@@ -44,7 +44,7 @@
 	// Правила
 	import { CONDITIONS, findCondition } from '../../../lib/rules/conditions';
 import { getConditionModifiers, getConditionSaveTarget as calculateConditionSaveTarget, rollConditionsDotDamage } from '../../../lib/engine/conditions';
-	import { adjustDecayPoints, getDecayStage } from '../../../lib/engine/decay';
+	import { adjustDecayPoints, canUseGraceWithDecay, getDecayStage } from '../../../lib/engine/decay';
 	import { PERSONALITY_TRAITS, IDEALS, BONDS, FLAWS, findOption } from '../../../lib/rules/personality';
 	import { ITEMS, CATEGORY_LABEL, type ItemCategory } from '../../../lib/rules/items';
 	import { BACKGROUNDS } from '../../../lib/rules/backgrounds';
@@ -97,9 +97,12 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		getResourceMax,
 		getSkillBonusDetails,
 		getUnlockedAbilities,
+		isAbilityLearned,
+		getAbilityBlockReason,
+		learnAbility,
 	} from '../../../lib/engine/character';
 
-	import { rollD100, classifyRoll, type RollResult } from '../../../lib/engine/dice';
+	import { classifyRoll, type RollResult } from '../../../lib/engine/dice';
 
 	import {
 		getSpellCastTarget,
@@ -121,7 +124,9 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		getArmorValue,
 		getEquippedWeapon,
 		getAttackTarget,
+		getAttackCount,
 		rollAttack,
+		classifyAttack,
 		type AttackOutcome,
 		type SingleAttackRoll,
 		type BonusDice,
@@ -133,6 +138,13 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	// STATE
 	// ────────────────────────────────────────────
 	let char = $state<Character | null>(null);
+	type RollMode = 'online' | 'offline';
+	let rollMode = $state<RollMode>('online');
+	let pendingDie = $state<{ sides: number; label: string; target?: number } | null>(null);
+	let manualDieValue = $state('');
+	let manualDieError = $state('');
+	let resolvePendingDie: ((value: number | null) => void) | null = null;
+	let rollBusy = false;
 	let loading = $state(true);
 	let session = $state<SessionRequest | null>(null);
 	let activeRoomCode = $state<string | null>(null);
@@ -141,6 +153,14 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	let combat = $state<CombatState | null>(null);
 	let targetEnemyId = $state<string | null>(null);
 	let decayDelta = $state(1);
+	let decayLevel = $derived(char ? getDecayStage(char.decay?.points ?? 0).level : 0);
+	let hideReligion = $derived(decayLevel >= 4);
+	let visibleCharacteristics = $derived(CHARACTERISTICS.filter((entry) => !hideReligion || entry.id !== 'religion'));
+	let visibleResources = $derived(RESOURCES.filter((entry) => !hideReligion || entry.id !== 'grace'));
+	let visibleSkills = $derived(SKILLS.filter((entry) => !hideReligion || entry.parent !== 'religion'));
+	let visibleSpellSchools = $derived(Object.entries(SPELLS_BY_SCHOOL).filter(([schoolId]) =>
+		!hideReligion || SKILLS.find((entry) => entry.id === schoolId)?.parent !== 'religion'
+	));
 	let lastCombatHp: number | null = null;
 	let lastRoll = $state<{ skill: string; roll: number; target: number; result: RollResult } | null>(null);
 	let lastCharCheck = $state<{ charId: string; charName: string; roll: number; target: number; result: RollResult } | null>(null);
@@ -193,6 +213,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	// ON MOUNT / ON DESTROY
 	// ────────────────────────────────────────────
 	onMount(async () => {
+		rollMode = localStorage.getItem('parma_roll_mode') === 'offline' ? 'offline' : 'online';
 		const found = await getCharacter(page.params.id ?? '');
 		if (!found) {
 			goto('/');
@@ -240,6 +261,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	});
 
 	onDestroy(() => {
+		cancelManualDie();
 		unsubSession?.();
 		unsubRoomCombat?.();
 		unsubCharUpdates?.();
@@ -402,8 +424,37 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	// ────────────────────────────────────────────
 	// ЯРЛЫКИ / УТИЛИТЫ
 	// ────────────────────────────────────────────
-	function rollD20(): number {
-		return Math.floor(Math.random() * 20) + 1;
+	function setRollMode(mode: RollMode) {
+		if (pendingDie) return;
+		rollMode = mode;
+		localStorage.setItem('parma_roll_mode', mode);
+	}
+	function finishManualDie(value: number | null) {
+		const resolve = resolvePendingDie;
+		resolvePendingDie = null;
+		pendingDie = null;
+		manualDieValue = '';
+		manualDieError = '';
+		resolve?.(value);
+	}
+	function cancelManualDie() { finishManualDie(null); }
+	function submitManualDie() {
+		if (!pendingDie) return;
+		const raw = String(manualDieValue).trim();
+		const value = Number(raw);
+		if (!/^\d+$/.test(raw) || !Number.isInteger(value) || value < 1 || value > pendingDie.sides) {
+			manualDieError = `Введите целое число от 1 до ${pendingDie.sides}`;
+			return;
+		}
+		finishManualDie(value);
+	}
+	async function requestDie(sides: number, label: string, target?: number): Promise<number | null> {
+		if (rollMode === 'online') return Math.floor(Math.random() * sides) + 1;
+		if (pendingDie) return null;
+		manualDieValue = '';
+		manualDieError = '';
+		pendingDie = { sides, label, target };
+		return new Promise((resolve) => { resolvePendingDie = resolve; });
 	}
 	function printCharacter() {
 		window.print();
@@ -465,14 +516,18 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	let result: 'crit_success' | 'success' | 'fail' | 'crit_fail' | 'double';
 
 	if (type === 'initiative') {
-		roll = rollD20();
+		const entered = await requestDie(20, 'Запрос мастера: прыть');
+		if (entered === null) return;
+		roll = entered;
 		modifier = getModifier(getCharacteristicValue(char, 'dexterity'));
 		target = 0;
 		result = 'success';
 		setParticipantInitiative(char.id, roll, modifier);
 	} else if (skillId) {
 		target = getSkillCheckTarget(char, skillId);
-		roll = rollD100();
+		const entered = await requestDie(100, 'Запрос мастера: проверка', target);
+		if (entered === null) return;
+		roll = entered;
 		modifier = 0;
 		result = classifyRoll(roll, target);
 	} else return;
@@ -595,7 +650,8 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		const str = getCharacteristicValue(char, 'strength', condMods);
 		const fortitude = getSkillTotal(char, 'fortitude', condMods);
 		const target = Math.min(95, str + fortitude);
-		const roll = rollD100();
+		const roll = await requestDie(100, 'Удержаться', target);
+		if (roll === null) return;
 
 		let success = false;
 		let description = '';
@@ -621,6 +677,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		}
 
 		lastEdgeResult = { action: 'Удержаться (Своя воля)', description, roll, target, success };
+		publishToActiveRoom(char.name || 'Безымянный', 'skill', { skillName: 'Удержаться', roll, target, result: classifyRoll(roll, target) });
 		await syncHpToCombat();
 	}
 
@@ -629,8 +686,10 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		const restoration = getSkillTotal(char, 'restoration', condMods);
 		const int = getCharacteristicValue(char, 'intelligence', condMods);
 		const target = Math.min(95, int + restoration);
-		const roll = rollD100();
+		const roll = await requestDie(100, 'Помочь союзнику', target);
+		if (roll === null) return;
 		const success = roll <= target;
+		publishToActiveRoom(char.name || 'Безымянный', 'skill', { skillName: 'Помочь союзнику', roll, target, result: classifyRoll(roll, target) });
 		alert(
 			success
 				? `Проверка Восстановления: к100 = ${roll} ≤ ${target} — успех! Союзник стабилизирован.`
@@ -666,9 +725,11 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	// ────────────────────────────────────────────
 	// БОЙ
 	// ────────────────────────────────────────────
-	function rollInit() {
+	async function rollInit() {
 		if (!char) return;
-		lastInitiative = rollInitiative(char);
+		const roll = await requestDie(20, 'Прыть (инициатива)');
+		if (roll === null) return;
+		lastInitiative = rollInitiative(char, roll);
 		if (lastInitiative) {
 			publishToActiveRoom(char.name || 'Безымянный', 'initiative', {
 				roll: lastInitiative.roll,
@@ -686,7 +747,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	}
 
 	async function attack() {
-		if (!char) return;
+		if (!char || rollBusy) return;
 		const weapon = getEquippedWeapon(char);
 		if (!weapon) {
 			alert('Сначала выберите оружие');
@@ -699,7 +760,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		if (weapon.category === 'ranged') {
 			const arrowsEntry = char.inventory?.find((i) => i.itemId === 'arrows');
 			const arrowsCount = arrowsEntry?.quantity ?? 0;
-			const needed = attackType === 'fast' ? 2 : 1;
+			const needed = getAttackCount(char, weapon, attackType);
 			if (arrowsCount < needed) {
 				alert(`Нет стрел! Нужно ${needed}, есть ${arrowsCount}.`);
 				return;
@@ -710,7 +771,54 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 
 		const adjustedTargetArmor = targetArmor - (condMods.attacks ?? 0);
 		const { target, parts } = getAttackTarget(char, weapon, attackType, adjustedTargetArmor, useTwoHandsWeapon);
-		const attacks = rollAttack(char, weapon, attackType, adjustedTargetArmor, useTwoHandsWeapon, arrowBonus);
+		let attacks: SingleAttackRoll[];
+		if (rollMode === 'offline') {
+			rollBusy = true;
+			try {
+				const dice: number[] = [];
+				const count = getAttackCount(char, weapon, attackType);
+				const formula = useTwoHandsWeapon && weapon.damageTwoHands ? weapon.damageTwoHands : weapon.damageOneHand;
+				const damageMatch = formula.match(/^(\d+)[dк](\d+)$/i);
+				const damageCount = (damageMatch ? Number(damageMatch[1]) : 1) + (attackType === 'strong' ? 1 : 0);
+				const damageSides = damageMatch ? Number(damageMatch[2]) : 4;
+				for (let i = 0; i < count; i++) {
+					const hit = await requestDie(100, `${weapon.name}: атака ${i + 1} из ${count}`, target);
+					if (hit === null) return;
+					dice.push(hit);
+					const outcome = classifyAttack(hit, target);
+					if (outcome === 'critical_hit' || outcome === 'critical_miss' || outcome === 'double') {
+						const tableSides = outcome === 'double' ? 10 : 12;
+						const effect = await requestDie(tableSides, `${weapon.name}: эффект ${outcome === 'critical_hit' ? 'Прави' : outcome === 'double' ? 'Яви' : 'Нави'}`);
+						if (effect === null) return;
+						dice.push(effect);
+						if (effect <= 2 && outcome !== 'critical_miss') {
+							const sides = outcome === 'critical_hit'
+								? weapon.category === 'two_handed' ? 8 : 6
+								: weapon.category === 'two_handed' ? 6 : 4;
+							const extra = await requestDie(sides, `${weapon.name}: дополнительный урон`);
+							if (extra === null) return;
+							dice.push(extra);
+						}
+					}
+					if (outcome === 'hit' || outcome === 'double') {
+						for (let j = 0; j < damageCount; j++) {
+							const damage = await requestDie(damageSides, `${weapon.name}: урон ${j + 1} из ${damageCount}`);
+							if (damage === null) return;
+							dice.push(damage);
+						}
+						for (const bonus of arrowBonus) for (let j = 0; j < bonus.count; j++) {
+							const damage = await requestDie(bonus.sides, `${bonus.label}: урон ${j + 1} из ${bonus.count}`);
+							if (damage === null) return;
+							dice.push(damage);
+						}
+					}
+				}
+				let cursor = 0;
+				attacks = rollAttack(char, weapon, attackType, adjustedTargetArmor, useTwoHandsWeapon, arrowBonus, () => dice[cursor++]);
+			} finally { rollBusy = false; }
+		} else {
+			attacks = rollAttack(char, weapon, attackType, adjustedTargetArmor, useTwoHandsWeapon, arrowBonus);
+		}
 
 		lastAttack = { weapon: weapon.name, attackType, target, parts, attacks };
 
@@ -751,7 +859,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		}
 
 		if (weapon.category === 'ranged' && arrowsEntryId) {
-			const spent = attackType === 'fast' ? 2 : 1;
+			const spent = getAttackCount(char, weapon, attackType);
 			char = adjustItemQuantity(char, arrowsEntryId, -spent);
 			await persistInventory();
 		}
@@ -770,6 +878,14 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		await saveCharacter($state.snapshot(char) as Character);
 	}
 
+	async function studyAbility(abilityId: string) {
+		if (!char) return;
+		const updated = learnAbility(char, abilityId);
+		if (!updated) return;
+		char = updated;
+		await saveCharacter($state.snapshot(char) as Character);
+	}
+
 	async function changeDecayPoints(delta: number) {
 		if (!char || !Number.isFinite(delta)) return;
 		char = adjustDecayPoints(char, delta);
@@ -780,19 +896,41 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		if (!char) return;
 		const spell = SPELLS_BY_SCHOOL[school].find((s) => s.id === spellId);
 		if (!spell) return;
+		const graceAllowed = canUseGraceWithDecay(char.decay?.points ?? 0);
+		if (!graceAllowed && spell.costGrace !== undefined) return;
+		const useGrace = graceAllowed && char.useGraceForSpells;
 
 		const selectedTarget = combat?.active && targetEnemyId
 			? combat.participants.find((participant) => participant.id === targetEnemyId && !participant.isPlayer)
 			: undefined;
 		const targetArmor = selectedTarget?.armor ?? 0;
-		const target = getSpellAttackTarget(char, school, targetArmor, condMods.attacks ?? 0);
-		const roll = rollD100();
+		const target = getSpellAttackTarget(char, school, targetArmor, condMods.attacks ?? 0, spell);
+		const roll = await requestDie(100, `${spell.name}: сотворение`, target);
+		if (roll === null) return;
 		const outcome = classifySpellRoll(roll, target);
 		const costInfo = getSpellCost(char, spell, useTwoHands);
+		const criticalCostDie = outcome === 'critical_failure' ? await requestDie(4, `${spell.name}: цена критического провала`) : 0;
+		if (criticalCostDie === null) return;
+		let effectResult: SpellEffectRoll | null = null;
+		if (outcome === 'success' || outcome === 'critical_success') {
+			if (rollMode === 'offline') {
+				const plan = rollSpellEffect(char, spell, useTwoHands, useGrace, () => 1);
+				if (plan) {
+					const dice: number[] = [];
+					for (let i = 0; i < plan.diceCount; i++) {
+						const value = await requestDie(plan.diceSides, `${spell.name}: ${spell.damage ? 'урон' : 'эффект'} ${i + 1} из ${plan.diceCount}`);
+						if (value === null) return;
+						dice.push(value);
+					}
+					let cursor = 0;
+					effectResult = rollSpellEffect(char, spell, useTwoHands, useGrace, () => dice[cursor++]);
+				}
+			} else effectResult = rollSpellEffect(char, spell, useTwoHands, useGrace);
+		}
 		const decayGained = spell.usesNezhiva ? 1 : 0;
 		if (decayGained) char = adjustDecayPoints(char, decayGained);
 
-		const resourceId = char.useGraceForSpells ? 'grace' : costInfo.resource === 'grace' ? 'grace' : 'mana';
+		const resourceId = useGrace ? 'grace' : costInfo.resource === 'grace' ? 'grace' : 'mana';
 		const resourceMax = getResourceMax(char, resourceId);
 		const current = getCurrentResource(char, resourceId, resourceMax);
 
@@ -800,15 +938,10 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		if (outcome === 'success' || outcome === 'failure' || outcome === 'critical_failure') {
 			const total =
 				outcome === 'critical_failure'
-					? costInfo.reduced + (Math.floor(Math.random() * 4) + 1)
+					? costInfo.reduced + criticalCostDie
 					: costInfo.reduced;
 			actuallySpent = Math.min(current, total);
 			spendResource(char, resourceId, total, resourceMax);
-		}
-
-		let effectResult: SpellEffectRoll | null = null;
-		if (outcome === 'success' || outcome === 'critical_success') {
-			effectResult = rollSpellEffect(char, spell, useTwoHands, char.useGraceForSpells);
 		}
 
 		let damageApplied = 0;
@@ -830,7 +963,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 			target,
 			outcome,
 			cost: actuallySpent,
-			resource: char.useGraceForSpells ? 'grace' : costInfo.resource,
+			resource: useGrace ? 'grace' : costInfo.resource,
 			effect: effectResult,
 			damageApplied,
 			decayGained,
@@ -938,20 +1071,39 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 			alert('Для этого состояния нет проверки избавления');
 			return;
 		}
-		const roll = rollD100();
+		const roll = await requestDie(100, `${def.name}: избавление`, targetInfo.target);
+		if (roll === null) return;
 		const success = roll <= targetInfo.target;
 		lastSave = { condition: def.name, roll, target: targetInfo.target, label: targetInfo.label, success };
+		publishToActiveRoom(char.name || 'Безымянный', 'characteristic', { charName: `Избавление: ${def.name}`, roll, target: targetInfo.target, result: classifyRoll(roll, targetInfo.target) });
 		if (success) await removeCondition(conditionId);
 	}
 
 	async function applyDotDamage() {
 		if (!char) return;
-		const { total, details } = rollConditionsDotDamage(char);
+		const dice: number[] = [];
+		if (rollMode === 'offline') {
+			for (const condition of char.conditions ?? []) {
+				const def = findCondition(condition.id);
+				const match = def?.dotDamage?.match(/^(\d+)[кd](\d+)$/i);
+				if (!match) continue;
+				for (let i = 0; i < Number(match[1]); i++) {
+					const value = await requestDie(Number(match[2]), `${def?.name ?? 'Состояние'}: урон ${i + 1} из ${match[1]}`);
+					if (value === null) return;
+					dice.push(value);
+				}
+			}
+		}
+		let cursor = 0;
+		const { total, details } = rollMode === 'offline'
+			? rollConditionsDotDamage(char, () => dice[cursor++])
+			: rollConditionsDotDamage(char);
 		if (total === 0) {
 			alert('Нет состояний, наносящих урон в конце хода');
 			return;
 		}
 		if (!confirm(`Урон в конце хода:\n\n${details.join('\n')}\n\nИтого: ${total} Жвч`)) return;
+		publishToActiveRoom(char.name || 'Безымянный', 'effect', { label: 'Урон от состояний', details: `${details.join('; ')}; итого ${total}` });
 		const max = getResourceMax(char, 'hp');
 		const current = getCurrentResource(char, 'hp', max);
 		char.currentResources = { ...(char.currentResources ?? {}), hp: Math.max(0, current - total) };
@@ -976,7 +1128,8 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		for (const r of RESOURCES) {
 			const charId = r.parent;
 			const charValue = getCharacteristicValue(char, charId, condMods);
-			const roll = rollD100();
+			const roll = await requestDie(100, `Короткий отдых: ${r.name}`, charValue);
+			if (roll === null) return;
 
 			let ratio = 0;
 			let resultLabel = '';
@@ -1019,6 +1172,10 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		char = { ...char };
 		await saveCharacter($state.snapshot(char) as Character);
 		lastRest = { type: 'short', results };
+		for (const entry of results) publishToActiveRoom(char.name || 'Безымянный', 'characteristic', {
+			charName: `Короткий отдых: ${entry.resource}`, roll: entry.roll, target: entry.charValue,
+			result: classifyRoll(entry.roll, entry.charValue), restored: entry.restored
+		});
 	}
 
 	async function longRest() {
@@ -1078,11 +1235,16 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 				const sides = parseInt(m[2], 10);
 				const bonus = m[3] ? parseInt(m[3], 10) : 0;
 				let sum = 0;
-				for (let i = 0; i < count; i++) sum += Math.floor(Math.random() * sides) + 1;
+				for (let i = 0; i < count; i++) {
+					const value = await requestDie(sides, `${item.name}: лечение ${i + 1} из ${count}`);
+					if (value === null) return;
+					sum += value;
+				}
 				const healed = sum + bonus;
 				const max = getResourceMax(char, 'hp');
 				const current = getCurrentResource(char, 'hp', max);
 				char.currentResources = { ...(char.currentResources ?? {}), hp: Math.min(max, current + healed) };
+				publishToActiveRoom(char.name || 'Безымянный', 'effect', { label: item.name, details: `${item.useDice} = ${sum}${bonus ? ` + ${bonus}` : ''} = ${healed} живучести` });
 				alert(`Восстановлено ${healed} живучести.`);
 			}
 		}
@@ -1093,10 +1255,15 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 				const count = parseInt(m[1], 10);
 				const sides = parseInt(m[2], 10);
 				let sum = 0;
-				for (let i = 0; i < count; i++) sum += Math.floor(Math.random() * sides) + 1;
+				for (let i = 0; i < count; i++) {
+					const value = await requestDie(sides, `${item.name}: восстановление живы ${i + 1} из ${count}`);
+					if (value === null) return;
+					sum += value;
+				}
 				const max = getResourceMax(char, 'mana');
 				const current = getCurrentResource(char, 'mana', max);
 				char.currentResources = { ...(char.currentResources ?? {}), mana: Math.min(max, current + sum) };
+				publishToActiveRoom(char.name || 'Безымянный', 'effect', { label: item.name, details: `${item.useDice} = ${sum} живы` });
 				alert(`Восстановлено ${sum} живы.`);
 			}
 		}
@@ -1153,14 +1320,18 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		let result: 'crit_success' | 'success' | 'fail' | 'crit_fail' | 'double';
 
 		if (type === 'initiative') {
-			roll = rollD20();
+			const entered = await requestDie(20, 'Запрос мастера: прыть');
+			if (entered === null) return;
+			roll = entered;
 			modifier = getModifier(getCharacteristicValue(char, 'dexterity'));
 			target = 0;
 			result = 'success';
 			setParticipantInitiative(char.id, roll, modifier);
 		} else if (skillId) {
 			target = getSkillCheckTarget(char, skillId);
-			roll = rollD100();
+			const entered = await requestDie(100, 'Запрос мастера: проверка', target);
+			if (entered === null) return;
+			roll = entered;
 			modifier = 0;
 			result = classifyRoll(roll, target);
 		} else return;
@@ -1203,14 +1374,18 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		let result: 'crit_success' | 'success' | 'fail' | 'crit_fail' | 'double';
 
 		if (session.type === 'initiative') {
-			roll = rollD20();
+			const entered = await requestDie(20, 'Запрос мастера: прыть');
+			if (entered === null) return;
+			roll = entered;
 			modifier = getModifier(getCharacteristicValue(char, 'dexterity'));
 			target = 0;
 			result = 'success';
 			setParticipantInitiative(char.id, roll, modifier);
 		} else if (skillId) {
 			target = getSkillCheckTarget(char, skillId);
-			roll = rollD100();
+			const entered = await requestDie(100, 'Запрос мастера: проверка', target);
+			if (entered === null) return;
+			roll = entered;
 			modifier = 0;
 			result = classifyRoll(roll, target);
 		} else return;
@@ -1227,20 +1402,22 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		session = getSession();
 	}
 
-	function rollSkill(skillId: string, skillName: string, checkContext?: string) {
+	async function rollSkill(skillId: string, skillName: string, checkContext?: string) {
 		if (!char) return;
 		const target = getSkillCheckTarget(char, skillId, condMods, checkContext);
-		const roll = rollD100();
+		const roll = await requestDie(100, skillName, target);
+		if (roll === null) return;
 		const result = classifyRoll(roll, target);
 		lastRoll = { skill: skillName, roll, target, result };
 		publishToActiveRoom(char.name || 'Безымянный', 'skill', { skillName, roll, target, result });
 	}
 
-	function rollCharacteristicCheck(charId: string, charName: string) {
+	async function rollCharacteristicCheck(charId: string, charName: string) {
 		if (!char) return;
 		const value = getCharacteristicValue(char, charId, condMods) + (condMods.saves ?? 0);
 		const target = Math.min(95, Math.max(0, value));
-		const roll = rollD100();
+		const roll = await requestDie(100, charName, target);
+		if (roll === null) return;
 		const result = classifyRoll(roll, target);
 		lastCharCheck = { charId, charName, roll, target, result };
 		publishToActiveRoom(char.name || 'Безымянный', 'characteristic', { charName, roll, target, result });
@@ -1304,7 +1481,25 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		}
 	}
 </style>
-<main class="max-w-4xl mx-auto p-6 space-y-6">
+<main class="character-sheet max-w-4xl mx-auto p-6 space-y-6" data-decay-stage={decayLevel}>
+	{#if pendingDie}
+		<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 print-hide" role="presentation">
+			<div class="w-full max-w-sm rounded-xl border border-gray-500 bg-white p-6 shadow-2xl text-gray-900" role="dialog" aria-modal="true" aria-label="Ввод физического броска">
+			<form onsubmit={(event) => { event.preventDefault(); submitManualDie(); }}>
+				<h2 class="text-xl font-bold mb-2">Физический бросок к{pendingDie.sides}</h2>
+				<p class="mb-2">{pendingDie.label}</p>
+				{#if pendingDie.target !== undefined}<p class="mb-3 text-sm">Цель с бонусами и сложностью: ≤ {pendingDie.target}</p>{/if}
+				<label class="block text-sm font-semibold" for="manual-die-value">Что выпало на кубике?</label>
+				<input id="manual-die-value" class="mt-1 w-full rounded border border-gray-400 p-3 text-lg" type="number" min="1" max={pendingDie.sides} step="1" required bind:value={manualDieValue} />
+				{#if manualDieError}<p class="mt-2 text-red-700" role="alert">{manualDieError}</p>{/if}
+				<div class="mt-4 flex gap-2">
+					<button type="submit" class="rounded bg-green-700 px-4 py-2 text-white font-semibold">Ввод</button>
+					<button type="button" class="rounded border border-gray-400 px-4 py-2" onclick={cancelManualDie}>Отмена</button>
+				</div>
+			</form>
+			</div>
+		</div>
+	{/if}
 	{#if loading}
 		<p class="text-gray-500">Загрузка…</p>
 			{:else if char}
@@ -1386,6 +1581,9 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 						· {BACKGROUNDS.find((b) => b.id === char?.backgroundId)?.name}
 					{/if}
 				</p>
+					{#if decayLevel > 0}
+						<p class="decay-stage-label" aria-live="polite">Тлен · {getDecayStage(char.decay?.points ?? 0).name} · {char.decay?.points ?? 0} ОТ</p>
+					{/if}
 			</div>
 			<div class="flex gap-2">
 				<a href="/" class="px-3 py-2 border rounded hover:bg-gray-50">← К списку</a>
@@ -1408,15 +1606,20 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 			</div>
 		
 		</header>
+		<div class="print-hide flex items-center gap-3 rounded-lg border border-gray-400 p-3" role="group" aria-label="Режим бросков">
+			<span class="font-semibold">Броски:</span>
+			<button type="button" aria-pressed={rollMode === 'online'} class:font-bold={rollMode === 'online'} class="rounded border px-3 py-1" onclick={() => setRollMode('online')}>Онлайн · в приложении</button>
+			<button type="button" aria-pressed={rollMode === 'offline'} class:font-bold={rollMode === 'offline'} class="rounded border px-3 py-1" onclick={() => setRollMode('offline')}>Офлайн · физические кубики</button>
+		</div>
         <nav class="sheet-nav" aria-label="Разделы листа персонажа">
-          <a href="#characteristics">Характеристики</a><a href="#resources">Ресурсы</a><a href="#battle">Бой</a><a href="#skills">Навыки</a><a href="#spells">Магия</a><a href="#inventory">Инвентарь</a><a href="#personality">Личность</a><a href="#conditions">Состояния</a><a href="#decay">Тлен</a><a href="#rest">Отдых</a>
+          <a href="#characteristics">Характеристики</a><a href="#resources">Ресурсы</a><a href="#battle">Бой</a><a href="#skills">Навыки</a><a href="#abilities">Умения</a><a href="#spells">Магия</a><a href="#inventory">Инвентарь</a><a href="#personality">Личность</a><a href="#conditions">Состояния</a><a href="#decay">Тлен</a><a href="#rest">Отдых</a>
         </nav>
 
 
 		<section>
 			<h2 id="characteristics" class="text-xl font-semibold mb-3">Характеристики</h2>
 			<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-				{#each CHARACTERISTICS as c}
+				{#each visibleCharacteristics as c}
 					{@const baseVal = getCharacteristicValue(char, c.id)}
 					{@const effVal = getCharacteristicValue(char, c.id, condMods)}
 					{@const mod = getModifier(effVal)}
@@ -1445,7 +1648,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		<section>
 			<h2 id="resources" class="text-xl font-semibold mb-3">Ресурсы</h2>
 			<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-				{#each RESOURCES as r}
+				{#each visibleResources as r}
 					{@const max = getResourceMax(char, r.id, condMods)}
 					{@const current = getCurrentResource(char, r.id, max)}
 						<div class="border rounded-lg p-3 text-center bg-white">
@@ -1726,7 +1929,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 							</tr>
 						</thead>
 						<tbody>
-							{#each lastRest.results as r}
+							{#each lastRest.results.filter((entry) => !hideReligion || entry.resource !== 'grace') as r}
 								<tr class="border-b border-blue-200">
 									<td class="px-2 py-1 font-semibold">{r.short}</td>
 									<td class="px-2 py-1 text-gray-600">
@@ -1761,7 +1964,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 						История прокачки (по уровням)
 					</summary>
 					<div class="p-4 space-y-2">
-						{#each RESOURCES as r}
+						{#each visibleResources as r}
 							{@const history = char.resourceRolls?.[r.id] ?? []}
 							{#if history.length > 0}
 								<div class="flex items-center gap-3 text-sm">
@@ -1961,7 +2164,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 							<div class="text-sm text-gray-500">Последняя атака</div>
 							<div class="text-lg font-semibold">
 								{lastAttack.weapon}
-								{#if lastAttack.attackType === 'fast'}<span class="text-xs text-gray-500">(быстрая — два удара)</span>{/if}
+								{#if lastAttack.attacks.length > 1}<span class="text-xs text-gray-500">({lastAttack.attacks.length} удара)</span>{/if}
 							</div>
 
 							{#each lastAttack.attacks as atk, idx}
@@ -1992,6 +2195,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 													{/each}
 												{/if}
 												+ {atk.damage.modValue} мод.
+												{#if atk.damage.abilityBonus > 0}+ {atk.damage.abilityBonus} от умений{/if}
 											</div>
 										</div>
 									{/if}
@@ -2156,7 +2360,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 			</section>
 		{/if}
 
-		{#if lastCast}
+		{#if lastCast && (!hideReligion || lastCast.resource !== 'grace')}
 			<section class="border-2 rounded-lg p-4 bg-white space-y-2">
 				<div>
 					<div class="text-sm text-gray-500">Последняя магическая атака</div>
@@ -2188,6 +2392,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 								+ {lastCast.effect.modValue}
 								мод. {lastCast.effect.modId === 'religion' ? 'Религии' : 'Интеллекта'}
 							{/if}
+							{#if lastCast.effect.abilityBonus > 0}+ {lastCast.effect.abilityBonus} от умений{/if}
 						</div>
 					</div>
 				{/if}
@@ -2231,7 +2436,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 					</tr>
 				</thead>
 				<tbody>
-					{#each SKILLS as s}
+					{#each visibleSkills as s}
 						{@const total = getSkillTotal(char, s.id, condMods)}
 						{@const target = getSkillCheckTarget(char, s.id, condMods)}
 						{@const bonusDetails = getSkillBonusDetails(char, s.id)}
@@ -2310,25 +2515,26 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 					{ field: 'bond',        title: 'Привязанность', list: BONDS },
 					{ field: 'flaw',        title: 'Слабость',   list: FLAWS }
 				] as const as entry}
+					{@const religiousBond = hideReligion && entry.field === 'bond' && char.bio.bondKey === 'deity'}
 					<div class="border rounded-lg bg-white p-4">
 						<label for={"personality-" + entry.field} class="block font-semibold mb-2">{entry.title}</label>
 						<select id={"personality-" + entry.field}
 							class="w-full px-3 py-2 border rounded mb-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-							value={char.bio[`${entry.field}Key` as const]}
+							value={religiousBond ? '' : char.bio[`${entry.field}Key` as const]}
 							onchange={(e) => selectPersonality(
 								entry.field as 'personality' | 'ideal' | 'bond' | 'flaw',
 								e.currentTarget.value,
 								entry.list
 							)}>
 							<option value="">— не выбрано —</option>
-							{#each entry.list as opt}
+							{#each entry.list.filter((opt) => !hideReligion || opt.id !== 'deity') as opt}
 								<option value={opt.id}>{opt.name}</option>
 							{/each}
 						</select>
 						<textarea
 							class="w-full px-3 py-2 border rounded text-sm min-h-[80px] focus:outline-none focus:ring-2 focus:ring-blue-500"
 							aria-label={`Описание: ${entry.title}`} placeholder="Описание или своя формулировка"
-							value={char.bio[`${entry.field}Text` as const]}
+							value={religiousBond ? '' : char.bio[`${entry.field}Text` as const]}
 							onblur={(e) => updateBio({
 								[`${entry.field}Text`]: e.currentTarget.value
 							} as Partial<Character['bio']>)}></textarea>
@@ -2367,22 +2573,29 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		<section>
 			<div class="flex justify-between items-center mb-3 flex-wrap gap-2">
 				<h2 id="spells" class="text-xl font-semibold">Заклинания</h2>
+				{#if !hideReligion}
 				<label class="flex items-center gap-2 text-sm px-3 py-1.5 border rounded hover:bg-gray-50 cursor-pointer">
 					<input
 						type="checkbox"
-						checked={char.useGraceForSpells}
+						checked={canUseGraceWithDecay(char.decay?.points ?? 0) && char.useGraceForSpells}
+						disabled={!canUseGraceWithDecay(char.decay?.points ?? 0)}
 						onchange={async (e) => {
+							if (!canUseGraceWithDecay(char!.decay?.points ?? 0)) return;
 							char!.useGraceForSpells = (e.currentTarget as HTMLInputElement).checked;
 							await toggleGraceMode(char!);
 							char = { ...char! };
 						}} />
 					<span>
-						Творить <span class="font-semibold {char.useGraceForSpells ? 'text-purple-700' : 'text-blue-700'}">
-							{char.useGraceForSpells ? 'Благодатью' : 'Живой'}
+						Творить <span class="font-semibold {char.useGraceForSpells && canUseGraceWithDecay(char.decay?.points ?? 0) ? 'text-purple-700' : 'text-blue-700'}">
+							{char.useGraceForSpells && canUseGraceWithDecay(char.decay?.points ?? 0) ? 'Благодатью' : 'Живой'}
 						</span>
 					</span>
 				</label>
+				{/if}
 			</div>
+			{#if decayLevel === 3}
+				<p class="text-sm mb-3">Тлен не позволяет использовать Благодать. Заклинания за Живу остаются доступны.</p>
+			{/if}
 						{#if combat?.active && enemiesInCombat.length > 0}
 				<div class="mb-3 p-3 print-hide border-2 border-red-300 rounded bg-red-50">
 					<label for="field-13" class="block text-xs text-red-700 font-semibold mb-1">
@@ -2408,7 +2621,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 				</div>
 			{/if}
 						<div class="space-y-3">
-				{#each Object.entries(SPELLS_BY_SCHOOL) as [schoolId, _spells]}
+				{#each visibleSpellSchools as [schoolId, _spells]}
 					{@const schoolLevel = getSpellSkillLevel(char, schoolId)}
 					{@const maxSpellLevel = getMaxSpellLevel(char, schoolId)}
 					{@const schoolSkill = SKILLS.find((s) => s.id === schoolId)}
@@ -2438,10 +2651,11 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 									</div>
 								{/if}
 								<ul class="divide-y">
-									{#each spellList as { spell, available }}
+									{#each spellList.filter(({ spell }) => !hideReligion || spell.costGrace === undefined) as { spell, available }}
 										{@const known = isSpellKnown(char, spell.id)}
 										{@const useTwo = twoHands[spell.id] ?? false}
-										{@const cost = getSpellCost(char, spell, useTwo)}
+										{@const costOneHand = getSpellCost(char, spell, false)}
+										{@const costTwoHands = getSpellCost(char, spell, true)}
 										{@const threshold = getSpellLevelThreshold(spell.school, spell.skillLevel)}
 										<li class="px-4 py-3 {available ? '' : 'bg-gray-50 opacity-60'}">
 											<div class="flex items-center gap-2 mb-1 flex-wrap">
@@ -2466,12 +2680,14 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 											<p class="text-sm text-gray-600 mb-2">{spell.description}</p>
 											<div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 mb-2">
 												{#if spell.costOneHand !== undefined}
-													<span>1 рука: <span class="text-blue-700 font-semibold">{cost.reduced}</span> живы
-														{#if cost.reduction > 0}<span class="text-green-700">(−{cost.reduction} от умений)</span>{/if}
+																<span>1 рука: <span class="text-blue-700 font-semibold">{costOneHand.reduced}</span> живы
+																	{#if costOneHand.reduction > 0}<span class="text-green-700">(−{costOneHand.reduction} от умений)</span>{/if}
 													</span>
 												{/if}
 												{#if spell.costTwoHands !== undefined}
-													<span>2 руки: {spell.costTwoHands} живы</span>
+																<span>2 руки: <span class="text-blue-700 font-semibold">{costTwoHands.reduced}</span> живы
+																	{#if costTwoHands.reduction > 0}<span class="text-green-700">(−{costTwoHands.reduction} от умений)</span>{/if}
+																</span>
 												{/if}
 												{#if spell.costGrace !== undefined}
 													<span>{spell.costGrace} благодати</span>
@@ -2495,6 +2711,8 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 													{/if}
 													<button
 														class="px-2 py-0.5 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
+												disabled={spell.costGrace !== undefined && !canUseGraceWithDecay(char.decay?.points ?? 0)}
+												title={spell.costGrace !== undefined && !canUseGraceWithDecay(char.decay?.points ?? 0) ? 'Благодать недоступна из-за Тлена' : undefined}
 														onclick={() => castSpell(spell.id, schoolId, useTwo)}>
 														Магическая атака (к100)
 													</button>
@@ -2705,14 +2923,17 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		{/if}
 		<section>
 			<h2 id="abilities" class="text-xl font-semibold mb-3">Умения и таланты</h2>
+			<p class="text-sm text-gray-600 mb-3">Очков умений: <strong>{char.abilityPoints ?? 0}</strong>. На каждом новом уровне вы получаете 5 очков. Каждое умение стоит 1 очко; для следующей ступени сначала изучите предыдущую в этом навыке.</p>
 			<div class="space-y-4">
-				{#each SKILLS as s}
+					{#each visibleSkills as s}
 					{@const unlocked = getUnlockedAbilities(char, s.id)}
 					{#if unlocked.length > 0}
 						<div class="border rounded-lg bg-white">
 							<div class="px-4 py-2 border-b bg-gray-50 font-semibold">{s.name}</div>
 							<ul class="divide-y">
 								{#each unlocked as ability}
+									{@const learned = isAbilityLearned(char, ability.id)}
+									{@const blockReason = getAbilityBlockReason(char, ability.id)}
 									<li class="px-4 py-2">
 										<div class="flex items-center gap-2">
 											<span class="text-xs uppercase px-2 py-0.5 rounded
@@ -2723,12 +2944,16 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 												{ability.tier === 0 ? 'базовое' : `${ABILITY_THRESHOLDS[ability.tier]}+`}
 											</span>
 											<span class="font-medium">{ability.name}</span>
+											<span class="text-xs {learned ? 'text-green-700' : 'text-gray-500'}">{learned ? '✓ изучено' : blockReason ?? 'доступно'}</span>
 											<span class="text-xs text-gray-500">
 												{ability.type === 'passive' ? 'пассивное' :
 												 ability.type === 'active' ? 'активное' : 'реакция'}
 											</span>
 										</div>
 										<p class="text-sm text-gray-600 mt-1">{ability.description}</p>
+										<button class="mt-2 px-2 py-1 text-xs border rounded hover:bg-gray-50 disabled:opacity-50"
+											disabled={blockReason !== null}
+											onclick={() => studyAbility(ability.id)}>{learned ? 'Изучено' : 'Изучить · 1 очко'}</button>
 									</li>
 								{/each}
 							</ul>
