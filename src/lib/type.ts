@@ -26,10 +26,11 @@ export interface Character {
 		conditions: Array<{
 		id: string;
 		roundsLeft: number | null;
+		stacks?: number;
 		source?: string;
 		notes?: string;
 	}>;
-	decay: { stage: number; points: number };
+	decay: { stage: number; points: number; usedPowers?: string[] };
 		death: {
 		usedVoiceOfBlood: boolean;
 		usedCallOfZhiva: boolean;

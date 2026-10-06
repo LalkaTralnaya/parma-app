@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  adjustDecayPoints, canUseGraceWithDecay, gainDecay, getDecaySkillModifier,
-  getDecayStage, normalizeDecay, resolveDecayAtonement, undeadAttacksFirst
+  adjustDecayPoints, canUseDecayPower, canUseGraceWithDecay, gainDecay, getAvailableDecayPowers,
+  getDecaySkillModifier, getDecayStage, markDecayPowerUsed, normalizeDecay, resetDecayPowers,
+  resolveDecayAtonement, undeadAttacksFirst
 } from '../src/lib/engine/decay.ts';
 import { getSkillCheckTarget } from '../src/lib/engine/character.ts';
-import { getConditionSaveTarget } from '../src/lib/engine/conditions.ts';
+import { getConditionModifiers, getConditionSaveTarget } from '../src/lib/engine/conditions.ts';
 import { findCondition } from '../src/lib/rules/conditions.ts';
 
 const character = (points = 0) => ({
@@ -69,4 +70,24 @@ test('atonement removes points; thresholds derive from remaining points', () => 
   assert.deepEqual(resolveDecayAtonement(character(2), 2, 4).character.decay, { points: 0, stage: 0 });
   assert.equal(resolveDecayAtonement(character(10), 21).removed, 0);
   assert.throws(() => resolveDecayAtonement(character(10), 2), RangeError);
+});
+
+test('active decay powers follow late thresholds, daily use and long rest', () => {
+  assert.deepEqual([0, 1, 5, 10, 20].map((points) => getAvailableDecayPowers(points).map((power) => power.id)), [
+    [], ['ominous_presence'], ['ominous_presence', 'dark_revelation'],
+    ['ominous_presence', 'dark_revelation', 'nezhiva_resilience'], []
+  ]);
+  const once = markDecayPowerUsed(character(5), 'dark_revelation');
+  assert.equal(canUseDecayPower(once, 'dark_revelation'), false);
+  assert.equal(canUseDecayPower(once, 'ominous_presence'), true);
+  assert.throws(() => markDecayPowerUsed(once, 'dark_revelation'));
+  assert.deepEqual(adjustDecayPoints(once, 1).decay.usedPowers, ['dark_revelation']);
+  assert.equal(canUseDecayPower(resetDecayPowers(once), 'dark_revelation'), true);
+  assert.deepEqual(normalizeDecay({ points: 6, usedPowers: ['dark_revelation', 'unknown', 'dark_revelation'] }).usedPowers, ['dark_revelation']);
+});
+
+test('levels of exhaustion from decay stack their stamina penalty', () => {
+  const char = character(10);
+  char.conditions = [{ id: 'exhausted', roundsLeft: null, stacks: 2 }];
+  assert.equal(getConditionModifiers(char).maxStamina, -40);
 });

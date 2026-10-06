@@ -10,6 +10,40 @@ export interface DecayStage {
   isPlayerCharacter: boolean;
 }
 
+/** Активные эффекты из раздела «Пороги Тлена и их эффекты» основной книги.
+ * Доступность привязана к выбранной для приложения поздней шкале ОТ. */
+export const DECAY_POWERS = [
+  { id: 'ominous_presence', name: 'Зловещее присутствие', minPoints: 1,
+    description: 'Раз в день +5 к одной проверке Запугивания.' },
+  { id: 'dark_revelation', name: 'Явить тёмную сущность', minPoints: 5,
+    description: 'Реакция на атаку живого существа: 2 Бодрости; атакующий делает Избавление Интеллекта, иначе получает Жуть на 1 раунд.' },
+  { id: 'nezhiva_resilience', name: 'Впустить Неживу', minPoints: 10,
+    description: 'Раз в день игнорировать одно Ошеломление, Оцепенение или Паралич; получить 1 уровень Изнеможения.' }
+] as const;
+
+export type DecayPowerId = (typeof DECAY_POWERS)[number]['id'];
+
+export function getAvailableDecayPowers(points: number) {
+  const total = wholePoints(points);
+  return total >= 20 ? [] : DECAY_POWERS.filter((power) => total >= power.minPoints);
+}
+
+export function canUseDecayPower(char: Character, powerId: DecayPowerId): boolean {
+  return getAvailableDecayPowers(char.decay?.points ?? 0).some((power) => power.id === powerId)
+    && !(char.decay?.usedPowers ?? []).includes(powerId);
+}
+
+/** Вызывается только после разрешения броска или эффекта, поэтому отмена ввода не расходует использование. */
+export function markDecayPowerUsed(char: Character, powerId: DecayPowerId): Character {
+  if (!canUseDecayPower(char, powerId)) throw new Error('Активное умение Тлена недоступно');
+  return { ...char, decay: { ...normalizeDecay(char.decay), usedPowers: [...(char.decay?.usedPowers ?? []), powerId] } };
+}
+
+export function resetDecayPowers(char: Character): Character {
+  const { usedPowers: _usedPowers, ...decay } = normalizeDecay(char.decay);
+  return { ...char, decay };
+}
+
 function wholePoints(points: number): number {
   return Number.isFinite(points) ? Math.max(0, Math.floor(points)) : 0;
 }
@@ -49,13 +83,16 @@ export function getDecayStage(points: number): DecayStage {
 
 export function normalizeDecay(value: Partial<Character['decay']> | null | undefined): Character['decay'] {
   const points = wholePoints(value?.points ?? 0);
-  return { points, stage: getDecayStage(points).level };
+  const usedPowers = Array.isArray(value?.usedPowers)
+    ? [...new Set(value.usedPowers.filter((id) => DECAY_POWERS.some((power) => power.id === id)))]
+    : [];
+  return { points, stage: getDecayStage(points).level, ...(usedPowers.length ? { usedPowers } : {}) };
 }
 
 export function adjustDecayPoints(char: Character, delta: number): Character {
   const current = normalizeDecay(char.decay);
   const points = Math.max(0, current.points + (Number.isFinite(delta) ? Math.trunc(delta) : 0));
-  return { ...char, decay: { points, stage: getDecayStage(points).level } };
+  return { ...char, decay: { ...current, points, stage: getDecayStage(points).level } };
 }
 
 /** Штраф Убеждения на 1–4 ОТ действует лишь с добрыми людьми. */

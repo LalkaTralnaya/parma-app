@@ -44,7 +44,7 @@
 	// Правила
 	import { CONDITIONS, findCondition } from '../../../lib/rules/conditions';
 import { getConditionModifiers, getConditionSaveTarget as calculateConditionSaveTarget, rollConditionsDotDamage } from '../../../lib/engine/conditions';
-	import { adjustDecayPoints, canUseGraceWithDecay, getDecayStage } from '../../../lib/engine/decay';
+	import { adjustDecayPoints, canUseDecayPower, canUseGraceWithDecay, getAvailableDecayPowers, getDecayStage, markDecayPowerUsed, resetDecayPowers } from '../../../lib/engine/decay';
 	import { PERSONALITY_TRAITS, IDEALS, BONDS, FLAWS, findOption } from '../../../lib/rules/personality';
 	import { ITEMS, CATEGORY_LABEL, type ItemCategory } from '../../../lib/rules/items';
 	import { BACKGROUNDS } from '../../../lib/rules/backgrounds';
@@ -153,6 +153,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	let combat = $state<CombatState | null>(null);
 	let targetEnemyId = $state<string | null>(null);
 	let decayDelta = $state(1);
+	let lastDecayAction = $state('');
 	let decayLevel = $derived(char ? getDecayStage(char.decay?.points ?? 0).level : 0);
 	let hideReligion = $derived(decayLevel >= 4);
 	let visibleCharacteristics = $derived(CHARACTERISTICS.filter((entry) => !hideReligion || entry.id !== 'religion'));
@@ -892,6 +893,48 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		await saveCharacter($state.snapshot(char) as Character);
 	}
 
+	async function useOminousPresence() {
+		if (!char || !canUseDecayPower(char, 'ominous_presence')) return;
+		const target = Math.min(95, getSkillCheckTarget(char, 'intimidation', condMods) + 5);
+		const roll = await requestDie(100, 'Зловещее присутствие: Запугивание', target);
+		if (roll === null || !char || !canUseDecayPower(char, 'ominous_presence')) return;
+		const result = classifyRoll(roll, target);
+		char = markDecayPowerUsed(char, 'ominous_presence');
+		await saveCharacter($state.snapshot(char) as Character);
+		lastRoll = { skill: 'Запугивание — Зловещее присутствие', roll, target, result };
+		lastDecayAction = `Зловещее присутствие: к100 = ${roll} ≤ ${target} — ${resultLabel[result]}`;
+		publishToActiveRoom(char.name || 'Безымянный', 'skill', { skillName: 'Запугивание — Зловещее присутствие (+5)', roll, target, result });
+	}
+
+	async function useDarkRevelation() {
+		if (!char || !canUseDecayPower(char, 'dark_revelation')) return;
+		const max = getResourceMax(char, 'stamina', condMods);
+		if (getCurrentResource(char, 'stamina', max) < 2) return;
+		char = markDecayPowerUsed(char, 'dark_revelation');
+		spendResource(char, 'stamina', 2, max);
+		char = { ...char, currentResources: { ...(char.currentResources ?? {}) } };
+		await saveCharacter($state.snapshot(char) as Character);
+		lastDecayAction = 'Явить тёмную сущность: потрачено 2 Бодрости. Атакующий — живое существо — делает Избавление Интеллекта; при провале получает Жуть на 1 раунд.';
+		publishToActiveRoom(char.name || 'Безымянный', 'effect', { label: 'Тлен: Явить тёмную сущность', details: lastDecayAction });
+	}
+
+	async function useNezhivaResilience(conditionId: string) {
+		if (!char || !canUseDecayPower(char, 'nezhiva_resilience') || !['stunned', 'paralyzed'].includes(conditionId)) return;
+		const condition = char.conditions.find((entry) => entry.id === conditionId);
+		if (!condition) return;
+		const name = findCondition(conditionId)?.name ?? conditionId;
+		const exhausted = char.conditions.find((entry) => entry.id === 'exhausted');
+		const exhaustionLevel = (exhausted?.stacks ?? 0) + 1;
+		const conditions = char.conditions.filter((entry) => entry.id !== conditionId && entry.id !== 'exhausted');
+		conditions.push({ id: 'exhausted', roundsLeft: null, stacks: exhaustionLevel, source: 'Тлен: Впустить Неживу' });
+		char = { ...markDecayPowerUsed(char, 'nezhiva_resilience'), conditions };
+		const max = getResourceMax(char, 'stamina', getConditionModifiers(char));
+		char.currentResources = { ...(char.currentResources ?? {}), stamina: Math.min(getCurrentResource(char, 'stamina', max), max) };
+		await saveCharacter($state.snapshot(char) as Character);
+		lastDecayAction = `Впустить Неживу: снято ${name}; Изнеможение ${exhaustionLevel} ур.`;
+		publishToActiveRoom(char.name || 'Безымянный', 'effect', { label: 'Тлен: Впустить Неживу', details: lastDecayAction });
+	}
+
 	async function castSpell(spellId: string, school: string, useTwoHands: boolean) {
 		if (!char) return;
 		const spell = SPELLS_BY_SCHOOL[school].find((s) => s.id === spellId);
@@ -1076,7 +1119,14 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		const success = roll <= targetInfo.target;
 		lastSave = { condition: def.name, roll, target: targetInfo.target, label: targetInfo.label, success };
 		publishToActiveRoom(char.name || 'Безымянный', 'characteristic', { charName: `Избавление: ${def.name}`, roll, target: targetInfo.target, result: classifyRoll(roll, targetInfo.target) });
-		if (success) await removeCondition(conditionId);
+		if (success) {
+			const stacks = char.conditions.find((entry) => entry.id === conditionId)?.stacks ?? 1;
+			if (conditionId === 'exhausted' && stacks > 1) {
+				char.conditions = char.conditions.map((entry) => entry.id === conditionId ? { ...entry, stacks: stacks - 1 } : entry);
+				char = { ...char };
+				await saveCharacter($state.snapshot(char) as Character);
+			} else await removeCondition(conditionId);
+		}
 	}
 
 	async function applyDotDamage() {
@@ -1188,7 +1238,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		}
 		char.currentResources = { ...(char.currentResources ?? {}), ...updates };
 		char.shortRestUsed = false;
-		char = { ...char };
+		char = resetDecayPowers(char);
 		await saveCharacter($state.snapshot(char) as Character);
 		lastRest = { type: 'long', results: [] };
 	}
@@ -1708,6 +1758,33 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 				<ul class="list-disc pl-5 text-sm text-gray-700 space-y-1">
 					{#each getDecayStage(char.decay?.points ?? 0).effects as effect}<li>{effect}</li>{/each}
 				</ul>
+				{#if getAvailableDecayPowers(char.decay?.points ?? 0).length > 0}
+					<div class="border-t pt-3 space-y-2">
+						<div class="font-semibold text-sm">Активные умения Тлена</div>
+						<p class="text-xs text-gray-500">Каждое умение доступно раз в день; использование восстанавливается после продолжительного отдыха. Бонус присутствия складывается с пассивным бонусом Тлена.</p>
+						{#each getAvailableDecayPowers(char.decay?.points ?? 0) as power (power.id)}
+							<div class="border rounded p-3 flex items-start justify-between gap-3 flex-wrap">
+								<div class="min-w-48 flex-1">
+									<div class="font-medium text-sm">{power.name}</div>
+									<p class="text-xs text-gray-600">{power.description}</p>
+								</div>
+								{#if power.id === 'ominous_presence'}
+									<button class="px-3 py-1.5 border rounded text-sm" disabled={!canUseDecayPower(char, power.id)} onclick={useOminousPresence}>{canUseDecayPower(char, power.id) ? 'Проверить Запугивание' : 'Использовано сегодня'}</button>
+								{:else if power.id === 'dark_revelation'}
+									<button class="px-3 py-1.5 border rounded text-sm" disabled={!canUseDecayPower(char, power.id) || getCurrentResource(char, 'stamina', getResourceMax(char, 'stamina', condMods)) < 2} onclick={useDarkRevelation}>{canUseDecayPower(char, power.id) ? 'Реакция · 2 БДР' : 'Использовано сегодня'}</button>
+								{:else}
+									<div class="flex gap-2 flex-wrap">
+										{#each char.conditions.filter((entry) => entry.id === 'stunned' || entry.id === 'paralyzed') as condition (condition.id)}
+											<button class="px-3 py-1.5 border rounded text-sm" disabled={!canUseDecayPower(char, power.id)} onclick={() => useNezhivaResilience(condition.id)}>Снять {findCondition(condition.id)?.name}</button>
+										{/each}
+										{#if !char.conditions.some((entry) => entry.id === 'stunned' || entry.id === 'paralyzed') || !canUseDecayPower(char, power.id)}<span class="text-xs text-gray-500">{canUseDecayPower(char, power.id) ? 'Нет подходящего состояния' : 'Использовано сегодня'}</span>{/if}
+									</div>
+								{/if}
+							</div>
+						{/each}
+						{#if lastDecayAction}<p class="text-xs border rounded p-2" aria-live="polite">{lastDecayAction}</p>{/if}
+					</div>
+				{/if}
 				<div class="print-hide border-t pt-3 space-y-2">
 					<div class="text-xs text-gray-500">Нежива автоматически добавляет 1 ОТ за каждое сотворение. Другие источники ОТ отмечает Сказитель. Дневной счётчик не ведётся автоматически.</div>
 					<div class="flex items-center gap-2 flex-wrap">
@@ -1774,8 +1851,9 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 									<div>
 										<div class="font-semibold {def.isPositive ? 'text-green-800' : 'text-red-800'}">
 											{def.name}
+											{#if c.id === 'exhausted' && (c.stacks ?? 1) > 1}<span class="text-xs">· {c.stacks} ур.</span>{/if}
 										</div>
-										<div class="text-xs text-gray-600 mt-0.5">{def.effects}</div>
+								<div class="text-xs text-gray-600 mt-0.5">{c.id === 'exhausted' && (c.stacks ?? 1) > 1 ? `−${20 * (c.stacks ?? 1)} к максимуму Бодрости` : def.effects}</div>
 									</div>
 									<div class="flex items-center gap-1">
 										{#if c.roundsLeft !== null}

@@ -28,7 +28,7 @@ export function getConditionModifiers(char: Character): ConditionModifiers {
 		result.saves = (result.saves ?? 0) + (def.modifiers.saves ?? 0);
 		result.armor = (result.armor ?? 0) + (def.modifiers.armor ?? 0);
 		result.speed = (result.speed ?? 0) + (def.modifiers.speed ?? 0);
-		result.maxStamina = (result.maxStamina ?? 0) + (def.modifiers.maxStamina ?? 0);
+		result.maxStamina = (result.maxStamina ?? 0) + (def.modifiers.maxStamina ?? 0) * (c.id === 'exhausted' ? Math.max(1, Math.floor(c.stacks ?? 1)) : 1);
 		if (def.modifiers.skipTurn) result.skipTurn = true;
 		if (def.modifiers.canAct === false) result.canAct = false;
 	}
