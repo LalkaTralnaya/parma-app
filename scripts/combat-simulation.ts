@@ -22,7 +22,7 @@ const RATIOS = [
 const ATTACK_MODES: AttackType[] = ['normal', 'strong', 'fast'];
 const WEAPON = WEAPONS.find(w => w.id === 'war_hammer') ?? WEAPONS[0];
 const ROUNDS_LIMIT = 200;
-const RUNS_PER_CASE = Number(process.env.PARMA_SIM_RUNS ?? 2_000);
+const RUNS_PER_CASE = Number(process.env['PARMA_SIM_RUNS'] ?? 2_000);
 
 function makeCharacter(): Character {
 	return {
