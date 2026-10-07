@@ -14,7 +14,7 @@ create table if not exists public.user_characters (
 
 alter table public.user_characters enable row level security;
 revoke all on table public.user_characters from anon, public;
-grant select, insert, update to authenticated;
+grant select, insert, update on table public.user_characters to authenticated;
 
 drop policy if exists "Users can read their own characters" on public.user_characters;
 create policy "Users can read their own characters"

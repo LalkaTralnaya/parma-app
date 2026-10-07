@@ -6,8 +6,8 @@ class ParmaDB extends Dexie {
 	characters!: Table<Character, string>;
 	deletions!: Table<{ id: string; deletedAt: number }, string>;
 
-	constructor() {
-		super('parma');
+	constructor(name = 'parma') {
+		super(name);
 		this.version(1).stores({
 			characters: 'id, name, raceId, createdAt'
 		});
@@ -18,30 +18,76 @@ class ParmaDB extends Dexie {
 	}
 }
 
-export const db = new ParmaDB();
+const guestDb = new ParmaDB();
+const accountDbs = new Map<string, ParmaDB>();
+
+/** Separate IndexedDB caches prevent one account's characters from appearing in another. */
+export function getCharacterDb(userId: string | null): ParmaDB {
+	if (!userId) return guestDb;
+	let accountDb = accountDbs.get(userId);
+	if (!accountDb) {
+		accountDb = new ParmaDB(`parma-user-${userId}`);
+		accountDbs.set(userId, accountDb);
+	}
+	return accountDb;
+}
+
+async function activeDb(): Promise<{ db: ParmaDB; userId: string | null }> {
+	const { supabase } = await import('../supabase/client');
+	const { data: { session } } = await supabase.auth.getSession();
+	const userId = session?.user.id ?? null;
+	return { db: getCharacterDb(userId), userId };
+}
+
+export async function countGuestCharacters(): Promise<number> {
+	return guestDb.characters.count();
+}
+
+export async function copyGuestCharactersToAccount(userId: string): Promise<number> {
+	const accountDb = getCharacterDb(userId);
+	const guest = await guestDb.characters.toArray();
+	let copied = 0;
+	for (const char of guest) {
+		const current = await accountDb.characters.get(char.id);
+		if (!current || char.updatedAt > current.updatedAt) {
+			await accountDb.characters.put(migrateCharacter(char));
+			copied++;
+		}
+	}
+	return copied;
+}
+
+export async function clearGuestCharacters(): Promise<void> {
+	await guestDb.characters.clear();
+	await guestDb.deletions.clear();
+}
 
 export async function listCharacters(): Promise<Character[]> {
+	const { db } = await activeDb();
 	return db.characters.orderBy('createdAt').reverse().toArray();
 }
 
 export async function getCharacter(id: string): Promise<Character | undefined> {
+	const { db } = await activeDb();
 	const found = await db.characters.get(id);
 	if (!found) return undefined;
 	return migrateCharacter(found);
 }
 
 export async function saveCharacter(char: Character): Promise<void> {
+	const { db, userId } = await activeDb();
 	char.updatedAt = Date.now();
 	await db.characters.put(char);
 	await db.deletions.delete(char.id);
-	void import('$lib/sync/cloudCharacters').then(({ queueCharacterSync }) => queueCharacterSync(char));
+	if (userId) void import('$lib/sync/cloudCharacters').then(({ queueCharacterSync }) => queueCharacterSync(char, userId)).catch(console.error);
 }
 
 export async function deleteCharacter(id: string): Promise<void> {
+	const { db, userId } = await activeDb();
 	await db.characters.delete(id);
 	const deletedAt = Date.now();
 	await db.deletions.put({ id, deletedAt });
-	void import('$lib/sync/cloudCharacters').then(({ queueCharacterDeletion }) => queueCharacterDeletion(id, deletedAt));
+	if (userId) void import('$lib/sync/cloudCharacters').then(({ queueCharacterDeletion }) => queueCharacterDeletion(id, deletedAt, userId)).catch(console.error);
 }
 
 export function createEmptyCharacter(): Character {
@@ -119,9 +165,7 @@ export function restoreResource(char: Character, resourceId: string, amount: num
 }
 export async function toggleGraceMode(char: Character): Promise<void> {
 	char.useGraceForSpells = !char.useGraceForSpells;
-	char.updatedAt = Date.now();
-	const clean = JSON.parse(JSON.stringify(char));
-	await db.characters.put(clean);
+	await saveCharacter(JSON.parse(JSON.stringify(char)));
 }
 /** Выдать персонажу стартовый набор из предыстории */
 export function giveStartingInventory(char: Character, backgroundId: string | undefined): void {

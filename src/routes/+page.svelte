@@ -38,13 +38,15 @@
   let query = $state('');
   let deleting = $state<string | null>(null);
   let busy = $state(false);
+	let loadVersion = 0;
   const filtered = $derived(characters.filter(c => `${c.name} ${raceName(c.raceId)}`.toLocaleLowerCase('ru').includes(query.trim().toLocaleLowerCase('ru'))));
   async function load() {
+	const version = ++loadVersion;
     loading = true;
     error = '';
-    try { characters = await listCharacters(); }
-    catch { error = 'Не удалось загрузить персонажей. Проверьте, разрешено ли браузеру хранить данные, и попробуйте ещё раз.'; }
-    finally { loading = false; }
+    try { const loaded = await listCharacters(); if (version === loadVersion) characters = loaded; }
+    catch { if (version === loadVersion) error = 'Не удалось загрузить персонажей. Проверьте, разрешено ли браузеру хранить данные, и попробуйте ещё раз.'; }
+    finally { if (version === loadVersion) loading = false; }
   }
   async function remove(id: string) {
     if (busy) return;
@@ -120,7 +122,7 @@
           {/each}
         </ul>
       {/if}
-      <p class="storage-note"><Icon name="shield" size={16} /> Ваши герои хранятся на этом устройстве, в этом браузере.</p>
+      <p class="storage-note"><Icon name="shield" size={16} /> Герои хранятся в этом браузере. При входе в аккаунт они также синхронизируются с облаком.</p>
     </section>
     <aside class="toolbox" aria-labelledby="tools-title">
       <h2 id="tools-title">За ширмой мастера</h2><p>Подготовьте встречу и ведите игру.</p>

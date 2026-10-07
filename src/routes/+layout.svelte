@@ -11,7 +11,8 @@
     { href: '/gm', label: 'Мастер', icon: 'dice' },
     { href: '/gm/combat', label: 'Бой', icon: 'sword' },
     { href: '/gm/bestiary', label: 'Бестиарий', icon: 'shield' },
-    { href: '/gm/cheatsheet', label: 'Правила', icon: 'book' }
+    { href: '/gm/cheatsheet', label: 'Правила', icon: 'book' },
+    { href: '/account', label: 'Аккаунт', icon: 'people' }
   ];
   function active(href: string) {
     if (href === '/') return page.url.pathname === '/' || page.url.pathname.startsWith('/char') || page.url.pathname === '/new';
@@ -39,4 +40,4 @@
 </header>
 <div id="content" tabindex="-1">{@render children()}</div>
 <RollChat />
-<footer class="app-footer"><span>Парма · Помощник игрока и мастера</span><span><Icon name="shield" size={16} /> Данные сохраняются в этом браузере</span></footer>
+<footer class="app-footer"><span>Парма · Помощник игрока и мастера</span><span><Icon name="shield" size={16} /> Данные сохраняются локально; для облака войдите в аккаунт</span></footer>

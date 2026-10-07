@@ -1,6 +1,29 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { ADVENTURES } from '$lib/rules/adventures';
 	import Icon from '$lib/components/Icon.svelte';
+	import { supabase } from '$lib/supabase/client';
+	import { listAdventureProgress, type AdventureProgress } from '$lib/sync/adventureProgress';
+	let progressBySlug = $state<Record<string, AdventureProgress>>({});
+	let progressError = $state('');
+	let loadVersion = 0;
+	async function refreshProgress() {
+		const version = ++loadVersion;
+		try {
+			const entries = await listAdventureProgress();
+			if (version === loadVersion) {
+				progressBySlug = Object.fromEntries(entries.map((entry) => [entry.adventureSlug, entry]));
+				progressError = '';
+			}
+		} catch (error) {
+			if (version === loadVersion) progressError = `Не удалось загрузить прогресс: ${(error as Error).message}`;
+		}
+	}
+	onMount(() => {
+		void refreshProgress();
+		const { data } = supabase.auth.onAuthStateChange(() => setTimeout(() => { void refreshProgress(); }, 0));
+		return () => data.subscription.unsubscribe();
+	});
 </script>
 
 <svelte:head>
@@ -19,6 +42,7 @@
 	</header>
 
 	<section aria-labelledby="catalog-title" class="catalog">
+		{#if progressError}<p class="progress-error" role="alert">{progressError}</p>{/if}
 		<div class="section-heading">
 			<div>
 				<h2 id="catalog-title">Каталог <span class="count">{ADVENTURES.length}</span></h2>
@@ -32,6 +56,7 @@
 					<div class="card-body">
 						<span class="card-label">{adventure.label}</span>
 						<h3>{adventure.title}</h3>
+						{#if progressBySlug[adventure.slug]}<span class="progress-badge">{progressBySlug[adventure.slug].completedAt ? 'Пройдено' : `В процессе · ${progressBySlug[adventure.slug].sceneIds.length} сцен`}</span>{/if}
 						<p class="region">{adventure.region}</p>
 						<p class="summary">{adventure.summary}</p>
 						<div class="facts" aria-label="Параметры приключения">
@@ -63,6 +88,8 @@
 	.card-art img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 62% 43%; }
 	.card-body { padding: 24px; }
 	.card-label { color: #59714f; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; }
+	.progress-badge { display: inline-block; margin-top: 8px; padding: 4px 9px; border-radius: 20px; background: #e4e8d9; color: #36543d; font-size: 12px; }
+	.progress-error { color: #923737; font-size: 13px; }
 	h3 { font: 28px Georgia, serif; color: #173d30; margin: 7px 0 2px; }
 	.region { color: #6b6f55; font-size: 13px; margin: 0 0 14px; }
 	.summary { font-size: 14px; line-height: 1.65; margin-bottom: 20px; }

@@ -1,10 +1,66 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import type { PageData } from './$types';
 	import Icon from '$lib/components/Icon.svelte';
+	import { supabase } from '$lib/supabase/client';
+	import { getAdventureProgress, saveAdventureProgress, type AdventureProgress } from '$lib/sync/adventureProgress';
 	let { data }: { data: PageData } = $props();
 	const adventure = $derived(data.adventure);
 	let showSecretMarkers = $state(false);
 	const visibleMarkers = $derived(adventure.map.markers.filter((marker) => showSecretMarkers || !marker.gmOnly));
+	let userId = $state<string | null>(null);
+	let progress = $state<AdventureProgress | null>(null);
+	let notes = $state('');
+	let progressBusy = $state(false);
+	let progressLoading = $state(true);
+	let progressError = $state('');
+	let requestVersion = 0;
+
+	async function loadProgress() {
+		const version = ++requestVersion;
+		progressLoading = true;
+		progressError = '';
+		try {
+			const { data: { session }, error: authError } = await supabase.auth.getSession();
+			if (authError) throw authError;
+			if (version !== requestVersion) return;
+			userId = session?.user.id ?? null;
+			progress = session ? await getAdventureProgress(adventure.slug) : null;
+			if (version !== requestVersion) return;
+			notes = progress?.notes ?? '';
+		} catch (error) {
+			if (version === requestVersion) progressError = `Не удалось загрузить прогресс: ${(error as Error).message}`;
+		} finally {
+			if (version === requestVersion) progressLoading = false;
+		}
+	}
+
+	onMount(() => {
+		void loadProgress();
+		const { data } = supabase.auth.onAuthStateChange(() => setTimeout(() => { void loadProgress(); }, 0));
+		return () => { requestVersion++; data.subscription.unsubscribe(); };
+	});
+
+	async function updateProgress(next: AdventureProgress) {
+		progressBusy = true;
+		progressError = '';
+		try {
+			progress = await saveAdventureProgress(next);
+			notes = progress.notes;
+		} catch (error) {
+			progressError = `Не удалось сохранить прогресс: ${(error as Error).message}`;
+		} finally {
+			progressBusy = false;
+		}
+	}
+
+	function toggleScene(sceneId: string) {
+		if (!progress) return;
+		const sceneIds = progress.sceneIds.includes(sceneId)
+			? progress.sceneIds.filter((id) => id !== sceneId)
+			: [...progress.sceneIds, sceneId];
+		void updateProgress({ ...progress, sceneIds, notes });
+	}
 </script>
 
 <svelte:head>
@@ -20,6 +76,35 @@
 		<p>{adventure.summary}</p>
 		<div class="facts"><span>{adventure.region}</span><span>{adventure.players} игроков</span><span>{adventure.levels} уровни</span><span>{adventure.duration}</span></div>
 	</header>
+	<section class="progress-section" aria-labelledby="progress-title">
+		<div>
+			<h2 id="progress-title">Ваше прохождение</h2>
+			{#if progressLoading}<p>Загружаем прогресс…</p>
+			{:else if !userId}<p>Войдите в аккаунт, чтобы сохранять сцены, заметки и завершённые приключения.</p>
+			{:else if !progress}<p>Начните приключение, чтобы отслеживать его ход на любом устройстве.</p>
+			{:else if progress.completedAt}<p>Пройдено {new Date(progress.completedAt).toLocaleDateString('ru-RU')} · отмечено сцен: {progress.sceneIds.length} из {adventure.scenes.length}</p>
+			{:else}<p>В процессе · отмечено сцен: {progress.sceneIds.length} из {adventure.scenes.length}</p>{/if}
+		</div>
+		{#if !progressLoading && !userId}<a class="button" href="/account">Войти или зарегистрироваться</a>{/if}
+		{#if !progressLoading && userId && !progress}<button type="button" class="button primary" disabled={progressBusy} onclick={() => updateProgress({ adventureSlug: adventure.slug, sceneIds: [], notes: '', completedAt: null })}>Начать приключение</button>{/if}
+		{#if progress}
+			<div class="progress-editor">
+				<fieldset disabled={progressBusy}>
+					<legend>Пройденные сцены</legend>
+					{#each adventure.scenes as scene (scene.id)}
+						<label><input type="checkbox" checked={progress.sceneIds.includes(scene.id)} onchange={() => toggleScene(scene.id)} /> {scene.title}</label>
+					{/each}
+				</fieldset>
+				<label for="adventure-notes">Заметки к приключению</label>
+				<textarea id="adventure-notes" bind:value={notes} maxlength="5000" rows="3" placeholder="Что произошло за столом, где остановились…"></textarea>
+				<div class="progress-actions">
+					<button type="button" disabled={progressBusy || notes === progress.notes} onclick={() => updateProgress({ ...progress!, notes })}>Сохранить заметки</button>
+					<button type="button" disabled={progressBusy} onclick={() => updateProgress({ ...progress!, notes, completedAt: progress!.completedAt ? null : new Date().toISOString() })}>{progress.completedAt ? 'Вернуть в работу' : 'Отметить пройденным'}</button>
+				</div>
+			</div>
+		{/if}
+		{#if progressError}<p class="progress-error" role="alert">{progressError}</p>{/if}
+	</section>
 
 	<section class="map-section" aria-labelledby="map-title">
 		<div class="map-heading">
@@ -122,6 +207,20 @@
 	.adventure-heading > p { max-width: 720px; color: #e5ecd9; font-size: 15px; }
 	.facts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
 	.facts span { border: 1px solid #759075; border-radius: 999px; padding: 4px 11px; font-size: 12px; }
+	.progress-section { margin-top: 22px; padding: 21px 24px; border: 1px solid #b8c8b5; border-radius: 10px; background: #f4f7ef; display: grid; gap: 12px; }
+	.progress-section h2 { font: 25px Georgia, serif; margin: 0 0 5px; }
+	.progress-section p { margin: 0; color: #52614f; font-size: 13px; }
+	.progress-section > .button { justify-self: start; }
+	.progress-editor { display: grid; gap: 10px; }
+	.progress-editor fieldset { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px 14px; border: 0; padding: 0; margin: 0; }
+	.progress-editor legend { font-weight: 600; padding: 0 0 8px; }
+	.progress-editor label { font-size: 13px; }
+	.progress-editor fieldset label { display: flex; align-items: center; gap: 8px; }
+	.progress-editor textarea { width: 100%; border: 1px solid #bdc8ae; border-radius: 6px; padding: 10px; background: #fffef8; }
+	.progress-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+	.progress-actions button { border-radius: 6px; border: 1px solid #789277; background: #fffef8; color: #173d30; padding: 8px 12px; cursor: pointer; }
+	.progress-actions button:disabled { opacity: .5; cursor: not-allowed; }
+	.progress-error { color: #923737 !important; }
 	.map-section { margin-top: 24px; overflow: hidden; border: 1px solid #b8a47f; border-radius: 12px; background: #f1e9d4; box-shadow: 0 12px 30px #241b1130; }
 	.map-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 24px; color: #302b24; }
 	.map-heading h2 { margin: 2px 0 0; font: 29px Georgia, serif; }
