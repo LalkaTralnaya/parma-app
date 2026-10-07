@@ -17,7 +17,7 @@
 	import { getCharacteristicValue, getModifier, getResourceMax } from '../../../lib/engine/character';
 	import { getArmorValue } from '../../../lib/engine/combat';
 	import { rollCombatAttackEffect } from '../../../lib/engine/combat';
-	import { BESTIARY } from '../../../lib/rules/bestiary';
+	import { BESTIARY, BESTIARY_SECTIONS } from '../../../lib/rules/bestiary';
 	import { scaleMonster } from '../../../lib/engine/bestiary';
 	import {
 		getCombat, createEmptyCombat, saveCombat, sortedParticipants, getCurrentParticipant,
@@ -40,8 +40,11 @@
 		roll: number;
 		target: number;
 		outcome: 'hit' | 'miss' | 'critical_hit' | 'critical_miss' | 'double';
+		ignoresArmor?: boolean;
+		notes?: string;
+		save?: string;
 		effect?: { table: string; roll: number; label: string; extraDamageRolls?: number[]; extraDamageFormula?: string };
-		damageRoll?: { rolls: number[]; mod: number; total: number; diceString: string; type: string };
+		damageRoll?: { rolls: number[]; extraRolls?: { dice: string; rolls: number[] }[]; mod: number; total: number; diceString: string; type: string };
 	} | null>(null);
 	let roomId = $state<string | null>(null);
 	let roomParticipants = $state<RoomParticipant[]>([]);
@@ -80,7 +83,7 @@
 		if (!pendingAttack) return;
 		const { attacker, attack } = pendingAttack;
 		const roll = rollD100();
-		const targetValue = (attack.hitTarget ?? 30 + attack.hitBonus) - target.armor;
+		const targetValue = (attack.hitTarget ?? 30 + attack.hitBonus) - (attack.ignoresArmor ? 0 : target.armor);
 
 		let outcome: 'hit' | 'miss' | 'critical_hit' | 'critical_miss' | 'double';
 		if (roll === 1) outcome = 'critical_hit';
@@ -95,19 +98,23 @@
 
 		if ((outcome === 'hit' || outcome === 'critical_hit' || outcome === 'double') && attack.damageDice !== '0') {
 			const rolls = rollDice(attack.damageDice);
+			const extraRolls = (attack.extraDamageDice ?? []).map((dice) => ({ dice, rolls: rollDice(dice) }));
 			const baseSum = rolls.reduce((a, b) => a + b, 0);
+			const extraSum = extraRolls.reduce((sum, part) => sum + part.rolls.reduce((a, b) => a + b, 0), 0);
 			const mod = attack.damageModifier ?? attacker.primaryMod ?? 0;
-			appliedDamage = baseSum + mod;
+			appliedDamage = baseSum + extraSum + mod;
 
 			// Крит — максимум кубиков
 			if (outcome === 'critical_hit') {
 				const maxRoll = rolls.length * Number(attack.damageDice.match(/[кd](\d+)/i)?.[1] ?? 0);
-				appliedDamage = maxRoll + mod;
+				const extraMax = extraRolls.reduce((sum, part) => sum + part.rolls.length * Number(part.dice.match(/[кd](\d+)/i)?.[1] ?? 0), 0);
+				appliedDamage = maxRoll + extraMax + mod;
 			}
 			appliedDamage += effect?.extraDamageRolls?.reduce((a, b) => a + b, 0) ?? 0;
 
 			damageRoll = {
 				rolls,
+				extraRolls,
 				mod,
 				total: appliedDamage,
 				diceString: attack.damageDice,
@@ -126,6 +133,9 @@
 			roll,
 			target: targetValue,
 			outcome,
+			ignoresArmor: attack.ignoresArmor,
+			notes: attack.notes,
+			save: attack.save,
 			effect,
 			damageRoll
 		};
@@ -137,6 +147,8 @@
 		if (attack.damageDice === '0') return;
 		const rolls = rollDice(attack.damageDice);
 		const baseSum = rolls.reduce((a, b) => a + b, 0);
+		const extraRolls = (attack.extraDamageDice ?? []).map((dice) => ({ dice, rolls: rollDice(dice) }));
+		const extraSum = extraRolls.reduce((sum, part) => sum + part.rolls.reduce((a, b) => a + b, 0), 0);
 		const mod = attack.damageModifier ?? attacker.primaryMod ?? 0;
 		attackResult = {
 			attackerName: attacker.name,
@@ -147,8 +159,9 @@
 			outcome: 'hit',
 			damageRoll: {
 				rolls,
+				extraRolls,
 				mod,
-				total: baseSum + mod,
+				total: baseSum + extraSum + mod,
 				diceString: attack.damageDice,
 				type: attack.damageType
 			}
@@ -322,6 +335,7 @@ async function addSelectedPlayers() {
 		const base = BESTIARY.find((m) => m.id === enemyMonsterId);
 		if (!base) return;
 		const scaled = scaleMonster(base, enemyLevel);
+		enemyLevel = scaled.level;
 		const s = getCombat() ?? createEmptyCombat();
 		const dexMod = scaled.scaledMods.dexterity ?? 0;
 		const roll = rollD20();
@@ -343,8 +357,12 @@ async function addSelectedPlayers() {
 				hitBonus: a.hitBonus,
 				hitTarget: a.hitTarget,
 				attackStat: a.attackStat,
-				damageModifier: a.damageModifier ?? scaled.scaledMods[a.attackStat ?? base.primaryStat],
+				ignoresArmor: a.ignoresArmor,
+				notes: a.notes,
+				save: a.save,
+				damageModifier: a.damageModifier ?? 0,
 				damageDice: a.damageDice,
+				extraDamageDice: a.extraDamageDice,
 				damageType: a.damageType
 			})),
 			primaryMod: scaled.scaledMods[base.primaryStat]
@@ -655,7 +673,7 @@ async function addSelectedPlayers() {
 													<div class="text-gray-500">
 														≤ {attack.hitTarget ?? (30 + attack.hitBonus)}
 														{#if attack.damageDice !== '0'}
-											· {attack.damageDice}{#if (attack.damageModifier ?? p.primaryMod ?? 0) !== 0} {(attack.damageModifier ?? p.primaryMod ?? 0) >= 0 ? '+' : ''}{attack.damageModifier ?? p.primaryMod}{/if} {attack.damageType}
+											· {attack.damageDice}{#if (attack.damageModifier ?? p.primaryMod ?? 0) !== 0} {(attack.damageModifier ?? p.primaryMod ?? 0) >= 0 ? '+' : ''}{attack.damageModifier ?? p.primaryMod}{/if}{#each attack.extraDamageDice ?? [] as dice} + {dice}{/each} {attack.damageType}
 														{/if}
 													</div>
 												</div>
@@ -754,15 +772,20 @@ async function addSelectedPlayers() {
 						<label for="field-1" class="block text-sm text-gray-500 mb-1">Монстр</label>
 						<select id="field-1"
 							bind:value={enemyMonsterId}
+							onchange={() => { enemyLevel = BESTIARY.find((monster) => monster.id === enemyMonsterId)?.baseLevel ?? 1; }}
 							class="w-full px-3 py-2 border rounded">
-							{#each BESTIARY as m}
-								<option value={m.id}>{m.name} (база: {m.dangerLabel})</option>
+							{#each BESTIARY_SECTIONS as section}
+								<optgroup label={section.name}>
+									{#each section.monsters as m}
+										<option value={m.id}>{m.name} (база: {m.dangerLabel}){m.source === 'custom' ? ' · авторская карточка' : ''}</option>
+									{/each}
+								</optgroup>
 							{/each}
 						</select>
 					</div>
 					<div>
 						<label for="field-2" class="block text-sm text-gray-500 mb-1">Уровень</label>
-						<input id="field-2" type="number" min="1" max="20" bind:value={enemyLevel}
+						<input id="field-2" type="number" min={BESTIARY.find((monster) => monster.id === enemyMonsterId)?.baseLevel ?? 1} max="20" bind:value={enemyLevel}
 							class="w-full px-3 py-2 border rounded" />
 					</div>
 					<div>
@@ -788,8 +811,10 @@ async function addSelectedPlayers() {
 					{pendingAttack.attacker.name} атакует: {pendingAttack.attack.name}
 				</h3>
 				<p class="text-sm text-gray-500 mb-4">
-					Попадание ≤ {pendingAttack.attack.hitTarget ?? (30 + pendingAttack.attack.hitBonus)}. Выбери цель:
+					{pendingAttack.attack.ignoresArmor ? 'Проверка' : 'Попадание'} ≤ {pendingAttack.attack.hitTarget ?? (30 + pendingAttack.attack.hitBonus)}. Выбери цель:
 				</p>
+				{#if pendingAttack.attack.notes}<p class="text-sm text-gray-600 mb-2">{pendingAttack.attack.notes}</p>{/if}
+				{#if pendingAttack.attack.save}<p class="text-sm text-gray-600 mb-2">Избавление: {pendingAttack.attack.save}</p>{/if}
 				<div class="space-y-2 mb-4 max-h-64 overflow-y-auto">
 					{#each players as target (target.id)}
 						<button
@@ -804,7 +829,7 @@ async function addSelectedPlayers() {
 							</div>
 							<div class="text-xs text-gray-500">
 								Броня {target.armor} · ЖВЧ {target.currentHp}/{target.maxHp}
-								→ цель атаки {(pendingAttack!.attack.hitTarget ?? (30 + pendingAttack!.attack.hitBonus)) - target.armor}
+								→ цель проверки {(pendingAttack!.attack.hitTarget ?? (30 + pendingAttack!.attack.hitBonus)) - (pendingAttack!.attack.ignoresArmor ? 0 : target.armor)}
 							</div>
 						</button>
 					{/each}
@@ -829,7 +854,7 @@ async function addSelectedPlayers() {
 						<div class="text-sm text-gray-500">Цель: {attackResult.targetName}</div>
 						<div class="text-2xl mt-1">
 							Выпало <span class="font-bold">{attackResult.roll}</span>,
-							попадание ≤ {attackResult.target} —
+							{attackResult.ignoresArmor ? 'проверка' : 'попадание'} ≤ {attackResult.target} —
 							<span class="font-bold
 								{attackResult.outcome === 'hit' || attackResult.outcome === 'critical_hit' || attackResult.outcome === 'double' ? 'text-green-700' : 'text-red-700'}">
 								{attackLabel[attackResult.outcome]}
@@ -837,6 +862,8 @@ async function addSelectedPlayers() {
 						</div>
 					</div>
 				{/if}
+				{#if attackResult.notes}<p class="text-sm text-gray-600 mb-2">{attackResult.notes}</p>{/if}
+				{#if attackResult.save}<p class="text-sm text-gray-600 mb-2">Избавление: {attackResult.save}</p>{/if}
 				{#if attackResult.effect}
 					<div class="mb-3 rounded bg-amber-50 border border-amber-200 p-3 text-amber-900">
 						<strong>{attackResult.effect.table} · к{attackResult.effect.table === 'Явь' ? 10 : 12}: {attackResult.effect.roll}</strong>
@@ -855,6 +882,7 @@ async function addSelectedPlayers() {
 						</div>
 						<div class="text-xs text-gray-500">
 							{attackResult.damageRoll.diceString} = [{attackResult.damageRoll.rolls.join(', ')}]
+							{#each attackResult.damageRoll.extraRolls ?? [] as part} + {part.dice} = [{part.rolls.join(', ')}]{/each}
 							{#if attackResult.damageRoll.mod !== 0}
 								+ {attackResult.damageRoll.mod} мод.
 							{/if}

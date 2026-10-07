@@ -19,58 +19,47 @@ function rollDie(sides: number): number {
 /**
  * Масштабирует монстра под уровень.
  * За каждый уровень: +1 к основному модификатору (= +6 к характеристике).
- * ЖВЧ: baseHp + Σ(1к6 + мод.Силы) за каждый новый уровень.
- * Атака: hitBonus + growth.
- * Урон: тот же кубик + growth.
+ * ЖВЧ: baseHp + Σ(1к6 + базовый модификатор характеристики ЖВЧ из стат-блока).
+ * Попадание: значение характеристики + её модификатор + отдельный бонус.
+ * Урон: кубики + модификатор указанной в атаке характеристики либо фиксированный бонус.
  * Броня: не растёт (защита не улучшается от Силы).
  */
 export function scaleMonster(base: BaseMonster, targetLevel: number): ScaledMonster {
-	const levelsGained = Math.max(0, targetLevel - base.baseLevel);
+	const level = Number.isFinite(targetLevel) ? Math.max(base.baseLevel, Math.trunc(targetLevel)) : base.baseLevel;
+	const levelsGained = level - base.baseLevel;
 	const growth = levelsGained;
 
 	// Рост модификаторов — только основная характеристика
 	const scaledMods: Record<string, number> = { ...base.baseMods };
 	scaledMods[base.primaryStat] = (base.baseMods[base.primaryStat] ?? 0) + growth;
 
-	// ЖВЧ: base + N раз по (1к6 + базовый мод.Силы)
+	// В книге у большинства ЖВЧ опирается на Силу; у нескольких духов — на Интеллект.
 	const hpRolls: number[] = [];
-	const primaryBaseMod = base.baseMods[base.primaryStat] ?? 0;
+	const hpBaseMod = base.baseMods[base.hpStat ?? 'strength'] ?? 0;
 	let hp = base.hp;
 	for (let i = 0; i < levelsGained; i++) {
 		const roll = rollDie(6);
 		hpRolls.push(roll);
-		hp += roll + primaryBaseMod;
+		hp += roll + hpBaseMod;
 	}
 
-	// Значение атаки существа = значение используемой характеристики + её модификатор + бонус атаки.
-	// Старые hitBonus содержали модификатор характеристики и возможный отдельный бонус.
+	// Все атаки бестиария явно указывают характеристики для попадания и урона.
 	const scaledAttacks: MonsterAttack[] = base.attacks.map((a) => {
-		const primaryMod = base.baseMods[base.primaryStat] ?? 0;
-		const matchingStats = Object.entries(base.baseMods)
-			.filter(([, mod]) => mod === a.hitBonus)
-			.map(([stat]) => stat as NonNullable<MonsterAttack['attackStat']>);
-		const inferredStat = a.attackStat ?? (
-			a.hitBonus >= primaryMod || matchingStats.length !== 1 ? base.primaryStat : matchingStats[0]
-		);
-		const baseStatMod = base.baseMods[inferredStat] ?? primaryMod;
-		const attackBonus = a.attackBonus ?? (a.hitBonus - baseStatMod);
-		const statMod = scaledMods[inferredStat] ?? baseStatMod;
+		const statMod = scaledMods[a.attackStat] ?? 0;
+		const attackBonus = a.attackBonus ?? 0;
 		const hitBonus = statMod + attackBonus;
 		return {
 			...a,
-			attackStat: inferredStat,
 			attackBonus,
 			hitBonus,
 			hitTarget: statMod * 6 + hitBonus,
-			notes: a.notes
-				? `${a.notes} (+${growth} к урону)`
-				: growth > 0 ? `+${growth} к урону` : undefined
+			damageModifier: a.damageStat ? (scaledMods[a.damageStat] ?? 0) : (a.damageModifier ?? 0)
 		};
 	});
 
 	return {
 		base,
-		level: targetLevel,
+		level,
 		levelsGained,
 		scaledMods,
 		scaledHp: hp,

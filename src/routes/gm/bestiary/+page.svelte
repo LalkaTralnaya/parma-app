@@ -1,11 +1,22 @@
 <script lang="ts">
-	import { BESTIARY } from '../../../lib/rules/bestiary';
+	import { page } from '$app/state';
+	import { BESTIARY, BESTIARY_SECTIONS, getMonsterSection } from '../../../lib/rules/bestiary';
 	import { scaleMonster, type ScaledMonster } from '../../../lib/engine/bestiary';
 	import type { BaseMonster } from '../../../lib/rules/bestiary';
 
-	let selectedId = $state<string>(BESTIARY[0]?.id ?? '');
-	let targetLevel = $state(3);
-	let scaled = $state<ScaledMonster | null>(null);
+	const initialMonster = BESTIARY.find((monster) => monster.id === page.url.searchParams.get('monster')) ?? BESTIARY[0];
+	let selectedId = $state<string>(initialMonster?.id ?? '');
+	let targetLevel = $state(initialMonster?.baseLevel ?? 1);
+	let scaled = $state<ScaledMonster | null>(initialMonster ? scaleMonster(initialMonster, initialMonster.baseLevel) : null);
+	let categoryId = $state('all');
+	let searchQuery = $state('');
+	const visibleSections = $derived(BESTIARY_SECTIONS
+		.filter((section) => categoryId === 'all' || section.id === categoryId)
+		.map((section) => ({
+			...section,
+			monsters: section.monsters.filter((monster) => monster.name.toLocaleLowerCase('ru').includes(searchQuery.trim().toLocaleLowerCase('ru')))
+		}))
+		.filter((section) => section.monsters.length > 0));
 
 	const selectedMonster: BaseMonster | undefined = $derived(
 		BESTIARY.find((m) => m.id === selectedId)
@@ -15,6 +26,30 @@
 		const base = BESTIARY.find((m) => m.id === selectedId);
 		if (!base) return;
 		scaled = scaleMonster(base, targetLevel);
+		targetLevel = scaled.level;
+	}
+
+	function chooseMonster(id: string) {
+		const base = BESTIARY.find((monster) => monster.id === id);
+		if (!base) return;
+		selectedId = id;
+		targetLevel = base.baseLevel;
+		scaled = scaleMonster(base, base.baseLevel);
+	}
+
+	function filterMonsters(nextCategory: string, nextQuery: string) {
+		categoryId = nextCategory;
+		searchQuery = nextQuery;
+		const query = nextQuery.trim().toLocaleLowerCase('ru');
+		const matches = BESTIARY_SECTIONS
+			.filter((section) => nextCategory === 'all' || section.id === nextCategory)
+			.flatMap((section) => section.monsters)
+			.filter((monster) => monster.name.toLocaleLowerCase('ru').includes(query));
+		if (matches.length && !matches.some((monster) => monster.id === selectedId)) chooseMonster(matches[0].id);
+	}
+
+	function statLabel(stat: string): string {
+		return { strength: 'СИЛ', dexterity: 'ЛОВ', intelligence: 'ИНТ', eloquence: 'КРА', religion: 'РЕЛ' }[stat] ?? stat;
 	}
 
 	function modSign(v: number): string {
@@ -36,12 +71,12 @@
 		if (!scaled) return;
 		const s = scaled;
 		const mods = Object.entries(s.scaledMods)
-			.map(([k, v]) => `${k}: ${modS(v as number)}`)
+			.map(([k, v]) => `${statLabel(k)}: ${v * 6} (${modS(v as number)})`)
 			.join('\n');
 		const attacks = s.scaledAttacks
-			.map((a) => `${a.name}: попадание ≤ ${a.hitTarget ?? (30 + a.hitBonus)}, урон ${a.damageDice}${(a.damageModifier ?? s.scaledMods[a.attackStat ?? s.base.primaryStat]) ? ' ' + modS(a.damageModifier ?? s.scaledMods[a.attackStat ?? s.base.primaryStat]) : ''} ${a.damageType}${a.notes ? ' (' + a.notes + ')' : ''}`)
+			.map((a) => `${a.name}: ${a.ignoresArmor ? 'проверка' : 'попадание'} ${statLabel(a.attackStat)} ≤ ${a.hitTarget}${a.damageDice !== '0' ? `, урон ${a.damageDice}${a.damageModifier ? ' ' + modS(a.damageModifier) : ''}${(a.extraDamageDice ?? []).map((dice) => ` + ${dice}`).join('')} ${a.damageType}` : ''}${a.notes ? ' (' + a.notes + ')' : ''}${a.save ? `; Избавление: ${a.save}` : ''}`)
 			.join('\n');
-		const text = `${s.base.name} (уровень ${s.level}, +${s.levelsGained} от базового)\nЖВЧ: ${s.scaledHp}\nБроня: ${s.scaledArmor}\nСкорость: ${s.base.speed} саженей\n\nМодификаторы:\n${mods}\n\nАтаки:\n${attacks}\n\nУмения:\n${s.base.traits.join('\n')}`;
+		const text = `${s.base.name} (уровень ${s.level}, +${s.levelsGained} от базового)\nЖВЧ: ${s.scaledHp}\nБроня: ${s.scaledArmor}\nСкорость: ${s.base.movement ?? `${s.base.speed} саженей`}\n\nХарактеристики:\n${mods}\n\nАтаки:\n${attacks}\n\nУмения:\n${s.base.traits.join('\n')}`;
 		try {
 			await navigator.clipboard.writeText(text);
 			alert('Скопировано в буфер обмена');
@@ -63,22 +98,43 @@
 
 	<!-- Выбор -->
 	<section class="border rounded-lg p-4 bg-white mb-6">
+		<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+			<div>
+				<label for="bestiary-category" class="block font-semibold mb-1 text-sm">Раздел</label>
+				<select id="bestiary-category" value={categoryId} onchange={(event) => filterMonsters(event.currentTarget.value, searchQuery)} class="w-full px-3 py-2 border rounded">
+					<option value="all">Все разделы ({BESTIARY.length})</option>
+					{#each BESTIARY_SECTIONS as section}
+						<option value={section.id}>{section.name} ({section.monsters.length})</option>
+					{/each}
+				</select>
+			</div>
+			<div>
+				<label for="bestiary-search" class="block font-semibold mb-1 text-sm">Поиск по названию</label>
+				<input id="bestiary-search" type="search" value={searchQuery} oninput={(event) => filterMonsters(categoryId, event.currentTarget.value)} placeholder="Например, леший" class="w-full px-3 py-2 border rounded" />
+			</div>
+		</div>
 		<div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
 			<div>
 				<label for="field-1" class="block font-semibold mb-1 text-sm">Монстр</label>
 				<select id="field-1"
-					bind:value={selectedId}
+					value={selectedId}
+					onchange={(event) => chooseMonster(event.currentTarget.value)}
 					class="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
-					{#each BESTIARY as m}
-						<option value={m.id}>{m.name} (базовый уровень: {m.dangerLabel})</option>
+					{#each visibleSections as section}
+						<optgroup label={section.name}>
+							{#each section.monsters as m}
+								<option value={m.id}>{m.name} (базовый уровень: {m.dangerLabel}){m.source === 'custom' ? ' · авторская карточка' : ''}</option>
+							{/each}
+						</optgroup>
 					{/each}
+					{#if visibleSections.length === 0}<option disabled>Существа не найдены</option>{/if}
 				</select>
 			</div>
 			<div>
 				<label for="field-2" class="block font-semibold mb-1 text-sm">Целевой уровень</label>
 				<input id="field-2"
 					type="number"
-					min="1"
+					min={selectedMonster?.baseLevel ?? 1}
 					max="20"
 					bind:value={targetLevel}
 					class="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500" />
@@ -91,7 +147,7 @@
 		</div>
 
 		{#if selectedMonster}
-			<p class="text-sm text-gray-500 mt-3">{selectedMonster.description}</p>
+			<p class="text-sm text-gray-500 mt-3">{getMonsterSection(selectedMonster.id)?.name}{selectedMonster.source === 'custom' ? ' · авторская карточка' : ''} · {selectedMonster.description}</p>
 		{/if}
 	</section>
 
@@ -101,6 +157,7 @@
 			<div class="flex justify-between items-start mb-4 flex-wrap gap-2">
 				<div>
 					<h2 class="text-2xl font-bold">{scaled.base.name}</h2>
+					<div class="text-sm text-gray-600">{getMonsterSection(scaled.base.id)?.name}{scaled.base.source === 'custom' ? ' · авторская карточка' : ''}</div>
 					<div class="text-sm text-gray-600">
 						Уровень {scaled.level}
 						{#if scaled.levelsGained > 0}
@@ -122,7 +179,7 @@
 					<div class="text-2xl font-bold">{scaled.scaledHp}</div>
 					{#if scaled.levelsGained > 0}
 						<div class="text-xs text-gray-500">
-							базовая {scaled.base.hp} + [{scaled.hpRolls.join(', ')}] + мод × {scaled.levelsGained}
+							базовая {scaled.base.hp} + [{scaled.hpRolls.join(', ')}] + мод. {statLabel(scaled.base.hpStat ?? 'strength')} {modSign(scaled.base.baseMods[scaled.base.hpStat ?? 'strength'])} × {scaled.levelsGained}
 						</div>
 					{/if}
 				</div>
@@ -135,14 +192,13 @@
 				</div>
 				<div class="border rounded-lg p-3 bg-white text-center">
 					<div class="text-xs uppercase text-gray-500">Скорость</div>
-					<div class="text-2xl font-bold">{scaled.base.speed}</div>
-					<div class="text-xs text-gray-500">саженей</div>
+					<div class="text-lg font-bold">{scaled.base.movement ?? `${scaled.base.speed} саженей`}</div>
 				</div>
 			</div>
 
 			<!-- Модификаторы -->
 			<div class="border rounded-lg p-4 bg-white mb-4">
-				<h3 class="font-semibold mb-2">Модификаторы характеристик</h3>
+				<h3 class="font-semibold mb-2">Характеристики</h3>
 				<div class="grid grid-cols-5 gap-2 text-center">
 					{#each Object.entries(scaled.scaledMods) as [key, value]}
 						<div class="border rounded p-2 {key === scaled.base.primaryStat && scaled.levelsGained > 0 ? 'bg-green-50 border-green-400' : ''}">
@@ -152,7 +208,8 @@
 								 key === 'dexterity' ? 'ЛОВ' :
 								 key === 'eloquence' ? 'КРА' : 'РЕЛ'}
 							</div>
-							<div class="text-xl font-bold">{modSign(value as number)}</div>
+							<div class="text-xl font-bold">{(value as number) * 6}</div>
+							<div class="text-xs text-gray-500">мод. {modSign(value as number)}</div>
 							{#if key === scaled.base.primaryStat && scaled.levelsGained > 0}
 								<div class="text-xs text-green-700">+{scaled.levelsGained}</div>
 							{/if}
@@ -166,16 +223,17 @@
 				<h3 class="font-semibold mb-2">Атаки</h3>
 				<div class="space-y-2">
 					{#each scaled.scaledAttacks as atk}
-						{@const primaryMod = scaled.scaledMods[scaled.base.primaryStat]}
 						<div class="border-b pb-2 last:border-b-0">
 							<div class="font-medium">{atk.name}</div>
 							<div class="text-sm text-gray-600">
-								Попадание: ≤ <span class="font-bold">{atk.hitTarget ?? (30 + atk.hitBonus)}</span>
-								(характеристика + модификатор)
+								{atk.ignoresArmor ? 'Проверка' : 'Попадание'} {statLabel(atk.attackStat)}:
+								{scaled.scaledMods[atk.attackStat] * 6} + {scaled.scaledMods[atk.attackStat]}
+								{#if atk.attackBonus} + {atk.attackBonus}{/if}
+								= ≤ <span class="font-bold">{atk.hitTarget}</span>
 							</div>
 							{#if atk.damageDice !== '0'}
 								<div class="text-sm text-gray-600">
-									Урон: <span class="font-bold">{atk.damageDice}{(atk.damageModifier ?? scaled.scaledMods[atk.attackStat ?? scaled.base.primaryStat]) !== 0 ? ` ${modSign(atk.damageModifier ?? scaled.scaledMods[atk.attackStat ?? scaled.base.primaryStat])}` : ''}</span>
+									Урон: <span class="font-bold">{atk.damageDice}{atk.damageModifier ? ` ${modSign(atk.damageModifier)}` : ''}{#each atk.extraDamageDice ?? [] as dice} + {dice}{/each}</span>
 									{atk.damageType}
 								</div>
 							{/if}

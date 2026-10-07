@@ -6,7 +6,7 @@ import { getCharacteristicValue } from '../src/lib/engine/character.ts';
 import { getConditionSaveTarget } from '../src/lib/engine/conditions.ts';
 import { findCondition } from '../src/lib/rules/conditions.ts';
 import { WEAPONS } from '../src/lib/rules/weapons.ts';
-import { BESTIARY } from '../src/lib/rules/bestiary.ts';
+import { BESTIARY, BESTIARY_SECTIONS } from '../src/lib/rules/bestiary.ts';
 import { scaleMonster } from '../src/lib/engine/bestiary.ts';
 import { getSpellAttackTarget, getSpellCastTarget } from '../src/lib/engine/spells.ts';
 
@@ -147,4 +147,56 @@ test('Bog Walker uses the player book stats and attack formula', () => {
     9
   );
   assert.ok(base.traits.includes('Скорость в болоте: 8 саженей'));
+});
+
+test('every bestiary attack uses an explicit characteristic and damage rule', () => {
+  assert.equal(BESTIARY.length, 51);
+  assert.equal(BESTIARY.filter((monster) => monster.source === 'custom').length, 2);
+  assert.equal(BESTIARY.find((monster) => monster.id === 'headless_rider')?.hp, 45);
+  assert.deepEqual(BESTIARY.find((monster) => monster.id === 'mechanism_guard')?.attacks[0].extraDamageDice, ['1к4']);
+  assert.equal(BESTIARY.find((monster) => monster.id === 'navi_dragon_worm')?.attacks[1].damageDice, '6к10');
+  assert.equal(scaleMonster(BESTIARY.find((monster) => monster.id === 'navi_dragon_worm'), 1).level, 10);
+  const categorizedIds = BESTIARY_SECTIONS.flatMap((section) => section.monsters.map((monster) => monster.id));
+  assert.deepEqual(new Set(categorizedIds), new Set(BESTIARY.map((monster) => monster.id)));
+  assert.equal(categorizedIds.length, BESTIARY.length, 'each creature belongs to exactly one section');
+  for (const base of BESTIARY) {
+    const scaled = scaleMonster(base, base.baseLevel);
+    assert.equal(scaled.scaledHp, base.hp, base.name);
+    assert.ok(Object.values(base.baseMods).every((mod) => mod > 0), `${base.name}: characteristics must use the unified 6-point scale`);
+    for (const attack of scaled.scaledAttacks) {
+      assert.ok(attack.attackStat in base.baseMods, `${base.name}: ${attack.name} has no attack characteristic`);
+      assert.ok(attack.damageStat || attack.damageModifier !== undefined, `${base.name}: ${attack.name} has no damage rule`);
+      assert.equal(attack.hitTarget, base.baseMods[attack.attackStat] * 7 + (attack.attackBonus ?? 0), `${base.name}: ${attack.name} hit`);
+      if (attack.damageStat) {
+        assert.equal(attack.damageModifier, base.baseMods[attack.damageStat], `${base.name}: ${attack.name} damage`);
+      }
+    }
+  }
+});
+
+test('book attacks keep special bonuses, separate damage stats and armor-free checks', () => {
+  const wolf = scaleMonster(BESTIARY.find((m) => m.id === 'wolf'), 1);
+  assert.equal(wolf.scaledHp, 33);
+  assert.equal(wolf.scaledAttacks[0].hitTarget, 56);
+  assert.equal(wolf.scaledAttacks[0].damageModifier, 8);
+
+  const warrior = scaleMonster(BESTIARY.find((m) => m.id === 'druzhinnik'), 2);
+  assert.equal(warrior.scaledAttacks[1].hitTarget, 73);
+  assert.equal(warrior.scaledAttacks[1].damageModifier, 9);
+
+  const spider = scaleMonster(BESTIARY.find((m) => m.id === 'giant_spider'), 3);
+  assert.equal(spider.scaledAttacks[0].hitTarget, 35);
+  assert.equal(spider.scaledAttacks[0].damageModifier, 6);
+
+  const banshee = scaleMonster(BESTIARY.find((m) => m.id === 'banshee'), 5);
+  assert.equal(banshee.scaledAttacks[0].ignoresArmor, true);
+  assert.equal(banshee.scaledAttacks[0].damageModifier, 0);
+
+  const olderWarrior = scaleMonster(BESTIARY.find((m) => m.id === 'druzhinnik'), 3);
+  assert.equal(olderWarrior.scaledAttacks[1].hitTarget, 80);
+  assert.equal(olderWarrior.scaledAttacks[1].damageModifier, 10);
+
+  const olderRusalka = scaleMonster(BESTIARY.find((m) => m.id === 'rusalka'), 4);
+  assert.equal(olderRusalka.scaledHp - olderRusalka.base.hp - olderRusalka.hpRolls[0], 5);
+  assert.equal(olderRusalka.scaledAttacks[0].damageModifier, 7);
 });

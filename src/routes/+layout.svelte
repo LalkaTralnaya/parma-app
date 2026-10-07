@@ -7,13 +7,15 @@
   let { children } = $props();
   const links = [
     { href: '/', label: 'Персонажи', icon: 'people' },
+    { href: '/adventures', label: 'Приключения', icon: 'compass' },
     { href: '/gm', label: 'Мастер', icon: 'dice' },
     { href: '/gm/combat', label: 'Бой', icon: 'sword' },
     { href: '/gm/bestiary', label: 'Бестиарий', icon: 'shield' },
     { href: '/gm/cheatsheet', label: 'Правила', icon: 'book' }
   ];
   function active(href: string) {
-    return href === '/' ? page.url.pathname === '/' || page.url.pathname.startsWith('/char') || page.url.pathname === '/new' : page.url.pathname === href;
+    if (href === '/') return page.url.pathname === '/' || page.url.pathname.startsWith('/char') || page.url.pathname === '/new';
+    return href === '/adventures' ? page.url.pathname.startsWith('/adventures') : page.url.pathname === href;
   }
 </script>
 

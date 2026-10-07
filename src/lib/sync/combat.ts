@@ -4,7 +4,11 @@ export interface MonsterAttackData {
 	hitTarget?: number;
 	damageModifier?: number;
 	attackStat?: 'strength' | 'intelligence' | 'dexterity' | 'eloquence' | 'religion';
+	ignoresArmor?: boolean;
+	notes?: string;
+	save?: string;
 	damageDice: string;
+	extraDamageDice?: string[];
 	damageType: string;
 }
 
