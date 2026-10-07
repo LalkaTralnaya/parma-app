@@ -137,7 +137,7 @@ export function updateParticipant(id: string, patch: Partial<CombatParticipant>)
 	return state;
 }
 
-/** Уменьшить/увеличить ЖВЧ конкретного участника */
+/** Уменьшить/увеличить ЗДР конкретного участника */
 export function damageParticipant(id: string, amount: number): CombatState {
 	const state = getCombat() ?? createEmptyCombat();
 	const p = state.participants.find((x) => x.id === id);

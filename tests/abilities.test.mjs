@@ -102,10 +102,10 @@ test('situational illusion bonuses affect only matching spells', () => {
   const rage = SPELLS.find((item) => item.id === 'rage');
   const mage = makeChar({ abilities: ['illusion_hypnosis'] });
   const ordinary = { ...mage, abilities: [] };
-  assert.equal(getSpellAttackTarget(mage, 'illusion', 10, 0, calm),
-    getSpellAttackTarget(ordinary, 'illusion', 10, 0, calm) + 5);
-  assert.equal(getSpellAttackTarget(mage, 'illusion', 10, 0, rage),
-    getSpellAttackTarget(ordinary, 'illusion', 10, 0, rage));
+  assert.equal(getSpellAttackTarget(mage, 'illusion', 0, calm),
+    getSpellAttackTarget(ordinary, 'illusion', 0, calm) + 5);
+  assert.equal(getSpellAttackTarget(mage, 'illusion', 0, rage),
+    getSpellAttackTarget(ordinary, 'illusion', 0, rage));
 });
 
 test('duration abilities do not add damage dice', () => {

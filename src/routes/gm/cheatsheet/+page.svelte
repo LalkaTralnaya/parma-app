@@ -148,7 +148,7 @@
 								<tr class="border-b"><td class="py-1 font-mono">1–2</td><td>Сокрушительный удар: +1к6 (+1к8 двуручное)</td></tr>
 								<tr class="border-b"><td class="py-1 font-mono">3–4</td><td>Отсечение конечности</td></tr>
 								<tr class="border-b"><td class="py-1 font-mono">5–6</td><td>Слом щита/доспеха (или перелом ребра → Изнеможение)</td></tr>
-								<tr class="border-b"><td class="py-1 font-mono">7–8</td><td>Руда (1к4 Жвч/раунд, 3 раунда)</td></tr>
+								<tr class="border-b"><td class="py-1 font-mono">7–8</td><td>Руда (1к4 ЗДР/раунд, 3 раунда)</td></tr>
 								<tr class="border-b"><td class="py-1 font-mono">9–10</td><td>Оглушение: пропуск хода, −10 Броня до конца раунда</td></tr>
 								<tr><td class="py-1 font-mono">11–12</td><td>Отбрасывание на 2 сажени + падение</td></tr>
 							</tbody>
@@ -270,7 +270,7 @@
 						<div class="font-semibold mb-1">Таблица 3. Навь (к20)</div>
 						<table class="w-full text-xs">
 							<tbody>
-								<tr class="border-b"><td class="py-1 font-mono">1–2</td><td>Истощение: 2к4 Жвч</td></tr>
+								<tr class="border-b"><td class="py-1 font-mono">1–2</td><td>Истощение: 2к4 ЗДР</td></tr>
 								<tr class="border-b"><td class="py-1 font-mono">3–4</td><td>Ожог: 1к8 Жв сверх, школа недоступна 1 раунд</td></tr>
 								<tr class="border-b"><td class="py-1 font-mono">5–6</td><td>Рикошет: бьёт по случайной цели в 4 саженях</td></tr>
 								<tr class="border-b"><td class="py-1 font-mono">7–8</td><td>Гул: привлекает всех в 50 саженях</td></tr>
@@ -305,14 +305,14 @@
 							</tr>
 						</thead>
 						<tbody>
-							<tr class="border-b"><td class="px-2 py-1 font-semibold">Руда</td><td class="px-2 py-1">−1к4 Жвч/ход, 3 раунда</td><td class="px-2 py-1 text-gray-500">Лечение, перевязка</td></tr>
+							<tr class="border-b"><td class="px-2 py-1 font-semibold">Руда</td><td class="px-2 py-1">−1к4 ЗДР/ход, 3 раунда</td><td class="px-2 py-1 text-gray-500">Лечение, перевязка</td></tr>
 							<tr class="border-b"><td class="px-2 py-1 font-semibold">Отрава</td><td class="px-2 py-1">−10 к проверкам, 5 раундов</td><td class="px-2 py-1 text-gray-500">Противоядие</td></tr>
 							<tr class="border-b"><td class="px-2 py-1 font-semibold">Ошеломление</td><td class="px-2 py-1">Пропуск хода, −20 Броня, 1 раунд</td><td class="px-2 py-1 text-gray-500">Ожидание</td></tr>
 							<tr class="border-b"><td class="px-2 py-1 font-semibold">Тьма</td><td class="px-2 py-1">−30 к атакам, провал Скрытности, 2–5 раундов</td><td class="px-2 py-1 text-gray-500">Лечение, ожидание</td></tr>
 							<tr class="border-b"><td class="px-2 py-1 font-semibold">Жуть</td><td class="px-2 py-1">Бегство, −15 Броня, 1–3 раунда</td><td class="px-2 py-1 text-gray-500">Избавление Интеллекта</td></tr>
 							<tr class="border-b"><td class="px-2 py-1 font-semibold">Морок</td><td class="px-2 py-1">Видит врага как союзника, до конца боя</td><td class="px-2 py-1 text-gray-500">Урон от источника</td></tr>
 							<tr class="border-b"><td class="px-2 py-1 font-semibold">Оцепенение</td><td class="px-2 py-1">Не двигается, криты авт., 1–2 раунда</td><td class="px-2 py-1 text-gray-500">Избавление Силы/Инт</td></tr>
-							<tr class="border-b"><td class="px-2 py-1 font-semibold">Горение</td><td class="px-2 py-1">−1к6 Жвч/ход, 2 раунда</td><td class="px-2 py-1 text-gray-500">Тушение (действие)</td></tr>
+							<tr class="border-b"><td class="px-2 py-1 font-semibold">Горение</td><td class="px-2 py-1">−1к6 ЗДР/ход, 2 раунда</td><td class="px-2 py-1 text-gray-500">Тушение (действие)</td></tr>
 							<tr class="border-b"><td class="px-2 py-1 font-semibold">Обморожение</td><td class="px-2 py-1">−10 скорость, −5 атаки, 3 раунда</td><td class="px-2 py-1 text-gray-500">Тепло, лечение</td></tr>
 							<tr class="border-b"><td class="px-2 py-1 font-semibold">Изнеможение</td><td class="px-2 py-1">−20 к макс. Бдр</td><td class="px-2 py-1 text-gray-500">Продолж. отдых</td></tr>
 							<tr class="border-b"><td class="px-2 py-1 font-semibold">Хворь</td><td class="px-2 py-1">−5 ко всем хар-кам</td><td class="px-2 py-1 text-gray-500">Зелье, заклинание, алхимия</td></tr>
@@ -334,30 +334,30 @@
 			{#if openSection === 'edge'}
 				<div class="border-t px-4 py-3 space-y-3 text-sm">
 					<div class="text-xs">
-						Жвч 0 → состояние «При смерти». В начале каждого хода выбор:
+						ЗДР 0 → состояние «При смерти». В начале каждого хода выбор:
 					</div>
 					<table class="w-full text-xs">
 						<tbody>
 							<tr class="border-b">
 								<td class="py-2 align-top font-semibold">Голос Крови (Предки)</td>
-								<td class="py-2">Временные Жвч: 10 + мод. Силы. Приходит в сознание. После возвращения — 1 уровень Истощения.<br>
+								<td class="py-2">Временные ЗДР: 10 + мод. Силы. Приходит в сознание. После возвращения — 1 уровень Истощения.<br>
 									<span class="text-gray-500">1 раз за время «при смерти»</span></td>
 							</tr>
 							<tr class="border-b">
 								<td class="py-2 align-top font-semibold">Зов Живы (Долг)</td>
-								<td class="py-2">Восстанавливает 10 + мод. Инт реальных Жвч. После боя — метка «Долг Живе» (−5 макс. Жвч за каждую).<br>
+								<td class="py-2">Восстанавливает 10 + мод. Инт реальных ЗДР. После боя — метка «Долг Живе» (−5 макс. ЗДР за каждую).<br>
 									<span class="text-gray-500">1 раз за время «при смерти»</span></td>
 							</tr>
 							<tr>
 								<td class="py-2 align-top font-semibold">Удержаться</td>
-								<td class="py-2">Избавление Стойкости: к100 ≤ Сила + Стойкость. Успех → стабилизация с 1 Жвч + 1 Истощение. Провал → −1 Жвч.<br>
+								<td class="py-2">Избавление Стойкости: к100 ≤ Сила + Стойкость. Успех → стабилизация с 1 ЗДР + 1 Истощение. Провал → −1 ЗДР.<br>
 									<span class="text-gray-500">многократно</span></td>
 							</tr>
 						</tbody>
 					</table>
 
 					<div class="bg-red-50 p-2 rounded text-xs">
-						<strong>Мгновенная смерть:</strong> если урон превышает максимальный Жвч вдвое — смерть без стадий.
+						<strong>Мгновенная смерть:</strong> если урон превышает максимальный ЗДР вдвое — смерть без стадий.
 					</div>
 
 					<div class="bg-blue-50 p-2 rounded text-xs">
@@ -440,8 +440,8 @@
 						<div class="font-semibold mb-1">Магия и алхимия</div>
 						<table class="w-full text-xs">
 							<tbody>
-								<tr class="border-b"><td class="py-1">Зелье здоровья</td><td>5 с</td><td>1к6+2 Жвч</td></tr>
-								<tr class="border-b"><td class="py-1">Зелье лечения</td><td>30 с</td><td>2к6+4 Жвч</td></tr>
+								<tr class="border-b"><td class="py-1">Зелье здоровья</td><td>5 с</td><td>1к6+2 ЗДР</td></tr>
+								<tr class="border-b"><td class="py-1">Зелье лечения</td><td>30 с</td><td>2к6+4 ЗДР</td></tr>
 								<tr class="border-b"><td class="py-1">Свиток заклинания (1 ур.)</td><td>50 с</td><td>одноразово</td></tr>
 								<tr class="border-b"><td class="py-1">Книга заклинаний (3–5 закл.)</td><td>200–500 с</td><td>—</td></tr>
 								<tr class="border-b"><td class="py-1">Магический кристалл</td><td>10 с</td><td>+1к4 Искра для механизмов</td></tr>
@@ -515,7 +515,7 @@
 						<div class="font-semibold mb-1">Ресурсы</div>
 						<table class="w-full text-xs">
 							<tbody>
-								<tr class="border-b"><td class="py-1 font-semibold">Жвч</td><td>Сила</td><td>20 + мод. ×1</td><td>1к6 + мод.</td></tr>
+								<tr class="border-b"><td class="py-1 font-semibold">ЗДР</td><td>Сила</td><td>20 + мод. ×1</td><td>1к6 + мод.</td></tr>
 								<tr class="border-b"><td class="py-1 font-semibold">Жв</td><td>Инт</td><td>10 + мод. ×2</td><td>1к8 + мод.</td></tr>
 								<tr class="border-b"><td class="py-1 font-semibold">Бдр</td><td>Лов</td><td>15 + мод. ×1</td><td>1к6 + мод.</td></tr>
 								<tr class="border-b"><td class="py-1 font-semibold">Влн</td><td>Крас</td><td>15 + мод. ×1</td><td>1к6 + мод.</td></tr>

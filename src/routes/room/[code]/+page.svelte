@@ -440,7 +440,7 @@ async function declineGift(p: RoomParticipant) {
 									{p.character_snapshot.name} · {p.character_snapshot.level} ур.
 								</div>
 								<div class="text-xs text-gray-500 mt-1">
-									ЖВЧ:
+									ЗДР:
 									<span class="font-semibold">
 										{p.character_snapshot.currentResources?.hp ?? '—'}
 									</span>

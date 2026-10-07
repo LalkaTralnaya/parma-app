@@ -10,7 +10,7 @@ export interface ResourceDef {
 }
 
 export const RESOURCES: ResourceDef[] = [
-	{ id: 'hp',        name: 'Живучесть', short: 'ЖВЧ', parent: 'strength',     base: 20, baseModMul: 1, perLevelDice: '1d6', perLevelModMul: 1 },
+	{ id: 'hp',        name: 'Здравие', short: 'ЗДР', parent: 'strength',     base: 20, baseModMul: 1, perLevelDice: '1d6', perLevelModMul: 1 },
 	{ id: 'mana',      name: 'Жива',      short: 'ЖИВ', parent: 'intelligence', base: 10, baseModMul: 2, perLevelDice: '1d8', perLevelModMul: 1 },
 	{ id: 'stamina',   name: 'Бодрость',  short: 'БДР', parent: 'dexterity',    base: 15, baseModMul: 1, perLevelDice: '1d6', perLevelModMul: 1 },
 	{ id: 'influence', name: 'Влияние',   short: 'ВЛН', parent: 'eloquence',    base: 15, baseModMul: 1, perLevelDice: '1d6', perLevelModMul: 1 },

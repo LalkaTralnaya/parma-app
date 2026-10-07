@@ -16,6 +16,7 @@ export interface Character {
 	abilityPoints?: number;
 	spells: string[];
 	useGraceForSpells: boolean;
+	heldSpell?: HeldSpell | null;
 		equipment: {
 		weaponId?: string;
 		armorId?: string;
@@ -67,4 +68,14 @@ export interface Money {
 	copper: number;       // медяки
 	silver: number;       // серебряники
 	gold: number;         // златники
+}
+
+/** Одно активное удержание; параметры и цель фиксируются при сотворении. */
+export interface HeldSpell {
+	spellId: string;
+	round: number;
+	useTwoHands: boolean;
+	useGrace: boolean;
+	targetId: string | null;
+	targetName: string;
 }

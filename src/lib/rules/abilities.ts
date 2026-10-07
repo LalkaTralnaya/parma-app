@@ -87,7 +87,7 @@ export const ABILITIES: Ability[] = [
 
 	// ─── Колдовство ───
 	{ id: 'witchcraft_base', name: 'Базовый эффект', skillId: 'witchcraft', tier: 0, type: 'passive',
-		description: 'Каждое очко навыка: +2 живучести призванным существам и +1 к проверкам преодоления сопротивления проклятиям.' },
+		description: 'Каждое очко навыка: +2 здравия призванным существам и +1 к проверкам преодоления сопротивления проклятиям.' },
 	{ id: 'witchcraft_double', name: 'Двойное колдовство', skillId: 'witchcraft', tier: 1, type: 'passive',
 		description: 'При сотворении с двух рук заклинания действуют вдвое дольше.' },
 	{ id: 'witchcraft_apprentice', name: 'Ученик школы колдовства', skillId: 'witchcraft', tier: 1, type: 'passive',
@@ -107,9 +107,9 @@ export const ABILITIES: Ability[] = [
 	{ id: 'witchcraft_master', name: 'Мастер школы колдовства', skillId: 'witchcraft', tier: 3, type: 'passive',
 		description: 'Заклинания школы колдовства тратят на 4 живы меньше (не менее 1).' },
 	{ id: 'witchcraft_dark_souls', name: 'Тёмные души', skillId: 'witchcraft', tier: 3, type: 'passive',
-		description: 'Поднятая нежить получает вдвое больше живучести.' },
+		description: 'Поднятая нежить получает вдвое больше здравия.' },
 	{ id: 'witchcraft_elemental_power', name: 'Сила стихий', skillId: 'witchcraft', tier: 3, type: 'passive',
-		description: 'Призванные элементали получают вдвое больше живучести и костей урона.' },
+		description: 'Призванные элементали получают вдвое больше здравия и костей урона.' },
 	{ id: 'witchcraft_paired', name: 'Парные души', skillId: 'witchcraft', tier: 3, type: 'passive',
 		description: 'Можно поднять двух элементалей или две нежити.' },
 
@@ -161,7 +161,7 @@ export const ABILITIES: Ability[] = [
 	{ id: 'restoration_master', name: 'Мастер школы восстановления', skillId: 'restoration', tier: 3, type: 'passive',
 		description: 'Заклинания школы восстановления тратят на 4 живы меньше (не менее 1).' },
 	{ id: 'restoration_naviescape', name: 'Бегство от Нави', skillId: 'restoration', tier: 3, type: 'active',
-		description: 'Когда живучесть ≤ 10, автоматически восстанавливаете 2/3 живучести. 1 раз до продолжительного отдыха.' },
+		description: 'Когда здравие ≤ 10, автоматически восстанавливаете 2/3 здравия. 1 раз до продолжительного отдыха.' },
 
 	// ─── Зачарование ───
 	{ id: 'enchantment_base', name: 'Базовый эффект', skillId: 'enchantment', tier: 0, type: 'passive',
@@ -217,7 +217,7 @@ export const ABILITIES: Ability[] = [
 		description: '+10 к поиску следов; определяете состояние существа (ранено, несёт груз, бежит).',
 		skillBonus: 10, bonusTo: 'perception', progressiveGroup: 'survival_tracker', bonusContext: 'tracking' },
 	{ id: 'survival_shelter', name: 'Надёжное убежище', skillId: 'survival', tier: 2, type: 'active',
-		description: 'За 2 часа и 3 бодрости укрытие: короткий отдых даёт +1к4 живучести, длительный снимает +1 Истощение.' },
+		description: 'За 2 часа и 3 бодрости укрытие: короткий отдых даёт +1к4 здравия, длительный снимает +1 Истощение.' },
 	{ id: 'survival_terrain', name: 'Чтение местности', skillId: 'survival', tier: 2, type: 'passive',
 		description: 'Определяете воду, опасных зверей и людей в радиусе 2 км по поведению птиц и растений.' },
 	{ id: 'survival_instinct', name: 'Инстинкт выжившего', skillId: 'survival', tier: 3, type: 'passive',
@@ -329,7 +329,7 @@ export const ABILITIES: Ability[] = [
 	{ id: 'two_handed_champion', name: 'Стойка чемпиона', skillId: 'two_handed', tier: 2, type: 'passive',
 		description: 'Силовые атаки тратят на 1 бодрость меньше.' },
 	{ id: 'two_handed_deep_wounds', name: 'Глубокие раны', skillId: 'two_handed', tier: 2, type: 'passive',
-		description: 'При критическом попадании накладываете состояние Руда (1к4 живучести/раунд).' },
+		description: 'При критическом попадании накладываете состояние Руда (1к4 здравия/раунд).' },
 	{ id: 'two_handed_barbarian3', name: 'Варвар III', skillId: 'two_handed', tier: 3, type: 'passive',
 		description: 'Бонус увеличивается до +6.' },
 	{ id: 'two_handed_crusher3', name: 'Крушитель III', skillId: 'two_handed', tier: 3, type: 'passive',
@@ -403,11 +403,11 @@ export const ABILITIES: Ability[] = [
 	{ id: 'fortitude_strong_body', name: 'Крепкое тело', skillId: 'fortitude', tier: 1, type: 'passive',
 		description: '+5 к избавлению против Отравы, Болезни и Истощения.' },
 	{ id: 'fortitude_strong_body2', name: 'Крепкое тело II', skillId: 'fortitude', tier: 2, type: 'passive',
-		description: 'Бонус +10. Живучесть: максимум +10.' },
+		description: 'Бонус +10. Здравие: максимум +10.' },
 	{ id: 'fortitude_slow_death', name: 'Медленная смерть', skillId: 'fortitude', tier: 2, type: 'passive',
-		description: 'При 0 живучести не теряете сознание, пока не получите доп. урон, равный уровню.' },
+		description: 'При 0 здравия не теряете сознание, пока не получите доп. урон, равный уровню.' },
 	{ id: 'fortitude_strong_body3', name: 'Крепкое тело III', skillId: 'fortitude', tier: 3, type: 'passive',
-		description: 'Бонус +15. Живучесть: максимум +20 (суммарно).' },
+		description: 'Бонус +15. Здравие: максимум +20 (суммарно).' },
 	{ id: 'fortitude_invuln', name: 'Неуязвимость', skillId: 'fortitude', tier: 3, type: 'active',
 		description: '1/день. Игнорируете все эффекты избавления Силы на 1 минуту. Стоит 2 бодрости.' },
 
@@ -486,7 +486,7 @@ export const ABILITIES: Ability[] = [
 	{ id: 'alchemy_base', name: 'Базовый эффект', skillId: 'alchemy', tier: 0, type: 'passive',
 		description: 'Каждое очко: +1 к кубу эффекта создаваемых зелий и ядов.' },
 	{ id: 'alchemy_healer', name: 'Целитель', skillId: 'alchemy', tier: 1, type: 'passive',
-		description: 'Умеете изготавливать зелья здоровья (1к6 живучести).' },
+		description: 'Умеете изготавливать зелья здоровья (1к6 здравия).' },
 	{ id: 'alchemy_poisoner', name: 'Отравитель', skillId: 'alchemy', tier: 1, type: 'passive',
 		description: 'Умеете изготавливать простые яды (1к4 урона).' },
 	{ id: 'alchemy_skilled', name: 'Искусный алхимик', skillId: 'alchemy', tier: 2, type: 'passive',
@@ -642,7 +642,7 @@ export const ABILITIES: Ability[] = [
 	{ id: 'prayer_intervention', name: 'Божественное вмешательство', skillId: 'prayer', tier: 3, type: 'active',
 		description: '1/кампанию. В момент крайней нужды: автоуспех критической проверки, неуязвимость (1 раунд) и т.п. Стоит ВСЕ благодати.' },
 	{ id: 'prayer_holy_place', name: 'Священное место', skillId: 'prayer', tier: 3, type: 'active',
-		description: 'Ритуал (8 часов). Освящаете помещение: нежить и демоны −10, союзники +1к4 живучести за короткий отдых. 1 неделю.' },
+		description: 'Ритуал (8 часов). Освящаете помещение: нежить и демоны −10, союзники +1к4 здравия за короткий отдых. 1 неделю.' },
 
 	// ─── Знания культов ───
 	{ id: 'cult_base', name: 'Базовый эффект', skillId: 'cult_knowledge', tier: 0, type: 'passive',
@@ -680,7 +680,7 @@ export const ABILITIES: Ability[] = [
 	{ id: 'higher_channel3', name: 'Канал веры III', skillId: 'higher_power', tier: 3, type: 'passive',
 		description: '+6 к Силе высших.', skillBonus: 6, progressiveGroup: 'higher_channel' },
 	{ id: 'higher_banish_demon', name: 'Изгнание демона', skillId: 'higher_power', tier: 3, type: 'active',
-		description: 'Полный ход. Сложная проверка. 8 благодати, 1/день. Существо получает 3к6 святого урона; при <50% живучести изгоняется.' },
+		description: 'Полный ход. Сложная проверка. 8 благодати, 1/день. Существо получает 3к6 святого урона; при <50% здравия изгоняется.' },
 	{ id: 'higher_judgment', name: 'Божественный приговор', skillId: 'higher_power', tier: 3, type: 'active',
 		description: '13 благодати, 1/день. Враг получает 4к8 святого урона (половина при спасброске). Нежить и демоны — двойной урон.' }
 ];

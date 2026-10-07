@@ -6,7 +6,7 @@ import {
 	SCHOOL_STABILITY_THRESHOLDS
 } from '../rules/spells';
 import { MAX_CHECK_TARGET } from '../rules/characteristics';
-import { getCharacteristicValue, getSkillTotal, isAbilityLearned } from './character';
+import { getCharacteristicValue, getSkillTotal, isAbilityLearned, getResourceMax } from './character';
 import type { Character } from '$lib/type';
 /** Пороги характеристик для уровней заклинаний (1 — 42+, 2 — 54+, 3 — 72+, 4 — 84+) */
 export const SPELL_LEVEL_THRESHOLDS: Record<number, number> = {
@@ -26,11 +26,10 @@ export function getSpellCastTarget(char: Character, school: string): number {
 	return Math.min(MAX_CHECK_TARGET, charValue + skillTotal);
 }
 
-/** Цель магической атаки: значение характеристики + полный итог навыка школы + бонусы − Броня цели. */
+/** Цель магической атаки: значение характеристики + полный итог навыка школы + бонусы. Броня цели не влияет на сотворение. */
 export function getSpellAttackTarget(
 	char: Character,
 	school: string,
-	targetArmor: number,
 	attackBonus = 0,
 	spell?: Spell
 ): number {
@@ -43,7 +42,7 @@ export function getSpellAttackTarget(
 		if (spell.id === 'rage' && isAbilityLearned(char, 'illusion_frenzy')) abilityBonus += 5;
 		if (['minor_illusion', 'invisibility'].includes(spell.id) && isAbilityLearned(char, 'illusion_eyes')) abilityBonus += 5;
 	}
-	return Math.max(0, charValue + getSkillTotal(char, school) + attackBonus + abilityBonus - targetArmor);
+	return Math.max(0, charValue + getSkillTotal(char, school) + attackBonus + abilityBonus);
 }
 
 /** Уровень владения школой у персонажа (0 — не умеет, 1+ — умеет) */
@@ -311,4 +310,13 @@ export function rollSpellEffect(
 		extraDice,
 		abilityBonus
 	};
+}
+
+/** Проверка ресурса до броска: критический успех не позволяет начать бесплатное сотворение без ресурсов. */
+export function getSpellCastingAvailability(char: Character, spell: Spell, useTwoHands: boolean, useGrace: boolean) {
+	const cost = getSpellCost(char, spell, useTwoHands).reduced;
+	const resource = useGrace || spell.costGrace !== undefined ? 'grace' : 'mana';
+	const current = char.currentResources?.[resource] ?? getResourceMax(char, resource);
+	const affordable = current >= cost;
+	return { cost, resource, current, affordable, reason: affordable ? '' : 'Не хватает ' + (resource === 'grace' ? 'Благодати' : 'Живы') + ': нужно ' + cost + ', доступно ' + current + '.' };
 }

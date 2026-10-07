@@ -19,7 +19,7 @@ function rollDie(sides: number): number {
 /**
  * Масштабирует монстра под уровень.
  * За каждый уровень: +1 к основному модификатору (= +6 к характеристике).
- * ЖВЧ: baseHp + Σ(1к6 + базовый модификатор характеристики ЖВЧ из стат-блока).
+ * ЗДР: baseHp + Σ(1к6 + базовый модификатор характеристики ЗДР из стат-блока).
  * Попадание: значение характеристики + её модификатор + отдельный бонус.
  * Урон: кубики + модификатор указанной в атаке характеристики либо фиксированный бонус.
  * Броня: не растёт (защита не улучшается от Силы).
@@ -33,7 +33,7 @@ export function scaleMonster(base: BaseMonster, targetLevel: number): ScaledMons
 	const scaledMods: Record<string, number> = { ...base.baseMods };
 	scaledMods[base.primaryStat] = (base.baseMods[base.primaryStat] ?? 0) + growth;
 
-	// В книге у большинства ЖВЧ опирается на Силу; у нескольких духов — на Интеллект.
+	// В книге у большинства ЗДР опирается на Силу; у нескольких духов — на Интеллект.
 	const hpRolls: number[] = [];
 	const hpBaseMod = base.baseMods[base.hpStat ?? 'strength'] ?? 0;
 	let hp = base.hp;

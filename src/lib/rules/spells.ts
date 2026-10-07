@@ -11,6 +11,9 @@ export interface Spell {
 	costTwoHands?: number;       // живы за две руки
 	costGrace?: number;          // для жреческих (благодать)
 	application: SpellApplication;
+	holdDamage?: string;
+	holdEffect?: string;
+	holdRounds?: number;       // полная длительность, включая раунд сотворения
 	holdCost?: number;           // живы за раунд удержания
 	ritualTime?: string;         // длительность ритуала
 	range: SpellRange;
@@ -35,6 +38,7 @@ export const SPELLS: Spell[] = [
 		costOneHand: 2,
 		costTwoHands: 5,
 		application: 'instant',
+		holdDamage: '1к6 (огонь)',
 		holdCost: 1,
 		range: 'far',
 		target: 'creature',
@@ -156,6 +160,8 @@ export const SPELLS: Spell[] = [
 		skillLevel: 3,
 		costTwoHands: 12,
 		application: 'hold',
+		holdDamage: '2к8 (холод)',
+		holdRounds: 4,
 		holdCost: 10,
 		ritualTime: '2 раунда',
 		range: 'far',
@@ -246,8 +252,8 @@ export const SPELLS: Spell[] = [
 		range: 'self',
 		target: 'self',
 		duration: 'Мгновенно',
-		effect: 'Обмен 10 живучести на 10 живы',
-		description: 'Вы теряете 10 живучести и восстанавливаете 10 живы. Может убить, если живучести меньше 10.'
+		effect: 'Обмен 10 здравия на 10 живы',
+		description: 'Вы теряете 10 здравия и восстанавливаете 10 живы. Может убить, если здравия меньше 10.'
 	},
 	{
 		id: 'light_sphere',
@@ -285,11 +291,12 @@ export const SPELLS: Spell[] = [
 		costOneHand: 2,
 		costTwoHands: 5,
 		application: 'hold',
+		holdEffect: '1к6 + мод. Инт / 2к6 + мод. Инт здравия',
 		holdCost: 2,
 		range: 'touch',
 		target: 'creature',
 		duration: 'Мгновенно / Удержание пока касаешься',
-		effect: '1к6 + мод. Инт (1 рука) / 2к6 + мод. Инт (2 руки) живучести',
+		effect: '1к6 + мод. Инт (1 рука) / 2к6 + мод. Инт (2 руки) здравия',
 		description: 'Ладони светятся тёплым светом. Не действует на нежить и механизмы.'
 	},
 	{
@@ -316,7 +323,7 @@ export const SPELLS: Spell[] = [
 		range: 'touch',
 		target: 'creature',
 		duration: 'Мгновенно',
-		effect: '1к6 + мод. Инт живучести',
+		effect: '1к6 + мод. Инт здравия',
 		description: 'Экстренное лечение в бою (действие).'
 	},
 	{
@@ -390,7 +397,7 @@ export const SPELLS: Spell[] = [
 		range: 'close',
 		target: 'point',
 		duration: '1 минута',
-		effect: 'Волк: ЖВЧ 32, Броня 12, атака 1к6 + мод. Инт',
+		effect: 'Волк: ЗДР 32, Броня 12, атака 1к6 + мод. Инт',
 		description: 'Появляется дух леса в облике пса. Подчиняется простым командам. Действует в твою инициативу.'
 	},
 	{
@@ -428,8 +435,8 @@ export const SPELLS: Spell[] = [
 		application: 'instant',
 		range: 'close',
 		target: 'point',
-		duration: '3 минуты или пока ЖВЧ не кончатся',
-		effect: 'ЖВЧ 26, Броня 20, две атаки 1к6 + мод. Инт',
+		duration: '3 минуты или пока ЗДР не кончатся',
+		effect: 'ЗДР 26, Броня 20, две атаки 1к6 + мод. Инт',
 		description: 'Коренастый голем из камня. Не может отходить от места призыва дальше 10 саженей.'
 	},
 	{
@@ -498,7 +505,7 @@ export const SPELLS: Spell[] = [
 		range: 'touch',
 		target: 'object',
 		duration: '1 час (можно продлевать)',
-		effect: 'Скелет (ЖВЧ 18, КБ 13, 1к6+2) или зомби (ЖВЧ 24, КБ 10, 1к4+3)',
+		effect: 'Скелет (ЗДР 18, КБ 13, 1к6+2) или зомби (ЗДР 24, КБ 10, 1к4+3)',
 		description: 'Поднимаете из трупа скелета или зомби. Поддерживать 1 живу/час. Максимум поднятых = мод. Инт / 2 (минимум 1).'
 	},
 	{
@@ -676,7 +683,7 @@ export const SPELLS: Spell[] = [
 		duration: 'Мгновенно',
 		damage: '2к6 (нежива)',
 		save: 'Стойкость — половина урона, и ты не восстанавливаешь живу',
-		description: 'Ты протягиваешь руку, и жизнь покидает врага, вливаясь в тебя. Восстанавливаешь столько же живучести, сколько нанёс урона.'
+		description: 'Ты протягиваешь руку, и жизнь покидает врага, вливаясь в тебя. Восстанавливаешь столько же здравия, сколько нанёс урона.'
 	},
 	{
 		id: 'dreadful_look',
@@ -757,7 +764,7 @@ export const SPELLS: Spell[] = [
 		range: 'touch',
 		target: 'ally',
 		duration: '1 минута',
-		effect: '+20 временной живучести, мод. Силы ×2 (не более +12), иммунитет к Жути',
+		effect: '+20 временного здравия, мод. Силы ×2 (не более +12), иммунитет к Жути',
 		description: 'Внушаете цели искажённую уверенность в неуязвимости. Эффект работает, даже если цель знает, что это иллюзия.'
 	},
 	{

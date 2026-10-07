@@ -563,7 +563,7 @@ async function addSelectedPlayers() {
 								{p.name}
 							</span>
 							<span class="text-xs {isCurrent ? 'text-purple-100' : 'text-gray-500'}">
-								{p.isPlayer ? 'игрок' : 'враг'} · ЖВЧ {p.currentHp}/{p.maxHp} · Броня {p.armor}
+								{p.isPlayer ? 'игрок' : 'враг'} · ЗДР {p.currentHp}/{p.maxHp} · Броня {p.armor}
 							</span>
 						</div>
 						<span class="font-mono text-lg {isCurrent ? 'text-white' : 'text-purple-700'}">
@@ -604,7 +604,7 @@ async function addSelectedPlayers() {
 							</div>
 							<div class="flex items-center gap-2 mb-2">
 								<div class="flex-1">
-									<div class="text-xs text-gray-500">ЖВЧ</div>
+									<div class="text-xs text-gray-500">ЗДР</div>
 									<div class="text-2xl font-bold {hpColor(p)}">
 										{p.currentHp}<span class="text-sm text-gray-400">/{p.maxHp}</span>
 									</div>
@@ -648,7 +648,7 @@ async function addSelectedPlayers() {
 							</div>
 							<div class="flex items-center gap-2 mb-2">
 								<div class="flex-1">
-									<div class="text-xs text-gray-500">ЖВЧ</div>
+									<div class="text-xs text-gray-500">ЗДР</div>
 									<div class="text-2xl font-bold {hpColor(p)}">
 										{p.currentHp}<span class="text-sm text-gray-400">/{p.maxHp}</span>
 									</div>
@@ -828,7 +828,7 @@ async function addSelectedPlayers() {
 								{target.name}
 							</div>
 							<div class="text-xs text-gray-500">
-								Броня {target.armor} · ЖВЧ {target.currentHp}/{target.maxHp}
+								Броня {target.armor} · ЗДР {target.currentHp}/{target.maxHp}
 								→ цель проверки {(pendingAttack!.attack.hitTarget ?? (30 + pendingAttack!.attack.hitBonus)) - (pendingAttack!.attack.ignoresArmor ? 0 : target.armor)}
 							</div>
 						</button>

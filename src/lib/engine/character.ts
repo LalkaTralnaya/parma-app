@@ -152,7 +152,7 @@ export function getResourceMax(
 		total += condMods.maxStamina;
 	}
 
-	// Метка «Долг Живе» — каждая −5 к максимуму Жвч (применяется только к Жвч)
+	// Метка «Долг Живе» — каждая −5 к максимуму ЗДР (применяется только к ЗДР)
 	if (resourceId === 'hp' && char.death?.debtMark) {
 		total -= char.death.debtMark * 5;
 	}

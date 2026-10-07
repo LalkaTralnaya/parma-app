@@ -102,12 +102,14 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		learnAbility,
 	} from '../../../lib/engine/character';
 
+	import { canHoldSpell, startSpellHolding, getHeldSpell, advanceSpellHolding, rollHeldSpellEffect } from '../../../lib/engine/spellHolding';
 	import { classifyRoll, type RollResult } from '../../../lib/engine/dice';
 
 	import {
 		getSpellCastTarget,
 		getSpellAttackTarget,
 		getSpellCost,
+		getSpellCastingAvailability,
 		getSpellSkillLevel,
 		getSpellsWithAccess,
 		getMaxSpellLevel,
@@ -163,6 +165,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		!hideReligion || SKILLS.find((entry) => entry.id === schoolId)?.parent !== 'religion'
 	));
 	let lastCombatHp: number | null = null;
+	let visibleRoll = $state<'skill' | 'characteristic' | 'spell' | 'attack' | 'initiative' | 'save' | 'hold' | null>(null);
 	let lastRoll = $state<{ skill: string; roll: number; target: number; result: RollResult } | null>(null);
 	let lastCharCheck = $state<{ charId: string; charName: string; roll: number; target: number; result: RollResult } | null>(null);
 	let lastEdgeResult = $state<{ action: string; description: string; roll?: number; target?: number; success?: boolean } | null>(null);
@@ -194,6 +197,11 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	// Магия
 	type TwoHandsChoice = Record<string, boolean>;
 	let twoHands = $state<TwoHandsChoice>({});
+	let spellBusy = $state(false);
+	let heldSpell = $derived(char ? getHeldSpell(char) : undefined);
+	let holdNotice = $state('');
+	let spellNotice = $state('');
+	let lastHold = $state<{ spell: string; round: number; cost: number; description: string; effect: SpellEffectRoll | null } | null>(null);
 	let lastCast = $state<{
 		spell: string; roll: number; target: number; outcome: SpellOutcome;
 		cost?: number; resource?: 'mana' | 'grace';
@@ -472,8 +480,8 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	const resultColor: Record<RollResult, string> = {
 		crit_success: 'text-green-700',
 		success: 'text-green-600',
-		fail: 'text-gray-500',
-		crit_fail: 'text-red-700',
+		fail: 'text-[#8B1E3F]',
+		crit_fail: 'text-[#8B1E3F]',
 		double: 'text-blue-700',
 	};
 
@@ -487,9 +495,9 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 
 	const attackOutcomeColor: Record<AttackOutcome, string> = {
 		hit: 'text-green-700',
-		miss: 'text-gray-500',
+		miss: 'text-[#8B1E3F]',
 		critical_hit: 'text-green-700 font-bold',
-		critical_miss: 'text-red-700 font-bold',
+		critical_miss: 'text-[#8B1E3F] font-bold',
 		double: 'text-blue-700 font-bold',
 	};
 
@@ -614,7 +622,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 
 		lastEdgeResult = {
 			action: 'Голос Крови (Предки)',
-			description: `Временные Жвч: ${temp}. Приходишь в сознание. Когда они кончатся — снова «при смерти». После — 1 уровень Истощения.`,
+			description: `Временные ЗДР: ${temp}. Приходишь в сознание. Когда они кончатся — снова «при смерти». После — 1 уровень Истощения.`,
 		};
 		await syncHpToCombat();
 	}
@@ -641,7 +649,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 
 		lastEdgeResult = {
 			action: 'Зов Живы (Долг)',
-			description: `Восстановлено ${restore} Жвч. Получена метка «Долг Живе» (всего: ${char.death.debtMark}). Каждая метка — −5 к максимуму Жвч навсегда.`,
+			description: `Восстановлено ${restore} ЗДР. Получена метка «Долг Живе» (всего: ${char.death.debtMark}). Каждая метка — −5 к максимуму ЗДР навсегда.`,
 		};
 		await syncHpToCombat();
 	}
@@ -659,16 +667,16 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 
 		if (roll === 1) {
 			success = true;
-			description = 'Правь! Приходишь в сознание с 1 Жвч + 1 Истощение.';
+			description = 'Правь! Приходишь в сознание с 1 ЗДР + 1 Истощение.';
 		} else if (roll === 100) {
 			success = false;
 			description = 'Навь! Смерть. Персонаж уходит в Навь.';
 		} else if (roll <= target) {
 			success = true;
-			description = 'Успех. Стабилизация: 1 Жвч, без сознания. Через 1 час придёшь в себя + 1 Истощение.';
+			description = 'Успех. Стабилизация: 1 ЗДР, без сознания. Через 1 час придёшь в себя + 1 Истощение.';
 		} else {
 			success = false;
-			description = 'Провал. Теряешь 1 Жвч (уходишь в минус). В начале следующего хода повторишь бросок.';
+			description = 'Провал. Теряешь 1 ЗДР (уходишь в минус). В начале следующего хода повторишь бросок.';
 		}
 
 		if (success) {
@@ -731,6 +739,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		const roll = await requestDie(20, 'Прыть (инициатива)');
 		if (roll === null) return;
 		lastInitiative = rollInitiative(char, roll);
+		visibleRoll = 'initiative';
 		if (lastInitiative) {
 			publishToActiveRoom(char.name || 'Безымянный', 'initiative', {
 				roll: lastInitiative.roll,
@@ -822,6 +831,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		}
 
 		lastAttack = { weapon: weapon.name, attackType, target, parts, attacks };
+		visibleRoll = 'attack';
 
 		for (const atk of attacks) {
 			publishToActiveRoom(char.name || 'Безымянный', 'attack', {
@@ -902,6 +912,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		char = markDecayPowerUsed(char, 'ominous_presence');
 		await saveCharacter($state.snapshot(char) as Character);
 		lastRoll = { skill: 'Запугивание — Зловещее присутствие', roll, target, result };
+		visibleRoll = 'skill';
 		lastDecayAction = `Зловещее присутствие: к100 = ${roll} ≤ ${target} — ${resultLabel[result]}`;
 		publishToActiveRoom(char.name || 'Безымянный', 'skill', { skillName: 'Запугивание — Зловещее присутствие (+5)', roll, target, result });
 	}
@@ -935,23 +946,75 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		publishToActiveRoom(char.name || 'Безымянный', 'effect', { label: 'Тлен: Впустить Неживу', details: lastDecayAction });
 	}
 
-	async function castSpell(spellId: string, school: string, useTwoHands: boolean) {
+	async function castSpell(spellId: string, school: string, useTwoHands: boolean, hold = false) {
+		if (spellBusy) return;
+		spellBusy = true;
+		try { await performCastSpell(spellId, school, useTwoHands, hold); }
+		finally { spellBusy = false; }
+	}
+
+	async function stopHolding() {
+		if (!char || spellBusy) return;
+		char = { ...char, heldSpell: null };
+		holdNotice = 'Удержание прекращено.';
+		await saveCharacter($state.snapshot(char) as Character);
+	}
+
+	async function sustainSpell() {
+		if (!char || !char.heldSpell || !heldSpell || spellBusy) return;
+		spellBusy = true;
+		try {
+			const originalHold = $state.snapshot(char.heldSpell);
+			const spell = heldSpell;
+			const next = advanceSpellHolding(char);
+			let effect: SpellEffectRoll | null = null;
+			if (!next.reason) {
+				if (rollMode === 'offline') {
+					const plan = rollHeldSpellEffect(char, spell, originalHold, () => 1);
+					if (plan) {
+						const dice: number[] = [];
+						for (let i = 0; i < plan.diceCount; i++) {
+							const value = await requestDie(plan.diceSides, spell.name + ': удержание ' + (i + 1) + ' из ' + plan.diceCount);
+							if (value === null) return;
+							dice.push(value);
+						}
+						let cursor = 0;
+						effect = rollHeldSpellEffect(char, spell, originalHold, () => dice[cursor++]);
+					}
+				} else effect = rollHeldSpellEffect(char, spell, originalHold);
+			}
+			// Повторно проверяем текущую Живу после ввода физических кубиков.
+			if (char.heldSpell?.spellId !== originalHold.spellId || char.heldSpell.round !== originalHold.round) return;
+			const committed = advanceSpellHolding(char);
+			char = committed.character;
+			holdNotice = committed.reason ?? (committed.ended ? 'Длительность заклинания истекла.' : 'Удержание продлено без броска к100.');
+			if (committed.reason) effect = null;
+			await saveCharacter($state.snapshot(char) as Character);
+			if (!committed.reason && effect && spell.holdDamage && spell.target === 'creature' && combat?.active && originalHold.targetId) {
+				await writeCombatState({ ...combat, participants: combat.participants.map((p) => p.id === originalHold.targetId ? { ...p, currentHp: Math.max(0, p.currentHp - effect!.total) } : p) });
+			}
+			lastHold = { spell: spell.name, round: committed.round, cost: committed.cost, description: holdNotice, effect };
+			visibleRoll = 'hold';
+			publishToActiveRoom(char.name || 'Безымянный', 'effect', { label: spell.name + ': удержание', details: 'Раунд ' + committed.round + ', потрачено ' + committed.cost + ' живы. ' + holdNotice + (effect ? ' Эффект: ' + effect.total : '') });
+		} finally { spellBusy = false; }
+	}
+
+	async function performCastSpell(spellId: string, school: string, useTwoHands: boolean, hold: boolean) {
 		if (!char) return;
 		const spell = SPELLS_BY_SCHOOL[school].find((s) => s.id === spellId);
 		if (!spell) return;
 		const graceAllowed = canUseGraceWithDecay(char.decay?.points ?? 0);
 		if (!graceAllowed && spell.costGrace !== undefined) return;
 		const useGrace = graceAllowed && char.useGraceForSpells;
+		const costInfo = getSpellCost(char, spell, useTwoHands);
+		const availability = getSpellCastingAvailability(char, spell, useTwoHands, useGrace);
+		if (!availability.affordable) { spellNotice = availability.reason; return; }
+		spellNotice = '';
 
-		const selectedTarget = combat?.active && targetEnemyId
-			? combat.participants.find((participant) => participant.id === targetEnemyId && !participant.isPlayer)
-			: undefined;
-		const targetArmor = selectedTarget?.armor ?? 0;
-		const target = getSpellAttackTarget(char, school, targetArmor, condMods.attacks ?? 0, spell);
+		const target = getSpellAttackTarget(char, school, condMods.attacks ?? 0, spell);
 		const roll = await requestDie(100, `${spell.name}: сотворение`, target);
 		if (roll === null) return;
 		const outcome = classifySpellRoll(roll, target);
-		const costInfo = getSpellCost(char, spell, useTwoHands);
 		const criticalCostDie = outcome === 'critical_failure' ? await requestDie(4, `${spell.name}: цена критического провала`) : 0;
 		if (criticalCostDie === null) return;
 		let effectResult: SpellEffectRoll | null = null;
@@ -970,6 +1033,9 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 				}
 			} else effectResult = rollSpellEffect(char, spell, useTwoHands, useGrace);
 		}
+		// Ресурсы могли измениться в другой вкладке во время ввода физических кубиков.
+		const finalAvailability = getSpellCastingAvailability(char, spell, useTwoHands, useGrace);
+		if (!finalAvailability.affordable) { spellNotice = finalAvailability.reason; return; }
 		const decayGained = spell.usesNezhiva ? 1 : 0;
 		if (decayGained) char = adjustDecayPoints(char, decayGained);
 
@@ -1012,6 +1078,11 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 			decayGained,
 		};
 
+		if ((hold || spell.application === 'hold') && canHoldSpell(spell)) {
+			char = startSpellHolding(char, spell, outcome, { useTwoHands, useGrace, targetId: targetEnemyId, targetName: combat?.participants.find((p) => p.id === targetEnemyId)?.name ?? 'Цель не выбрана' });
+			if (outcome === 'success' || outcome === 'critical_success') holdNotice = 'Удержание начато.';
+		}
+		visibleRoll = 'spell';
 		publishToActiveRoom(char.name || 'Безымянный', 'spell', {
 			spellName: spell.name,
 			school,
@@ -1118,6 +1189,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		if (roll === null) return;
 		const success = roll <= targetInfo.target;
 		lastSave = { condition: def.name, roll, target: targetInfo.target, label: targetInfo.label, success };
+		visibleRoll = 'save';
 		publishToActiveRoom(char.name || 'Безымянный', 'characteristic', { charName: `Избавление: ${def.name}`, roll, target: targetInfo.target, result: classifyRoll(roll, targetInfo.target) });
 		if (success) {
 			const stacks = char.conditions.find((entry) => entry.id === conditionId)?.stacks ?? 1;
@@ -1152,7 +1224,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 			alert('Нет состояний, наносящих урон в конце хода');
 			return;
 		}
-		if (!confirm(`Урон в конце хода:\n\n${details.join('\n')}\n\nИтого: ${total} Жвч`)) return;
+		if (!confirm(`Урон в конце хода:\n\n${details.join('\n')}\n\nИтого: ${total} ЗДР`)) return;
 		publishToActiveRoom(char.name || 'Безымянный', 'effect', { label: 'Урон от состояний', details: `${details.join('; ')}; итого ${total}` });
 		const max = getResourceMax(char, 'hp');
 		const current = getCurrentResource(char, 'hp', max);
@@ -1238,6 +1310,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		}
 		char.currentResources = { ...(char.currentResources ?? {}), ...updates };
 		char.shortRestUsed = false;
+		char.heldSpell = null;
 		char = resetDecayPowers(char);
 		await saveCharacter($state.snapshot(char) as Character);
 		lastRest = { type: 'long', results: [] };
@@ -1294,8 +1367,8 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 				const max = getResourceMax(char, 'hp');
 				const current = getCurrentResource(char, 'hp', max);
 				char.currentResources = { ...(char.currentResources ?? {}), hp: Math.min(max, current + healed) };
-				publishToActiveRoom(char.name || 'Безымянный', 'effect', { label: item.name, details: `${item.useDice} = ${sum}${bonus ? ` + ${bonus}` : ''} = ${healed} живучести` });
-				alert(`Восстановлено ${healed} живучести.`);
+				publishToActiveRoom(char.name || 'Безымянный', 'effect', { label: item.name, details: `${item.useDice} = ${sum}${bonus ? ` + ${bonus}` : ''} = ${healed} здравия` });
+				alert(`Восстановлено ${healed} здравия.`);
 			}
 		}
 
@@ -1459,6 +1532,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		if (roll === null) return;
 		const result = classifyRoll(roll, target);
 		lastRoll = { skill: skillName, roll, target, result };
+		visibleRoll = 'skill';
 		publishToActiveRoom(char.name || 'Безымянный', 'skill', { skillName, roll, target, result });
 	}
 
@@ -1470,6 +1544,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		if (roll === null) return;
 		const result = classifyRoll(roll, target);
 		lastCharCheck = { charId, charName, roll, target, result };
+		visibleRoll = 'characteristic';
 		publishToActiveRoom(char.name || 'Безымянный', 'characteristic', { charName, roll, target, result });
 	}
 
@@ -1480,6 +1555,26 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	function closeItemPicker() { showItemPicker = false; }
 </script>
 <style>
+	.roll-result-panel {
+		position: fixed;
+		left: max(16px, env(safe-area-inset-left));
+		bottom: max(16px, env(safe-area-inset-bottom));
+		z-index: 30;
+		width: min(440px, calc(100vw - 112px));
+		max-height: min(480px, 55dvh);
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		padding: 12px;
+		border: 2px solid #96b59e;
+		border-radius: 12px;
+		background: #fffef9;
+		box-shadow: 0 8px 32px #173d3033;
+	}
+	@media (max-width: 600px) {
+		.roll-result-panel { max-height: 40dvh; padding: 10px; }
+		.roll-result-panel :global(.text-2xl) { font-size: 1.125rem; }
+	}
+
 	@media print {
 		button:not(.print-characteristic),
 		nav,
@@ -1917,7 +2012,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 						<div class="text-sm">
 							<strong>{lastSave.condition}</strong>:
 							к100 = <span class="font-mono">{lastSave.roll}</span> ≤ {lastSave.target} —
-							<span class="font-semibold {lastSave.success ? 'text-green-700' : 'text-red-700'}">
+							<span class="font-semibold {lastSave.success ? 'text-green-700' : 'text-[#8B1E3F]'}">
 								{lastSave.success ? 'Избавление успешно — состояние снято' : 'Провал'}
 							</span>
 						</div>
@@ -2179,7 +2274,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 								<option value={null}>— выберите врага —</option>
 								{#each enemiesInCombat as e}
 									<option value={e.id}>
-										{e.name} · Броня {e.armor} · ЖВЧ {e.currentHp}/{e.maxHp}
+										{e.name} · Броня {e.armor} · ЗДР {e.currentHp}/{e.maxHp}
 									</option>
 								{/each}
 							</select>
@@ -2296,7 +2391,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 					<div class="border-2 border-red-500 bg-red-100 rounded-lg p-4 mb-3">
 						<div class="font-bold text-red-800 text-lg mb-1">⚠ При смерти</div>
 						<p class="text-sm text-red-700 mb-3">
-							Жвч = 0. В начале каждого хода выбери одно из действий. Каждое доступно один раз за бой.
+							ЗДР = 0. В начале каждого хода выбери одно из действий. Каждое доступно один раз за бой.
 						</p>
 						<div class="grid grid-cols-1 md:grid-cols-3 gap-2">
 							<button
@@ -2304,7 +2399,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 								disabled={char.death?.usedVoiceOfBlood}
 								onclick={voiceOfBlood}>
 								🩸 Голос Крови<br />
-								<span class="text-xs font-normal">временные Жвч</span>
+								<span class="text-xs font-normal">временные ЗДР</span>
 								{#if char.death?.usedVoiceOfBlood}<br /><span class="text-xs">использован</span>{/if}
 							</button>
 							<button
@@ -2325,11 +2420,11 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 					</div>
 				{/if}
 
-				<!-- Временные Жвч -->
+				<!-- Временные ЗДР -->
 				{#if (char.tempHp ?? 0) > 0}
 					<div class="border-2 border-red-400 bg-red-50 rounded-lg p-3 mb-3 flex justify-between items-center">
 						<div>
-							<span class="font-semibold text-red-800">Временные Жвч: {char.tempHp}</span>
+							<span class="font-semibold text-red-800">Временные ЗДР: {char.tempHp}</span>
 							<div class="text-xs text-red-700">
 								Кончатся при получении урона — снова «при смерти».
 							</div>
@@ -2345,7 +2440,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 					<div class="border border-orange-300 bg-orange-50 rounded-lg p-3 mb-3 text-sm">
 						<strong class="text-orange-800">Долг Живе:</strong>
 						<span class="ml-1">{char.death.debtMark} метк{char.death.debtMark === 1 ? 'а' : 'и'}</span>
-						<span class="text-xs text-orange-700 ml-1">(−{char.death.debtMark * 5} к максимуму Жвч)</span>
+						<span class="text-xs text-orange-700 ml-1">(−{char.death.debtMark * 5} к максимуму ЗДР)</span>
 					</div>
 				{/if}
 
@@ -2404,93 +2499,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 				</div>
 			</section>
 		{/if}
-				{#if lastCharCheck}
-			<section class="border-2 border-blue-300 rounded-lg p-4 bg-blue-50">
-				<div class="flex justify-between items-start">
-					<div>
-						<div class="text-sm text-gray-500">Проверка характеристики (Избавление)</div>
-						<div class="text-lg font-semibold">{lastCharCheck.charName}</div>
-						<div class="text-2xl mt-1">
-							Выпало <span class="font-bold">{lastCharCheck.roll}</span>,
-							цель ≤ {lastCharCheck.target} —
-							<span class="font-bold {resultColor[lastCharCheck.result]}">{resultLabel[lastCharCheck.result]}</span>
-						</div>
-						{#if (condMods.saves ?? 0) !== 0}
-							<div class="text-xs text-red-700 mt-1">
-								Учтён модификатор от состояний: {condMods.saves}
-							</div>
-						{/if}
-					</div>
-					<button
-						class="text-gray-500 hover:text-gray-700 px-2 text-xl leading-none"
-						onclick={() => (lastCharCheck = null)}>✕</button>
-				</div>
-			</section>
-		{/if}
-		{#if lastRoll}
-			<section class="border-2 rounded-lg p-4 bg-white">
-				<div class="text-sm text-gray-500">Последний бросок навыка</div>
-				<div class="text-lg font-semibold">{lastRoll.skill}</div>
-				<div class="text-2xl mt-1">
-					Выпало <span class="font-bold">{lastRoll.roll}</span>, цель ≤ {lastRoll.target} —
-					<span class="font-bold {resultColor[lastRoll.result]}">{resultLabel[lastRoll.result]}</span>
-				</div>
-			</section>
-		{/if}
-
-		{#if lastCast && (!hideReligion || lastCast.resource !== 'grace')}
-			<section class="border-2 rounded-lg p-4 bg-white space-y-2">
-				<div>
-					<div class="text-sm text-gray-500">Последняя магическая атака</div>
-					<div class="text-lg font-semibold">{lastCast.spell}</div>
-				</div>
-				<div class="text-lg">
-					<div class="text-sm text-gray-500">Бросок атаки = попадание</div>
-					Выпало <span class="font-bold">{lastCast.roll}</span>, цель ≤ {lastCast.target} —
-					<span class="font-bold {lastCast.outcome === 'success' || lastCast.outcome === 'critical_success' ? 'text-green-700' : 'text-red-700'}">
-						{spellOutcomeLabel[lastCast.outcome]}
-					</span>
-				</div>
-				{#if lastCast.effect}
-					<div class="border-t pt-2">
-						<div class="text-sm text-gray-500">
-							Бросок эффекта
-							{#if lastCast.effect.typeLabel}— {lastCast.effect.typeLabel}{/if}
-						</div>
-						<div class="text-2xl font-bold text-blue-700">
-							{lastCast.effect.total}
-						</div>
-						<div class="text-xs text-gray-500">
-							{lastCast.effect.diceCount}к{lastCast.effect.diceSides}
-							{#if lastCast.effect.extraDice > 0}
-								<span class="text-green-700">(+{lastCast.effect.extraDice} от умений)</span>
-							{/if}
-							= [{lastCast.effect.rolls.join(', ')}]
-							{#if lastCast.effect.modValue !== 0}
-								+ {lastCast.effect.modValue}
-								мод. {lastCast.effect.modId === 'religion' ? 'Религии' : 'Интеллекта'}
-							{/if}
-							{#if lastCast.effect.abilityBonus > 0}+ {lastCast.effect.abilityBonus} от умений{/if}
-						</div>
-					</div>
-				{/if}
-				{#if lastCast.decayGained}
-					<div class="text-sm text-purple-800 border-t pt-2">Получено: +{lastCast.decayGained} ОТ за использование Неживы.</div>
-				{/if}
-				{#if lastCast.cost}
-					<div class="text-sm text-gray-600 border-t pt-2">
-						Потрачено: <span class="font-semibold">{lastCast.cost}</span>
-						{lastCast.resource === 'grace' ? 'благодати' : 'живы'}
-					</div>
-				{/if}
-				{#if (lastCast as any).damageApplied > 0}
-					<div class="text-sm text-red-700 border-t pt-2">
-						Урон цели: <span class="font-bold">{(lastCast as any).damageApplied}</span>
-					</div>
-				{/if}
-			</section>
-		{/if}
-
+				
 		<section>
 			<h2 id="skills" class="text-xl font-semibold mb-3">Навыки</h2>
 			{#if (condMods.skills ?? 0) !== 0 || (condMods.attacks ?? 0) !== 0 || (condMods.armor ?? 0) !== 0}
@@ -2685,20 +2694,36 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 						<option value={null}>— выберите врага —</option>
 						{#each enemiesInCombat as e}
 							<option value={e.id}>
-								{e.name} · Броня {e.armor} · ЖВЧ {e.currentHp}/{e.maxHp}
+								{e.name} · Броня {e.armor} · ЗДР {e.currentHp}/{e.maxHp}
 							</option>
 						{/each}
 					</select>
 					<div class="text-xs text-gray-500 mt-1">
 						{#if targetEnemyId}
-							Магическая атака учитывает Броню цели; урон спишется только при попадании.
+							Броня цели не влияет на сотворение; урон спишется при успешном заклинании.
 						{:else}
-							Без выбранной цели бросок не вычитает Броню и урон не будет списан.
+							Без выбранной цели урон не будет списан.
 						{/if}
 					</div>
 				</div>
 			{/if}
-						<div class="space-y-3">
+			{#if heldSpell && char.heldSpell}
+				<section class="mb-4 p-4 border-2 border-blue-300 rounded-lg bg-blue-50 print-hide" aria-label="Удерживаемое заклинание">
+					<h3 class="font-semibold">Удержание: {heldSpell.name}</h3>
+					<p class="text-sm">Раунд {char.heldSpell.round}{heldSpell.holdRounds ? ' из ' + heldSpell.holdRounds : ''} · {heldSpell.holdCost} живы за следующий раунд</p>
+					<p class="text-sm">Цель: {char.heldSpell.targetName}. Длительность: {heldSpell.duration}.</p>
+					<p class="text-sm mt-2">{heldSpell.description}</p>
+					{#if heldSpell.effect}<p class="text-sm">Эффект: {heldSpell.effect}</p>{/if}
+					<p class="text-xs text-gray-500 mt-2">Продлевай один раз в свой ход. Состояния, избавления и эффекты области отмечает Сказитель. Новое удерживаемое заклинание заменит текущее при успешном сотворении.</p>
+					<div class="flex flex-wrap gap-2 mt-3">
+						<button type="button" class="px-3 py-2 rounded bg-blue-600 text-white" disabled={spellBusy} onclick={sustainSpell}>Удержать ещё раунд</button>
+						<button type="button" class="px-3 py-2 rounded border" disabled={spellBusy} onclick={stopHolding}>Прекратить</button>
+					</div>
+				</section>
+			{/if}
+			{#if spellNotice}<p class="text-sm text-red-700 mb-3" role="alert">{spellNotice}</p>{/if}
+			{#if holdNotice}<p class="text-sm mb-3" role="status">{holdNotice}</p>{/if}
+			<div class="space-y-3">
 				{#each visibleSpellSchools as [schoolId, _spells]}
 					{@const schoolLevel = getSpellSkillLevel(char, schoolId)}
 					{@const maxSpellLevel = getMaxSpellLevel(char, schoolId)}
@@ -2732,6 +2757,8 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 									{#each spellList.filter(({ spell }) => !hideReligion || spell.costGrace === undefined) as { spell, available }}
 										{@const known = isSpellKnown(char, spell.id)}
 										{@const useTwo = twoHands[spell.id] ?? false}
+										{@const casting = getSpellCastingAvailability(char, spell, useTwo || spell.costOneHand === undefined, char.useGraceForSpells && canUseGraceWithDecay(char.decay?.points ?? 0))}
+										{@const castBlockReason = spell.costGrace !== undefined && !canUseGraceWithDecay(char.decay?.points ?? 0) ? 'Благодать недоступна из-за Тлена' : casting.reason}
 										{@const costOneHand = getSpellCost(char, spell, false)}
 										{@const costTwoHands = getSpellCost(char, spell, true)}
 										{@const threshold = getSpellLevelThreshold(spell.school, spell.skillLevel)}
@@ -2752,7 +2779,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 													<span class="text-xs text-red-600 font-semibold">закрыто</span>
 												{/if}
 												{#if spell.application === 'instant'}<span class="text-xs text-gray-500">мгновенно</span>{/if}
-												{#if spell.application === 'hold'}<span class="text-xs text-gray-500">удержание</span>{/if}
+												{#if canHoldSpell(spell)}<span class="text-xs text-gray-500">удержание · {spell.holdCost} живы/раунд</span>{/if}
 												{#if spell.application === 'ritual'}<span class="text-xs text-gray-500">ритуал</span>{/if}
 											</div>
 											<p class="text-sm text-gray-600 mb-2">{spell.description}</p>
@@ -2789,12 +2816,16 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 													{/if}
 													<button
 														class="px-2 py-0.5 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
-												disabled={spell.costGrace !== undefined && !canUseGraceWithDecay(char.decay?.points ?? 0)}
-												title={spell.costGrace !== undefined && !canUseGraceWithDecay(char.decay?.points ?? 0) ? 'Благодать недоступна из-за Тлена' : undefined}
-														onclick={() => castSpell(spell.id, schoolId, useTwo)}>
-														Магическая атака (к100)
+												disabled={spellBusy || Boolean(castBlockReason)}
+												title={castBlockReason || undefined}
+														onclick={() => castSpell(spell.id, schoolId, useTwo || spell.costOneHand === undefined)}>
+														{spell.application === 'hold' ? 'Сотворить и удерживать (к100)' : 'Магическая атака (к100)'}
 													</button>
+													{#if canHoldSpell(spell) && spell.application !== 'hold'}
+														<button type="button" class="px-2 py-1 text-xs border rounded" disabled={spellBusy || Boolean(castBlockReason)} title={castBlockReason || undefined} onclick={() => castSpell(spell.id, schoolId, useTwo || spell.costOneHand === undefined, true)}>Сотворить и удерживать</button>
+													{/if}
 												</div>
+												{#if castBlockReason}<p class="text-xs text-red-700 mt-1" role="status">{castBlockReason}</p>{/if}
 											{:else}
 												<p class="text-xs text-gray-500">
 													Откроется, когда характеристика достигнет {threshold}.
@@ -3041,4 +3072,127 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 			</div>
 		</section>
 	{/if}
+	{#if visibleRoll}
+		<aside class="roll-result-panel print-hide" aria-label="Результат последнего броска">
+			<div class="flex items-center justify-between gap-3 mb-2">
+				<span class="text-sm font-semibold">Результат броска</span>
+				<button type="button" class="px-3 rounded hover:bg-gray-100" aria-label="Закрыть результат броска" onclick={() => (visibleRoll = null)}>✕</button>
+			</div>
+			<div role="status" aria-live="polite" aria-atomic="true">
+{#if visibleRoll === 'characteristic' && lastCharCheck}
+			<section class="border-2 border-blue-300 rounded-lg p-4 bg-blue-50">
+				<div class="flex justify-between items-start">
+					<div>
+						<div class="text-sm text-gray-500">Проверка характеристики (Избавление)</div>
+						<div class="text-lg font-semibold">{lastCharCheck.charName}</div>
+						<div class="text-2xl mt-1">
+							Выпало <span class="font-bold">{lastCharCheck.roll}</span>,
+							цель ≤ {lastCharCheck.target} —
+							<span class="font-bold {resultColor[lastCharCheck.result]}">{resultLabel[lastCharCheck.result]}</span>
+						</div>
+						{#if (condMods.saves ?? 0) !== 0}
+							<div class="text-xs text-red-700 mt-1">
+								Учтён модификатор от состояний: {condMods.saves}
+							</div>
+						{/if}
+					</div>
+					<button
+						class="text-gray-500 hover:text-gray-700 px-2 text-xl leading-none"
+						onclick={() => (visibleRoll = null)}>✕</button>
+				</div>
+			</section>
+		{/if}
+		{#if visibleRoll === 'skill' && lastRoll}
+			<section class="border-2 rounded-lg p-4 bg-white">
+				<div class="text-sm text-gray-500">Последний бросок навыка</div>
+				<div class="text-lg font-semibold">{lastRoll.skill}</div>
+				<div class="text-2xl mt-1">
+					Выпало <span class="font-bold">{lastRoll.roll}</span>, цель ≤ {lastRoll.target} —
+					<span class="font-bold {resultColor[lastRoll.result]}">{resultLabel[lastRoll.result]}</span>
+				</div>
+			</section>
+		{/if}
+
+		{#if visibleRoll === 'spell' && lastCast && (!hideReligion || lastCast.resource !== 'grace')}
+			<section class="border-2 rounded-lg p-4 bg-white space-y-2">
+				<div>
+					<div class="text-sm text-gray-500">Последняя магическая атака</div>
+					<div class="text-lg font-semibold">{lastCast.spell}</div>
+				</div>
+				<div class="text-lg">
+					<div class="text-sm text-gray-500">Бросок атаки = попадание</div>
+					Выпало <span class="font-bold">{lastCast.roll}</span>, цель ≤ {lastCast.target} —
+					<span class="font-bold {lastCast.outcome === 'success' || lastCast.outcome === 'critical_success' ? 'text-green-700' : 'text-[#8B1E3F]'}">
+						{spellOutcomeLabel[lastCast.outcome]}
+					</span>
+				</div>
+				{#if lastCast.effect}
+					<div class="border-t pt-2">
+						<div class="text-sm text-gray-500">
+							Бросок эффекта
+							{#if lastCast.effect.typeLabel}— {lastCast.effect.typeLabel}{/if}
+						</div>
+						<div class="text-2xl font-bold text-blue-700">
+							{lastCast.effect.total}
+						</div>
+						<div class="text-xs text-gray-500">
+							{lastCast.effect.diceCount}к{lastCast.effect.diceSides}
+							{#if lastCast.effect.extraDice > 0}
+								<span class="text-green-700">(+{lastCast.effect.extraDice} от умений)</span>
+							{/if}
+							= [{lastCast.effect.rolls.join(', ')}]
+							{#if lastCast.effect.modValue !== 0}
+								+ {lastCast.effect.modValue}
+								мод. {lastCast.effect.modId === 'religion' ? 'Религии' : 'Интеллекта'}
+							{/if}
+							{#if lastCast.effect.abilityBonus > 0}+ {lastCast.effect.abilityBonus} от умений{/if}
+						</div>
+					</div>
+				{/if}
+				{#if lastCast.decayGained}
+					<div class="text-sm text-purple-800 border-t pt-2">Получено: +{lastCast.decayGained} ОТ за использование Неживы.</div>
+				{/if}
+				{#if lastCast.cost}
+					<div class="text-sm text-gray-600 border-t pt-2">
+						Потрачено: <span class="font-semibold">{lastCast.cost}</span>
+						{lastCast.resource === 'grace' ? 'благодати' : 'живы'}
+					</div>
+				{/if}
+				{#if (lastCast as any).damageApplied > 0}
+					<div class="text-sm text-red-700 border-t pt-2">
+						Урон цели: <span class="font-bold">{(lastCast as any).damageApplied}</span>
+					</div>
+				{/if}
+			</section>
+		{/if}
+
+				{#if visibleRoll === 'hold' && lastHold}
+					<div class="font-semibold">{lastHold.spell} · удержание</div>
+					<p>Раунд {lastHold.round} · Потрачено {lastHold.cost} живы</p>
+					{#if lastHold.effect}<div class="text-xl font-bold">Эффект: {lastHold.effect.total}</div><div class="text-sm">{lastHold.effect.diceCount}к{lastHold.effect.diceSides}: [{lastHold.effect.rolls.join(', ')}]{lastHold.effect.modValue ? ' + ' + lastHold.effect.modValue : ''}{lastHold.effect.abilityBonus ? ' + ' + lastHold.effect.abilityBonus : ''}</div>{/if}
+					<p class="text-sm">{lastHold.description}</p>
+				{/if}
+				{#if visibleRoll === 'attack' && lastAttack}
+					<div class="font-semibold">{lastAttack.weapon}</div>
+					{#each lastAttack.attacks as atk, idx}
+						<div class="mt-2">
+							{#if lastAttack.attacks.length > 1}<div class="text-sm">Удар {idx + 1}</div>{/if}
+							<div>Выпало <strong>{atk.roll}</strong>, цель ≤ {atk.target} — <span class={attackOutcomeColor[atk.outcome]}>{attackOutcomeLabel[atk.outcome]}</span></div>
+							{#if atk.effect}<div class="text-sm">{atk.effect.table}: {atk.effect.label}</div>{/if}
+							{#if atk.damage}<div class="text-lg font-bold">Урон: {atk.damage.total}</div>{/if}
+						</div>
+					{/each}
+				{/if}
+				{#if visibleRoll === 'initiative' && lastInitiative}
+					<div class="font-semibold">Прыть (инициатива)</div>
+					<div class="text-xl">{lastInitiative.roll} + {lastInitiative.mod} = <strong>{lastInitiative.total}</strong></div>
+				{/if}
+				{#if visibleRoll === 'save' && lastSave}
+					<div class="font-semibold">Избавление: {lastSave.condition}</div>
+					<div>Выпало <strong>{lastSave.roll}</strong>, цель ≤ {lastSave.target} — <strong class={lastSave.success ? 'text-green-700' : 'text-[#8B1E3F]'}>{lastSave.success ? 'Успех' : 'Провал'}</strong></div>
+				{/if}
+			</div>
+		</aside>
+	{/if}
+
 </main>

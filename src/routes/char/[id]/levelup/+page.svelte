@@ -54,7 +54,7 @@
 	{:else if char}
 		<header class="flex justify-between items-center">
 			<div>
-				<h1 class="text-3xl font-bold">Левелап</h1>
+				<h1 class="text-3xl font-bold">Рост</h1>
 				<p class="text-gray-600">{char.name} — сейчас {char.level} уровень → станет {char.level + 1}</p>
 			</div>
 			<a href="/char/{char.id}" class="px-3 py-2 border rounded hover:bg-gray-50">← Отмена</a>
@@ -143,7 +143,7 @@
 					<li>• Очки умений: <strong>+5</strong> → {(char.abilityPoints ?? 0) + 5} доступно для изучения</li>
 					<li>• {CHARACTERISTICS.find((c) => c.id === charStatBonus)?.name}:
 						<strong>+6</strong> → {newCharValue} (мод. +{newCharMod})</li>
-					<li>• ЖВЧ: +{rolls.find((r) => r.resourceId === 'hp')?.total ?? 0}</li>
+					<li>• ЗДР: +{rolls.find((r) => r.resourceId === 'hp')?.total ?? 0}</li>
 					<li>• ЖИВ: +{rolls.find((r) => r.resourceId === 'mana')?.total ?? 0}</li>
 					<li>• БДР: +{rolls.find((r) => r.resourceId === 'stamina')?.total ?? 0}</li>
 					<li>• ВЛН: +{rolls.find((r) => r.resourceId === 'influence')?.total ?? 0}</li>

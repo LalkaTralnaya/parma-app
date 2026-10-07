@@ -1,4 +1,53 @@
 @import "tailwindcss";
+/* Резьба: общий орнамент панелей. SVG остаётся чётким при любом масштабе. */
+#content :is(main section.border, main article.border, main .grid > .border.rounded-lg, .toolbox, .empty, .roll-result-panel, .ornament-frame) {
+  --carving-size: 38px;
+  --carving-inset: 5px;
+  border: 1px solid #a48a68;
+  border-radius: 4px;
+}
+#content :is(main section.border, main article.border, main .grid > .border.rounded-lg, .toolbox, .empty, .roll-result-panel, .ornament-frame):not(.roll-result-panel) { position: relative; }
+#content :is(main section.border, main article.border, main .grid > .border.rounded-lg, .toolbox, .ornament-frame) {
+  padding: 26px;
+}
+#content .toolbox { background-color: #fffef9; }
+#content .roll-result-panel { padding: 24px; border-radius: 4px; }
+#content :is(main section.border, main article.border, main .grid > .border.rounded-lg, .toolbox, .empty, .roll-result-panel, .ornament-frame)::before {
+  content: "";
+  position: absolute;
+  inset: var(--carving-inset);
+  border: 1px solid #b8a17d;
+  border-radius: 1px;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2048%2048%22%3E%3Cg%20transform%3D%22rotate(0%2024%2024)%22%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22%2387613e%22%20stroke-width%3D%221.25%22%20stroke-linecap%3D%22square%22%20stroke-linejoin%3D%22miter%22%3E%3Cpath%20d%3D%22M2%2046V2h44M7%2042V7h35M2%2019h17V2M7%2014h7V7M19%202l20%2020M2%2019l20%2020M22%208l16%206M8%2022l6%2016%22%2F%3E%3Cpath%20d%3D%22M26%205l4%205m3-5%204%205m-32%2016%205%204m-5%203%205%204%22%2F%3E%3C%2Fg%3E%3Cg%20fill%3D%22%23315440%22%3E%3Cpath%20d%3D%22M20%2020c3-1%206%200%209%205-5%201-8-1-9-5M27%2018c4-3%208-1%2012%202-5%203-9%202-12-2M18%2027c-3%204-1%208%202%2012%203-5%202-9-2-12M32%2025c4-1%207%201%209%205-5%200-8-1-9-5M25%2032c-1%204%201%207%205%209%200-5-1-8-5-9%22%2F%3E%3C%2Fg%3E%3C%2Fg%3E%3C%2Fsvg%3E"),
+    url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2048%2048%22%3E%3Cg%20transform%3D%22rotate(90%2024%2024)%22%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22%2387613e%22%20stroke-width%3D%221.25%22%20stroke-linecap%3D%22square%22%20stroke-linejoin%3D%22miter%22%3E%3Cpath%20d%3D%22M2%2046V2h44M7%2042V7h35M2%2019h17V2M7%2014h7V7M19%202l20%2020M2%2019l20%2020M22%208l16%206M8%2022l6%2016%22%2F%3E%3Cpath%20d%3D%22M26%205l4%205m3-5%204%205m-32%2016%205%204m-5%203%205%204%22%2F%3E%3C%2Fg%3E%3Cg%20fill%3D%22%23315440%22%3E%3Cpath%20d%3D%22M20%2020c3-1%206%200%209%205-5%201-8-1-9-5M27%2018c4-3%208-1%2012%202-5%203-9%202-12-2M18%2027c-3%204-1%208%202%2012%203-5%202-9-2-12M32%2025c4-1%207%201%209%205-5%200-8-1-9-5M25%2032c-1%204%201%207%205%209%200-5-1-8-5-9%22%2F%3E%3C%2Fg%3E%3C%2Fg%3E%3C%2Fsvg%3E"),
+    url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2048%2048%22%3E%3Cg%20transform%3D%22rotate(180%2024%2024)%22%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22%2387613e%22%20stroke-width%3D%221.25%22%20stroke-linecap%3D%22square%22%20stroke-linejoin%3D%22miter%22%3E%3Cpath%20d%3D%22M2%2046V2h44M7%2042V7h35M2%2019h17V2M7%2014h7V7M19%202l20%2020M2%2019l20%2020M22%208l16%206M8%2022l6%2016%22%2F%3E%3Cpath%20d%3D%22M26%205l4%205m3-5%204%205m-32%2016%205%204m-5%203%205%204%22%2F%3E%3C%2Fg%3E%3Cg%20fill%3D%22%23315440%22%3E%3Cpath%20d%3D%22M20%2020c3-1%206%200%209%205-5%201-8-1-9-5M27%2018c4-3%208-1%2012%202-5%203-9%202-12-2M18%2027c-3%204-1%208%202%2012%203-5%202-9-2-12M32%2025c4-1%207%201%209%205-5%200-8-1-9-5M25%2032c-1%204%201%207%205%209%200-5-1-8-5-9%22%2F%3E%3C%2Fg%3E%3C%2Fg%3E%3C%2Fsvg%3E"),
+    url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2048%2048%22%3E%3Cg%20transform%3D%22rotate(270%2024%2024)%22%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22%2387613e%22%20stroke-width%3D%221.25%22%20stroke-linecap%3D%22square%22%20stroke-linejoin%3D%22miter%22%3E%3Cpath%20d%3D%22M2%2046V2h44M7%2042V7h35M2%2019h17V2M7%2014h7V7M19%202l20%2020M2%2019l20%2020M22%208l16%206M8%2022l6%2016%22%2F%3E%3Cpath%20d%3D%22M26%205l4%205m3-5%204%205m-32%2016%205%204m-5%203%205%204%22%2F%3E%3C%2Fg%3E%3Cg%20fill%3D%22%23315440%22%3E%3Cpath%20d%3D%22M20%2020c3-1%206%200%209%205-5%201-8-1-9-5M27%2018c4-3%208-1%2012%202-5%203-9%202-12-2M18%2027c-3%204-1%208%202%2012%203-5%202-9-2-12M32%2025c4-1%207%201%209%205-5%200-8-1-9-5M25%2032c-1%204%201%207%205%209%200-5-1-8-5-9%22%2F%3E%3C%2Fg%3E%3C%2Fg%3E%3C%2Fsvg%3E"), url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20100%2016%22%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22%2387613e%22%20stroke-width%3D%221.2%22%3E%3Cpath%20d%3D%22M0%208h34m32%200h34M42%208l8-7%208%207-8%207zM8%204l3%203m6-3%203%203m6-3%203%203m42-3%203%203m6-3%203%203m6-3%203%203%22%2F%3E%3C%2Fg%3E%3Cpath%20fill%3D%22%23315440%22%20d%3D%22M46%208l4-4%204%204-4%204z%22%2F%3E%3C%2Fsvg%3E");
+  background-position: left top, right top, right bottom, left bottom, center top;
+  background-size: var(--carving-size) var(--carving-size), var(--carving-size) var(--carving-size), var(--carving-size) var(--carving-size), var(--carving-size) var(--carving-size), 100px 16px;
+  background-repeat: no-repeat;
+}
+#content .roll-result-panel > [role="status"] > section {
+  /* Внутри результата достаточно одной внешней резной рамки. */
+  border: 0;
+  padding: 4px 0;
+  background: transparent;
+}
+#content .roll-result-panel > [role="status"] > section::before { display: none; }
+#content > main.character-sheet:is([data-decay-stage="2"], [data-decay-stage="3"], [data-decay-stage="4"]) :is(section.border, article.border, .grid > .border.rounded-lg, .roll-result-panel, .ornament-frame)::before {
+  filter: grayscale(1);
+  opacity: .65;
+}
+@media (max-width: 600px) {
+  #content :is(main section.border, main article.border, main .grid > .border.rounded-lg, .toolbox, .empty, .roll-result-panel, .ornament-frame) { --carving-size: 26px; --carving-inset: 4px; }
+  #content :is(main section.border, main article.border, main .grid > .border.rounded-lg, .toolbox, .ornament-frame) { padding: 20px; }
+  #content .roll-result-panel { padding: 18px; }
+  #content :is(main section.border, main article.border, main .grid > .border.rounded-lg, .toolbox, .empty, .roll-result-panel, .ornament-frame)::before { background-size: var(--carving-size) var(--carving-size), var(--carving-size) var(--carving-size), var(--carving-size) var(--carving-size), var(--carving-size) var(--carving-size), 72px 12px; }
+}
+@media print {
+  #content :is(main section.border, main article.border, main .grid > .border.rounded-lg, .toolbox, .empty, .roll-result-panel, .ornament-frame)::before { display: none; }
+  #content :is(main section.border, main article.border, main .grid > .border.rounded-lg, .toolbox, .empty, .roll-result-panel, .ornament-frame) { border-color: #999; }
+}
 
 @theme {
   --color-blue-50: #edf4ee;
@@ -222,3 +271,4 @@ body:has(#content > main.character-sheet[data-decay-stage]:not([data-decay-stage
   }
   #content > main.character-sheet[data-decay-stage] [class*="text-"] { color: #000 !important; }
 }
+

@@ -76,7 +76,7 @@
 		const attacks = s.scaledAttacks
 			.map((a) => `${a.name}: ${a.ignoresArmor ? 'проверка' : 'попадание'} ${statLabel(a.attackStat)} ≤ ${a.hitTarget}${a.damageDice !== '0' ? `, урон ${a.damageDice}${a.damageModifier ? ' ' + modS(a.damageModifier) : ''}${(a.extraDamageDice ?? []).map((dice) => ` + ${dice}`).join('')} ${a.damageType}` : ''}${a.notes ? ' (' + a.notes + ')' : ''}${a.save ? `; Избавление: ${a.save}` : ''}`)
 			.join('\n');
-		const text = `${s.base.name} (уровень ${s.level}, +${s.levelsGained} от базового)\nЖВЧ: ${s.scaledHp}\nБроня: ${s.scaledArmor}\nСкорость: ${s.base.movement ?? `${s.base.speed} саженей`}\n\nХарактеристики:\n${mods}\n\nАтаки:\n${attacks}\n\nУмения:\n${s.base.traits.join('\n')}`;
+		const text = `${s.base.name} (уровень ${s.level}, +${s.levelsGained} от базового)\nЗДР: ${s.scaledHp}\nБроня: ${s.scaledArmor}\nСкорость: ${s.base.movement ?? `${s.base.speed} саженей`}\n\nХарактеристики:\n${mods}\n\nАтаки:\n${attacks}\n\nУмения:\n${s.base.traits.join('\n')}`;
 		try {
 			await navigator.clipboard.writeText(text);
 			alert('Скопировано в буфер обмена');
@@ -172,10 +172,10 @@
 					onclick={copyToClipboard}>📋 Скопировать</button>
 			</div>
 
-			<!-- ЖВЧ / Броня / Скорость -->
+			<!-- ЗДР / Броня / Скорость -->
 			<div class="grid grid-cols-3 gap-3 mb-4">
 				<div class="border rounded-lg p-3 bg-white text-center">
-					<div class="text-xs uppercase text-gray-500">Живучесть</div>
+					<div class="text-xs uppercase text-gray-500">Здравие</div>
 					<div class="text-2xl font-bold">{scaled.scaledHp}</div>
 					{#if scaled.levelsGained > 0}
 						<div class="text-xs text-gray-500">

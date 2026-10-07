@@ -8,7 +8,7 @@ import { findCondition } from '../src/lib/rules/conditions.ts';
 import { WEAPONS } from '../src/lib/rules/weapons.ts';
 import { BESTIARY, BESTIARY_SECTIONS } from '../src/lib/rules/bestiary.ts';
 import { scaleMonster } from '../src/lib/engine/bestiary.ts';
-import { getSpellAttackTarget, getSpellCastTarget } from '../src/lib/engine/spells.ts';
+import { getSpellAttackTarget, getSpellCastTarget, classifySpellRoll } from '../src/lib/engine/spells.ts';
 
 const char = {
   id: 'test', name: 'Тестовый воин', raceId: 'human', raceChoice: 'strength', level: 1,
@@ -34,11 +34,15 @@ test('attack speed modifiers are applied before enemy armor', () => {
 });
 
 
-test('magical attack uses the school skill and subtracts target armor and attack modifiers', () => {
+test('spell casting uses the school skill and modifiers without subtracting target armor', () => {
   const mage = { ...char, skillPoints: { destruction: 20 } };
   const castTarget = getSpellCastTarget(mage, 'destruction');
-  assert.equal(getSpellAttackTarget(mage, 'destruction', 14, -5), castTarget - 19);
-  assert.equal(getSpellAttackTarget(mage, 'destruction', 0, 0), castTarget);
+  const target = getSpellAttackTarget(mage, 'destruction', -5);
+  assert.equal(target, castTarget - 5);
+  assert.equal(getSpellAttackTarget(mage, 'destruction'), castTarget);
+  // Этот бросок раньше проваливался против цели с Бронёй 14.
+  assert.equal(classifySpellRoll(castTarget - 6, target), 'success');
+  assert.equal(classifySpellRoll(castTarget - 4, target), 'failure');
 });
 
 test('natural 1 and 100 override the target; a double is special only on success', () => {
