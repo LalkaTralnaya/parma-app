@@ -22,6 +22,7 @@
     "vite": "^8.0.16"
   },
   "dependencies": {
+    "@3d-dice/dice-box-threejs": "^0.0.12",
     "@supabase/supabase-js": "^2.117.2",
     "@tailwindcss/vite": "^4.3.3",
     "dexie": "^4.4.6",

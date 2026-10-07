@@ -2,6 +2,7 @@
   import '../app.css';
   import { page } from '$app/state';
   import Icon from '$lib/components/Icon.svelte';
+  import DiceOverlay from '$lib/components/DiceOverlay.svelte';
   import RollChat from '$lib/components/RollChat.svelte';
   import favicon from '$lib/assets/favicon.svg';
   let { children } = $props();
@@ -40,4 +41,5 @@
 </header>
 <div id="content" tabindex="-1">{@render children()}</div>
 <RollChat />
+<DiceOverlay />
 <footer class="app-footer"><span>Парма · Помощник игрока и мастера</span><span><Icon name="shield" size={16} /> Данные сохраняются локально; для облака войдите в аккаунт</span></footer>
