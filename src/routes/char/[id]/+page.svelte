@@ -3,6 +3,9 @@
 	// ИМПОРТЫ
 	// ────────────────────────────────────────────
 	import { onMount, onDestroy } from 'svelte';
+	import { showDice } from '$lib/ui/dice';
+	const diceLifetime = new AbortController();
+	onDestroy(() => diceLifetime.abort());
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 
@@ -450,7 +453,11 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		finishManualDie(value);
 	}
 	async function requestDie(sides: number, label: string, target?: number): Promise<number | null> {
-		if (rollMode === 'online') return Math.floor(Math.random() * sides) + 1;
+		if (rollMode === 'online') {
+			const value = Math.floor(Math.random() * sides) + 1;
+			await showDice({ sides, value, label, target, signal: diceLifetime.signal });
+			return diceLifetime.signal.aborted ? null : value;
+		}
 		if (pendingDie) return null;
 		manualDieValue = '';
 		manualDieError = '';
