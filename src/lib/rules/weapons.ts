@@ -1,8 +1,13 @@
+import { EQUIPMENT_WEAPONS, EQUIPMENT_ARMORS, EQUIPMENT_SHIELDS, mergeEquipment } from './equipment-catalog';
+
 export type DamageType = 'cutting' | 'piercing' | 'crushing';
 export type WeaponCategory = 'one_handed' | 'two_handed' | 'ranged';
 
 export interface Weapon {
+	ammunition?: 'arrow' | 'bolt' | 'sling';
+	noFastAttack?: boolean;
 	id: string;
+	durability?: number;
 	name: string;
 	category: WeaponCategory;
 	/** Кубик урона одной рукой */
@@ -19,7 +24,13 @@ export interface Weapon {
 	description?: string;
 }
 
-export const WEAPONS: Weapon[] = [
+const LEGACY_WEAPONS: Weapon[] = [
+	{ id: 'throwing_knives', name: 'Метательные ножи', category: 'one_handed', damageOneHand: '1d4', damageType: 'piercing', parent: 'strength', skill: 'one_handed' },
+	{ id: 'hunting_knife', name: 'Охотничий нож', category: 'one_handed', damageOneHand: '1d4', damageType: 'piercing', parent: 'strength', skill: 'one_handed' },
+	{ id: 'smith_hammer', name: 'Кузнечный молот', category: 'one_handed', damageOneHand: '1d6', damageType: 'crushing', parent: 'strength', skill: 'one_handed' },
+	{ id: 'staff', name: 'Крепкий посох', category: 'two_handed', damageOneHand: '1d8', damageType: 'crushing', parent: 'strength', skill: 'two_handed' },
+	{ id: 'ritual_dagger', name: 'Ритуальный нож', category: 'one_handed', damageOneHand: '1d4', damageType: 'piercing', parent: 'strength', skill: 'one_handed' },
+	{ id: 'cane_dagger', name: 'Трость-кинжал', category: 'one_handed', damageOneHand: '1d4', damageType: 'piercing', parent: 'strength', skill: 'one_handed' },
 	// ─── Одноручное ───
 	{
 		id: 'dagger', name: 'Кинжал', category: 'one_handed',
@@ -83,7 +94,10 @@ export const WEAPONS: Weapon[] = [
 
 // ─── Доспехи ───
 export interface Armor {
+	itemId?: string;
+	stealthPenalty?: number;
 	id: string;
+	durability?: number;
 	name: string;
 	armorBonus: number;
 	category: 'light' | 'heavy';
@@ -91,23 +105,29 @@ export interface Armor {
 	description?: string;
 }
 
-export const ARMORS: Armor[] = [
+const LEGACY_ARMORS: Armor[] = [
 	{ id: 'none', name: '— нет —', armorBonus: 0, category: 'light', skill: '' },
 	{ id: 'light_armor', name: 'Лёгкий доспех (кожаный)', armorBonus: 5, category: 'light', skill: 'light_armor' },
 	{ id: 'heavy_armor', name: 'Тяжёлый доспех (кольчуга)', armorBonus: 10, category: 'heavy', skill: 'heavy_armor' }
 ];
 
 export interface Shield {
+	description?: string;
 	id: string;
+	durability?: number;
 	name: string;
 	armorBonus: number;
 	skill: string;
 }
 
-export const SHIELDS: Shield[] = [
+const LEGACY_SHIELDS: Shield[] = [
 	{ id: 'none', name: '— нет —', armorBonus: 0, skill: '' },
 	{ id: 'wooden_shield', name: 'Деревянный щит', armorBonus: 5, skill: 'blocking' }
 ];
+
+export const WEAPONS = mergeEquipment(LEGACY_WEAPONS, EQUIPMENT_WEAPONS);
+export const ARMORS = mergeEquipment(LEGACY_ARMORS, EQUIPMENT_ARMORS);
+export const SHIELDS = mergeEquipment(LEGACY_SHIELDS, EQUIPMENT_SHIELDS);
 
 export type AttackType = 'normal' | 'strong' | 'fast';
 

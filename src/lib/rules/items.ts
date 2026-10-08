@@ -1,7 +1,12 @@
-export type ItemCategory = 'weapon' | 'armor' | 'consumable' | 'tool' | 'treasure' | 'misc';
+import { EQUIPMENT_ITEMS, mergeEquipment } from './equipment-catalog';
+
+export type ItemCategory = 'weapon' | 'ammunition' | 'armor' | 'consumable' | 'tool' | 'treasure' | 'misc';
 
 export interface Item {
 	id: string;
+	durability?: number;
+	ammunition?: 'arrow' | 'bolt' | 'sling';
+	damageModifier?: number;
 	name: string;
 	category: ItemCategory;
 	description?: string;
@@ -27,7 +32,7 @@ export interface Item {
 	curesCondition?: string;
 }
 
-export const ITEMS: Item[] = [
+const LEGACY_ITEMS: Item[] = [
 	// ═══════════════ ОРУЖИЕ ═══════════════
 	{ id: 'dagger', name: 'Кинжал', category: 'weapon', weight: 0.2, price: 5, description: '1к4 колющий, лёгкое' },
 	{ id: 'short_sword', name: 'Короткий меч', category: 'weapon', weight: 0.6, price: 20, description: '1к6 режущий' },
@@ -39,8 +44,6 @@ export const ITEMS: Item[] = [
 	{ id: 'short_bow', name: 'Короткий лук', category: 'weapon', weight: 0.6, price: 30, description: '1к6 колющий' },
 	{ id: 'long_bow', name: 'Длинный лук', category: 'weapon', weight: 0.8, price: 50, description: '1к8 колющий, требуется Сила 42+' },
 	{ id: 'arrows', name: 'Стрелы (упаковка 20 шт.)', category: 'weapon', weight: 0.2, price: 2, stackable: true, bundleQuantity: 20, description: 'Боевые стрелы, 1к6 урона.' },
-	{ id: 'arrows', name: 'Стрелы (упаковка 20 шт.)', category: 'weapon', weight: 0.2, price: 2, stackable: true, bundleQuantity: 20, description: 'Деревянные стрелы, 1к3 урона.' },
-		{ id: 'arrows', name: 'Стрелы (упаковка 20 шт.)', category: 'weapon', weight: 0.2, price: 2, stackable: true, bundleQuantity: 20, description: 'Наёмников, 1к6+1 урона.' },
 	{ id: 'throwing_knives', name: 'Метательные ножи', category: 'weapon', weight: 0.3, price: 8, stackable: true, description: '1к4 колющий' },
 	{ id: 'hunting_knife', name: 'Охотничий нож', category: 'weapon', weight: 0.3, price: 6, description: '1к4 колющий' },
 	{ id: 'smith_hammer', name: 'Кузнечный молот', category: 'weapon', weight: 0.8, price: 12, description: '1к6 дробящий' },
@@ -97,6 +100,8 @@ export const ITEMS: Item[] = [
 	{ id: 'bedroll', name: 'Спальный мешок', category: 'misc', weight: 1, price: 2, description: 'Тёплый, для ночёвки в поле' }
 ];
 
+export const ITEMS = mergeEquipment(LEGACY_ITEMS, EQUIPMENT_ITEMS);
+
 export const ITEMS_BY_CATEGORY: Record<ItemCategory, Item[]> = ITEMS.reduce(
 	(acc, item) => {
 		if (!acc[item.category]) acc[item.category] = [];
@@ -108,6 +113,7 @@ export const ITEMS_BY_CATEGORY: Record<ItemCategory, Item[]> = ITEMS.reduce(
 
 export const CATEGORY_LABEL: Record<ItemCategory, string> = {
 	weapon: 'Оружие',
+	ammunition: 'Боеприпасы',
 	armor: 'Доспехи и щиты',
 	consumable: 'Расходники',
 	tool: 'Инструменты',

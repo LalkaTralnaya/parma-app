@@ -62,7 +62,6 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		getSpellLevelThreshold,
 	} from '../../../lib/rules/spells';
 	import {
-		WEAPONS,
 		ARMORS,
 		SHIELDS,
 		ATTACK_TYPE_LABEL,
@@ -72,6 +71,8 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	// Инвентарь
 	import {
 		listInventory,
+		getInventoryWeapons,
+		clearUnavailableWeapon,
 		addItemToInventory,
 		removeItemFromInventory,
 		adjustItemQuantity,
@@ -127,7 +128,6 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	import {
 		rollInitiative,
 		getArmorValue,
-		getEquippedWeapon,
 		getAttackTarget,
 		getAttackCount,
 		rollAttack,
@@ -214,6 +214,8 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	// Инвентарь
 	let showItemPicker = $state(false);
 	let itemFilter = $state<ItemCategory | 'all'>('all');
+	let itemSearch = $state('');
+	let selectedAmmoId = $state('');
 
 	// Состояния
 	let showConditionPicker = $state(false);
@@ -388,7 +390,8 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 			: { characteristics: 0, attacks: 0, skills: 0, saves: 0, armor: 0, speed: 0, maxStamina: 0, skipTurn: false, canAct: true }
 	);
 
-	let currentWeapon = $derived(char ? getEquippedWeapon(char) : undefined);
+	let inventoryWeapons = $derived(char ? getInventoryWeapons(char) : []);
+	let currentWeapon = $derived(inventoryWeapons.find(weapon => weapon.id === char?.equipment?.weaponId));
 
 	let armorInfo = $derived.by(() => {
 		if (!char) return { total: 0, dexMod: 0, armor: 0, shield: 0 };
@@ -431,7 +434,9 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 
 	let inventoryEntries = $derived(char ? listInventory(char) : []);
 	let totalWeight = $derived(char ? getTotalWeight(char) : 0);
-	let arrowsCount = $derived(char?.inventory?.find((i) => i.itemId === 'arrows')?.quantity ?? 0);
+	let arrowsCount = $derived((char?.inventory ?? []).filter(i => ITEMS.find(item => item.id === i.itemId)?.ammunition === 'arrow').reduce((sum, i) => sum + i.quantity, 0));
+ let availableAmmo = $derived((char ? listInventory(char) : []).filter(entry => entry.instance.quantity > 0 && entry.item.ammunition === currentWeapon?.ammunition && !!currentWeapon?.ammunition));
+ let currentAmmo = $derived(availableAmmo.find(entry => entry.instance.instanceId === selectedAmmoId) ?? availableAmmo[0]);
 
 	// ────────────────────────────────────────────
 	// ЯРЛЫКИ / УТИЛИТЫ
@@ -758,6 +763,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 
 	async function updateEquipment(field: 'weaponId' | 'armorId' | 'shieldId', value: string) {
 		if (!char) return;
+		if (field === 'weaponId' && value && !getInventoryWeapons(char).some(weapon => weapon.id === value)) return;
 		char.equipment = { ...(char.equipment ?? {}), [field]: value };
 		char = { ...char, equipment: { ...char.equipment } };
 		await saveCharacter($state.snapshot(char) as Character);
@@ -765,26 +771,29 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 
 	async function attack() {
 		if (!char || rollBusy) return;
-		const weapon = getEquippedWeapon(char);
+		const weapon = getInventoryWeapons(char).find(weapon => weapon.id === char!.equipment?.weaponId);
 		if (!weapon) {
 			alert('Сначала выберите оружие');
 			return;
 		}
 
-		let arrowBonus: BonusDice[] = [];
-		let arrowsEntryId: string | null = null;
-
-		if (weapon.category === 'ranged') {
-			const arrowsEntry = char.inventory?.find((i) => i.itemId === 'arrows');
-			const arrowsCount = arrowsEntry?.quantity ?? 0;
-			const needed = getAttackCount(char, weapon, attackType);
-			if (arrowsCount < needed) {
-				alert(`Нет стрел! Нужно ${needed}, есть ${arrowsCount}.`);
-				return;
-			}
-			arrowBonus = [{ label: 'Стрелы', count: 1, sides: 6 }];
-			arrowsEntryId = arrowsEntry!.instanceId;
-		}
+		if (weapon.noFastAttack && attackType === 'fast') {
+   alert('Самострел не допускает быструю атаку. Перезарядка занимает действие.');
+   return;
+  }
+  const arrowBonus: BonusDice[] = []; // Наконечник изменяет урон оружия, не добавляет кубик.
+  let arrowsEntryId: string | null = null;
+  let ammoDamageModifier = 0;
+  if (weapon.ammunition) {
+   const ammo = currentAmmo;
+   const needed = getAttackCount(char, weapon, attackType);
+   if (!ammo || ammo.instance.quantity < needed) {
+    alert('Недостаточно выбранных боеприпасов. Нужно ' + needed + ', есть ' + (ammo?.instance.quantity ?? 0) + '.');
+    return;
+   }
+   arrowsEntryId = ammo.instance.instanceId;
+   ammoDamageModifier = ammo.item.damageModifier ?? 0;
+  }
 
 		const adjustedTargetArmor = targetArmor - (condMods.attacks ?? 0);
 		const { target, parts } = getAttackTarget(char, weapon, attackType, adjustedTargetArmor, useTwoHandsWeapon);
@@ -837,7 +846,10 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 			attacks = rollAttack(char, weapon, attackType, adjustedTargetArmor, useTwoHandsWeapon, arrowBonus);
 		}
 
-		lastAttack = { weapon: weapon.name, attackType, target, parts, attacks };
+		for (const result of attacks) {
+   if (result.damage) result.damage.total = Math.max(0, result.damage.total + ammoDamageModifier);
+  }
+  lastAttack = { weapon: weapon.name, attackType, target, parts, attacks };
 		visibleRoll = 'attack';
 
 		for (const atk of attacks) {
@@ -1328,6 +1340,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	// ────────────────────────────────────────────
 	async function persistInventory() {
 		if (!char) return;
+		char = clearUnavailableWeapon(char);
 		char = { ...char };
 		await saveCharacter($state.snapshot(char) as Character);
 	}
@@ -2216,14 +2229,15 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 					<div>
 						<label for="field-3" class="block text-xs text-gray-500 mb-1">Оружие</label>
 						<select id="field-3"
-							value={char.equipment?.weaponId ?? ''}
+							value={currentWeapon?.id ?? ''}
 							onchange={(e) => updateEquipment('weaponId', (e.currentTarget as HTMLSelectElement).value)}
 							class="w-full px-2 py-1 border rounded text-sm">
 							<option value="">— выберите —</option>
-							{#each WEAPONS as w}
+							{#each inventoryWeapons as w}
 								<option value={w.id}>{w.name}</option>
 							{/each}
 						</select>
+						{#if inventoryWeapons.length === 0}<p class="text-xs text-gray-500 mt-1">В инвентаре нет оружия. <a href="#inventory" class="underline">Добавить оружие</a></p>{/if}
 					</div>
 					<div>
 						<label for="field-4" class="block text-xs text-gray-500 mb-1">Доспех</label>
@@ -2270,6 +2284,15 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 						{#if currentWeapon}
 				<div class="print-hide border rounded-lg p-4 bg-white">
 					<h3 class="font-semibold mb-3">Атака: {currentWeapon.name}</h3>
+     {#if currentWeapon.description}<p class="text-sm text-gray-600 mb-3">{currentWeapon.description}</p>{/if}
+     {#if currentWeapon.ammunition}
+      <label for="attack-ammunition" class="block text-xs text-gray-500 mb-1">Боеприпасы из инвентаря</label>
+      <select id="attack-ammunition" value={currentAmmo?.instance.instanceId ?? ''} onchange={(e) => selectedAmmoId = e.currentTarget.value} class="w-full px-2 py-1 border rounded text-sm mb-2">
+       {#if availableAmmo.length === 0}<option value="">Нет подходящих боеприпасов</option>{/if}
+       {#each availableAmmo as entry}<option value={entry.instance.instanceId}>{entry.item.name} — {entry.instance.quantity} шт.</option>{/each}
+      </select>
+      {#if currentAmmo}<p class="text-xs text-gray-500 mb-3">{currentAmmo.item.description}</p>{/if}
+     {/if}
 					{#if combat?.active && enemiesInCombat.length > 0}
 						<div class="mb-3 p-3 border-2 border-red-300 rounded bg-red-50">
 							<label for="field-6" class="block text-xs text-red-700 font-semibold mb-1">
@@ -2302,7 +2325,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 							<select id="field-7" bind:value={attackType} class="w-full px-2 py-1 border rounded text-sm">
 								<option value="normal">{ATTACK_TYPE_LABEL.normal}</option>
 								<option value="strong">{ATTACK_TYPE_LABEL.strong}</option>
-								<option value="fast">{ATTACK_TYPE_LABEL.fast}</option>
+								<option value="fast" disabled={currentWeapon.noFastAttack}>{ATTACK_TYPE_LABEL.fast}</option>
 							</select>
 						</div>
 						<div>
@@ -2949,8 +2972,10 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 								onclick={() => (itemFilter = cat as ItemCategory)}>{label}</button>
 						{/each}
 					</div>
-					<div class="grid grid-cols-2 gap-2 max-h-96 overflow-y-auto">
-						{#each ITEMS.filter((i) => itemFilter === 'all' || i.category === itemFilter) as item}
+					<label for="equipment-search" class="block text-xs text-gray-500 mb-1">Поиск предметов</label>
+					<input id="equipment-search" bind:value={itemSearch} type="search" placeholder="Название или свойство" class="w-full px-3 py-2 border rounded mb-3" />
+					<div class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-96 overflow-y-auto">
+						{#each ITEMS.filter((i) => (itemFilter === 'all' || i.category === itemFilter) && (i.name + ' ' + (i.description ?? '')).toLocaleLowerCase('ru').includes(itemSearch.trim().toLocaleLowerCase('ru'))) as item}
 							{@const price = item.price ?? 0}
 							{@const affordable = char && canAfford(char, price)}
 							<div class="text-left border rounded p-2 bg-white/50 text-sm">
@@ -2960,7 +2985,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 								{/if}
 								{#if price > 0}
 									<div class="text-xs text-gray-500 mt-1">
-										Цена: <strong>{price} с.</strong>
+										Цена: <strong>{price < 1 ? `${Math.round(price * 100)} м.` : `${price} с.`}</strong>
 										{#if item.bundleQuantity && item.bundleQuantity > 1}
 											<span class="text-blue-600">за упаковку {item.bundleQuantity} шт.</span>
 										{/if}

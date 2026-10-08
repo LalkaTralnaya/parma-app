@@ -53,6 +53,7 @@ function getWeaponAbilityBonuses(char: Character, weapon: Weapon, attackType: At
 }
 
 export function getAttackCount(char: Character, weapon: Weapon, attackType: AttackType): number {
+	if (weapon.noFastAttack) return 1;
 	if (weapon.skill === 'archery' && isAbilityLearned(char, 'archery_rapid')) {
 		return attackType === 'fast' ? 3 : attackType === 'normal' ? 2 : 1;
 	}

@@ -46,7 +46,7 @@
 		<div class="section-heading">
 			<div>
 				<h2 id="catalog-title">Каталог <span class="count">{ADVENTURES.length}</span></h2>
-				<p>Сейчас здесь история для второго плейтеста: расследование в Заречье с готовыми сценами, уликами и картой.</p>
+				<p>Сейчас здесь история: расследование в Заречье с готовыми сценами, уликами и картой.</p>
 			</div>
 		</div>
 		<div class="adventure-grid">

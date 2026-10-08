@@ -1,3 +1,4 @@
+import { WEAPONS, type Weapon } from '../rules/weapons';
 import { getItem, type Item } from '../rules/items';
 import type { Character, InventoryItem } from '$lib/type';
 
@@ -157,4 +158,13 @@ export function addCopper(money: { copper: number; silver: number; gold: number 
 		silver: 0,
 		gold: 0
 	});
+}
+/** Только оружие, физически присутствующее в инвентаре. Боеприпасы не экипируются как оружие. */
+export function getInventoryWeapons(char: Character): Weapon[] {
+	const owned = new Set((char.inventory ?? []).filter(item => item.quantity > 0).map(item => item.itemId));
+	return WEAPONS.filter(weapon => owned.has(weapon.id));
+}
+export function clearUnavailableWeapon(char: Character): Character {
+	if (!char.equipment?.weaponId || getInventoryWeapons(char).some(weapon => weapon.id === char.equipment.weaponId)) return char;
+	return { ...char, equipment: { ...char.equipment, weaponId: undefined } };
 }

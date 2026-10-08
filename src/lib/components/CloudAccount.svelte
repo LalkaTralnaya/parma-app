@@ -4,6 +4,7 @@
 	import { supabase } from '$lib/supabase/client';
 	import { clearGuestCharacters, copyGuestCharactersToAccount, countGuestCharacters } from '$lib/db/characters';
 	import { syncCharacters } from '$lib/sync/cloudCharacters';
+	let { compact = false }: { compact?: boolean } = $props();
 
 	type Mode = 'login' | 'register' | 'recover';
 	let mode = $state<Mode>('login');
@@ -150,6 +151,16 @@
 	}
 </script>
 
+{#if compact}
+	<div class="cloud-compact" aria-label="Аккаунт Пармы">
+		{#if userId}
+			<p>Персонажи сохраняются в облаке и на этом устройстве.<br /><a href="/account">Управлять аккаунтом</a>{#if guestCount > 0} · Есть герои для переноса{/if}</p>
+		{:else}
+			<p>Герои сохраняются в этом браузере.<br /><a href="/account">Войти в аккаунт</a>, чтобы продолжить на другом устройстве.</p>
+		{/if}
+		{#if message}<p class="message" role="status">{message} <a href="/account">Открыть аккаунт</a></p>{/if}
+	</div>
+{:else}
 <section class="cloud-card" aria-label="Аккаунт Пармы">
 	{#if userId && mode !== 'recover'}
 		<div class="account-details"><strong>Аккаунт Пармы</strong><small>{userEmail} · персонажи сохраняются в облаке и на этом устройстве</small></div>
@@ -176,8 +187,12 @@
 	{/if}
 	{#if message}<p class="message" role="status">{message}</p>{/if}
 </section>
+{/if}
 
 <style>
+	.cloud-compact { margin-top: 18px; padding-top: 14px; border-top: 1px solid #d5daca; color: #5f6c60; font-size: 12px; }
+	.cloud-compact p { margin: 0; }
+	.cloud-compact a { color: #315440; text-decoration: underline; text-underline-offset: 3px; }
 	.cloud-card { display: grid; gap: 14px; padding: 20px; margin: 18px 0; border: 1px solid #c9d6cc; border-radius: 12px; background: #f5f8f4; color: #173d30; }
 	.account-details { display: grid; gap: 4px; }
 	.account-details strong { font: 24px Georgia, serif; }
