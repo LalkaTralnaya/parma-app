@@ -1,17 +1,19 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import type { EmailOtpType } from '@supabase/supabase-js';
+	import type { User } from '@supabase/supabase-js';
+	import { env } from '$env/dynamic/public';
+	import { accountLabel, LOGIN_HINT, registerWithLogin, signInIdentifier, type AuthSettings } from '$lib/supabase/login';
 	import { supabase } from '$lib/supabase/client';
 	import { clearGuestCharacters, copyGuestCharactersToAccount, countGuestCharacters } from '$lib/db/characters';
 	import { syncCharacters } from '$lib/sync/cloudCharacters';
 	let { compact = false }: { compact?: boolean } = $props();
 
-	type Mode = 'login' | 'register' | 'recover';
+	type Mode = 'login' | 'register';
 	let mode = $state<Mode>('login');
-	let email = $state('');
+	let login = $state('');
 	let password = $state('');
 	let userId = $state<string | null>(null);
-	let userEmail = $state<string | null>(null);
+	let userLabel = $state<string | null>(null);
 	let guestCount = $state(0);
 	let message = $state('');
 	let busy = $state(false);
@@ -31,11 +33,11 @@
 		}, () => { void syncCharacters().then(refreshCharacters).catch(console.error); }).subscribe();
 	}
 
-	function applyUser(user: { id: string; email?: string } | null) {
+	function applyUser(user: User | null) {
 		const nextId = user?.id ?? null;
 		const changed = nextId !== userId;
 		userId = nextId;
-		userEmail = user?.email ?? null;
+		userLabel = user ? accountLabel(user) : null;
 		watchUser(nextId);
 		if (changed) {
 			void countGuestCharacters().then((count) => guestCount = count);
@@ -46,80 +48,42 @@
 		}
 	}
 
-	async function verifyEmailLink() {
-		const params = new URLSearchParams(window.location.search);
-		const tokenHash = params.get('token_hash');
-		const type = params.get('type');
-		if (!tokenHash) return;
-		if (type !== 'email' && type !== 'magiclink' && type !== 'recovery') {
-			message = 'Ссылка подтверждения недействительна.';
-			return;
-		}
-		busy = true;
-		message = 'Подтверждаем адрес почты…';
-		try {
-			const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: type as EmailOtpType });
-			if (error) throw error;
-			window.history.replaceState(window.history.state, '', window.location.pathname);
-			if (type === 'recovery') mode = 'recover';
-			message = type === 'recovery' ? 'Введите новый пароль.' : 'Почта подтверждена. Вход выполнен.';
-		} catch (error) {
-			message = `Не удалось подтвердить почту: ${(error as Error).message}`;
-		} finally { busy = false; }
-	}
 
 	onMount(() => {
 		void countGuestCharacters().then((count) => guestCount = count);
-		const { data } = supabase.auth.onAuthStateChange((event, session) => {
-			if (event === 'PASSWORD_RECOVERY') mode = 'recover';
+		const { data } = supabase.auth.onAuthStateChange((_event, session) => {
 			setTimeout(() => applyUser(session?.user ?? null), 0);
 		});
-		void verifyEmailLink();
 		return () => { data.subscription.unsubscribe(); if (realtime) void supabase.removeChannel(realtime); };
 	});
 
+	async function getAuthSettings(): Promise<AuthSettings> {
+		const response = await fetch('/api/supabase/auth/v1/settings', {
+			headers: { apikey: env.PUBLIC_SUPABASE_ANON_KEY ?? '' }
+		});
+		if (!response.ok) throw new Error('Не удалось проверить доступность регистрации. Попробуйте позже.');
+		return response.json();
+	}
+
 	async function submitCredentials() {
+		if (busy) return;
 		busy = true; message = '';
 		try {
-			if (mode === 'recover') {
-				const { error } = await supabase.auth.updateUser({ password });
-				if (error) throw error;
-				mode = 'login'; message = 'Новый пароль сохранён.';
-			} else if (mode === 'register') {
-				const { data, error } = await supabase.auth.signUp({
-					email: email.trim(), password,
-					options: { emailRedirectTo: `${window.location.origin}/account` }
-				});
-				if (error) throw error;
-				message = data.session ? 'Аккаунт создан.' : 'Проверьте почту и подтвердите регистрацию.';
+			if (mode === 'register') {
+				await registerWithLogin(supabase.auth, login, password, getAuthSettings);
+				message = 'Аккаунт создан. Вход выполнен.';
 			} else {
-				const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+				const { error } = await supabase.auth.signInWithPassword({ email: signInIdentifier(login), password });
 				if (error) throw error;
 				message = 'Вход выполнен.';
 			}
 			password = '';
-		} catch (error) { message = `Ошибка: ${(error as Error).message}`; }
-		finally { busy = false; }
-	}
-
-	async function sendMagicLink() {
-		busy = true; message = '';
-		try {
-			const { error } = await supabase.auth.signInWithOtp({ email: email.trim(), options: { emailRedirectTo: `${window.location.origin}/account` } });
-			if (error) throw error;
-			message = 'Ссылка для входа отправлена на почту.';
-		} catch (error) { message = `Ошибка: ${(error as Error).message}`; }
-		finally { busy = false; }
-	}
-
-	async function sendPasswordReset() {
-		busy = true; message = '';
-		try {
-			const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: `${window.location.origin}/account` });
-			if (error) throw error;
-			message = 'Если такой адрес зарегистрирован, письмо для сброса пароля придёт на почту.';
-		} catch (error) { message = `Ошибка: ${(error as Error).message}`; }
-		finally { busy = false; }
+		} catch (error) {
+			const authError = error as { code?: string; message?: string };
+			message = authError.code === 'invalid_credentials' ? 'Неверный логин или пароль.'
+				: authError.code === 'user_already_exists' || authError.code === 'email_exists' ? 'Этот логин уже занят.'
+				: `Ошибка: ${authError.message ?? 'Не удалось войти.'}`;
+		} finally { busy = false; }
 	}
 
 	async function signOut() {
@@ -162,8 +126,8 @@
 	</div>
 {:else}
 <section class="cloud-card" aria-label="Аккаунт Пармы">
-	{#if userId && mode !== 'recover'}
-		<div class="account-details"><strong>Аккаунт Пармы</strong><small>{userEmail} · персонажи сохраняются в облаке и на этом устройстве</small></div>
+	{#if userId}
+		<div class="account-details"><strong>Аккаунт Пармы</strong><small>{userLabel} · персонажи сохраняются в облаке и на этом устройстве</small></div>
 		<div class="actions">
 			<button type="button" disabled={busy} onclick={syncNow}>Синхронизировать</button>
 			<button type="button" class="quiet" disabled={busy} onclick={signOut}>Выйти</button>
@@ -174,16 +138,18 @@
 	{:else}
 		<div class="account-details"><strong>Сохраняйте историю в аккаунте</strong><small>Персонажи и пройденные приключения будут доступны на других устройствах.</small></div>
 		<div class="mode-tabs" aria-label="Способ входа">
-			<button type="button" class:chosen={mode === 'login'} onclick={() => mode = 'login'}>Войти</button>
-			<button type="button" class:chosen={mode === 'register'} onclick={() => mode = 'register'}>Регистрация</button>
+			<button type="button" class:chosen={mode === 'login'} disabled={busy} onclick={() => { mode = 'login'; message = ''; }}>Войти</button>
+			<button type="button" class:chosen={mode === 'register'} disabled={busy} onclick={() => { mode = 'register'; message = ''; }}>Регистрация</button>
 		</div>
 		<form onsubmit={(event) => { event.preventDefault(); void submitCredentials(); }}>
-			{#if mode !== 'recover'}<label for="cloud-email">Email</label><input id="cloud-email" type="email" bind:value={email} required autocomplete="email" />{/if}
-			<label for="cloud-password">{mode === 'recover' ? 'Новый пароль' : 'Пароль'}</label>
-			<input id="cloud-password" type="password" bind:value={password} required minlength="8" autocomplete={mode === 'login' ? 'current-password' : 'new-password'} />
-			<button type="submit" disabled={busy}>{mode === 'recover' ? 'Сохранить пароль' : mode === 'register' ? 'Создать аккаунт' : 'Войти'}</button>
+			<label for="cloud-login">{mode === 'register' ? 'Логин' : 'Логин или прежний email'}</label>
+			<input id="cloud-login" type="text" bind:value={login} required autocomplete="username" autocapitalize="none" spellcheck="false" aria-describedby="login-hint" disabled={busy} />
+			<label for="cloud-password">Пароль</label>
+			<input id="cloud-password" type="password" bind:value={password} required minlength={mode === 'register' ? 8 : undefined} autocomplete={mode === 'login' ? 'current-password' : 'new-password'} disabled={busy} />
+			<button type="submit" disabled={busy}>{busy ? 'Подождите…' : mode === 'register' ? 'Создать аккаунт' : 'Войти'}</button>
 		</form>
-		{#if mode !== 'recover'}<div class="extra-actions"><button type="button" class="text-button" disabled={busy || !email.trim()} onclick={sendMagicLink}>Войти по ссылке</button><button type="button" class="text-button" disabled={busy || !email.trim()} onclick={sendPasswordReset}>Забыли пароль?</button></div>{/if}
+		<p class="hint" id="login-hint">{mode === 'register' ? LOGIN_HINT : 'Для старого аккаунта используйте email, с которым регистрировались.'}</p>
+		<p class="hint">Почта не нужна. Сохраните логин и пароль: автоматического восстановления пароля нет.</p>
 	{/if}
 	{#if message}<p class="message" role="status">{message}</p>{/if}
 </section>
@@ -197,7 +163,7 @@
 	.account-details { display: grid; gap: 4px; }
 	.account-details strong { font: 24px Georgia, serif; }
 	.account-details small, .guest-import p { color: #52665b; font-size: 13px; }
-	.actions, .extra-actions, .mode-tabs { display: flex; gap: 9px; flex-wrap: wrap; align-items: center; }
+	.actions, .mode-tabs { display: flex; gap: 9px; flex-wrap: wrap; align-items: center; }
 	.mode-tabs { border-bottom: 1px solid #c9d6cc; padding-bottom: 9px; }
 	form { display: grid; grid-template-columns: auto minmax(160px, 1fr); gap: 9px 12px; align-items: center; max-width: 520px; }
 	form button { grid-column: 2; justify-self: start; }
@@ -206,7 +172,7 @@
 	button:disabled { opacity: .55; cursor: not-allowed; }
 	.quiet, .mode-tabs button { background: transparent; color: #173d30; border: 1px solid #aab9ac; }
 	.mode-tabs .chosen { background: #173d30; color: #fff; }
-	.text-button { padding: 0; background: none; color: #285c46; text-decoration: underline; }
+	.hint { margin: 0; color: #52665b; font-size: 13px; }
 	.guest-import { border-top: 1px solid #c9d6cc; padding-top: 10px; }
 	.message { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
 	@media (max-width: 530px) { form { grid-template-columns: 1fr; } form button { grid-column: 1; } }
