@@ -1,3 +1,4 @@
+import { giveBackgroundStartingInventory } from '../engine/backgrounds';
 import { normalizeDecay } from '../engine/decay';
 import Dexie, { type Table } from 'dexie';
 import type { Character } from '$lib/type';
@@ -179,6 +180,8 @@ export function giveStartingInventory(char: Character, backgroundId: string | un
 			quantity: qty
 		});
 	};
+
+	if (giveBackgroundStartingInventory(char, backgroundId)) return;
 
 	// Общий минимум для всех
 	addItem('clothes');

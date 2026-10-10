@@ -155,8 +155,8 @@
 		</div>
 
 		<div class="border-t pt-3">
-			<div class="font-semibold text-sm mb-1">Особенность «{selectedBackground.feature.name}»</div>
-			<p class="text-sm text-gray-600">{selectedBackground.feature.description}</p>
+			<div class="font-semibold text-sm mb-1">{selectedBackground.passiveFeature ? 'Умения предыстории' : `Особенность «${selectedBackground.feature.name}»`}</div>
+			<p class="text-sm text-gray-600 whitespace-pre-line whitespace-pre-line">{selectedBackground.feature.description}</p>
 		</div>
 
 		<div class="text-xs text-gray-500">

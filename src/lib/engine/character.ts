@@ -58,6 +58,9 @@ export function getSkillTotal(
 	const parentValue = getCharacteristicValue(char, skill.parent, condMods);
 	let total = getModifier(parentValue);
 	total += char.skillPoints[skillId] ?? 0;
+	const background = BACKGROUNDS.find(b => b.id === char.backgroundId);
+	const backgroundContext = background?.skillBonusContexts?.[skillId];
+	if (!backgroundContext || backgroundContext === checkContext) total += background?.skillBonuses[skillId] ?? 0;
 
 	const race = RACES.find((r) => r.id === char.raceId);
 	if (race) {

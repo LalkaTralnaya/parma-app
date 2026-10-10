@@ -1,3 +1,4 @@
+import { BOOK16_ITEMS } from './book16-items';
 import { EQUIPMENT_ITEMS, mergeEquipment } from './equipment-catalog';
 
 export type ItemCategory = 'weapon' | 'ammunition' | 'armor' | 'consumable' | 'tool' | 'treasure' | 'misc';
@@ -100,7 +101,7 @@ const LEGACY_ITEMS: Item[] = [
 	{ id: 'bedroll', name: 'Спальный мешок', category: 'misc', weight: 1, price: 2, description: 'Тёплый, для ночёвки в поле' }
 ];
 
-export const ITEMS = mergeEquipment(LEGACY_ITEMS, EQUIPMENT_ITEMS);
+export const ITEMS = mergeEquipment(mergeEquipment(LEGACY_ITEMS, EQUIPMENT_ITEMS), BOOK16_ITEMS);
 
 export const ITEMS_BY_CATEGORY: Record<ItemCategory, Item[]> = ITEMS.reduce(
 	(acc, item) => {

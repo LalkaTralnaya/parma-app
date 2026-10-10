@@ -175,8 +175,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	let lastRest = $state<{
 		type: 'short' | 'long';
 		results: Array<{
-			resource: string; short: string; charShort: string; charValue: number;
-			roll: number; resultLabel: string; restored: number;
+			resource: string; resourceId: string; short: string; restored: number;
 			before: number; after: number; max: number;
 		}>;
 	} | null>(null);
@@ -1261,50 +1260,18 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 			alert('Короткий отдых уже был использован. Нужен продолжительный отдых (8 часов).');
 			return;
 		}
-		if (!confirm('Короткий отдых (1 час)? Будет проверка характеристики для каждого ресурса.')) return;
+		if (!confirm('Короткий отдых (1 час)? Восстановится половина максимума каждого ресурса без проверок, с округлением вниз.')) return;
 
 		const updates: Record<string, number> = {};
 		const results: NonNullable<typeof lastRest>['results'] = [];
-
 		for (const r of RESOURCES) {
-			const charId = r.parent;
-			const charValue = getCharacteristicValue(char, charId, condMods);
-			const roll = await requestDie(100, `Короткий отдых: ${r.name}`, charValue);
-			if (roll === null) return;
-
-			let ratio = 0;
-			let resultLabel = '';
-			if (roll === 1) {
-				ratio = 2 / 3;
-				resultLabel = 'Правь! ⅔ максимума';
-			} else if (roll % 11 === 0 && roll <= 99 && roll <= charValue) {
-				ratio = 2 / 3;
-				resultLabel = 'Явь (дубль) — ⅔';
-			} else if (roll <= charValue) {
-				ratio = 0.5;
-				resultLabel = 'Успех — ½';
-			} else {
-				ratio = 0;
-				resultLabel = 'Провал';
-			}
-
 			const max = getResourceMax(char, r.id);
-			const restored = Math.floor(max * ratio);
 			const current = getCurrentResource(char, r.id, max);
-			const next = Math.min(max, current + restored);
+			const next = Math.min(max, current + Math.floor(max / 2));
 			updates[r.id] = next;
-
 			results.push({
-				resource: r.name,
-				short: r.short,
-				charShort: CHARACTERISTICS.find((c) => c.id === charId)?.short ?? '',
-				charValue,
-				roll,
-				resultLabel,
-				restored,
-				before: current,
-				after: next,
-				max,
+				resource: r.name, resourceId: r.id, short: r.short,
+				restored: next - current, before: current, after: next, max
 			});
 		}
 
@@ -1313,9 +1280,9 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		char = { ...char };
 		await saveCharacter($state.snapshot(char) as Character);
 		lastRest = { type: 'short', results };
-		for (const entry of results) publishToActiveRoom(char.name || 'Безымянный', 'characteristic', {
-			charName: `Короткий отдых: ${entry.resource}`, roll: entry.roll, target: entry.charValue,
-			result: classifyRoll(entry.roll, entry.charValue), restored: entry.restored
+		publishToActiveRoom(char.name || 'Безымянный', 'effect', {
+			label: 'Короткий отдых',
+			details: results.map((entry) => `${entry.resource}: +${entry.restored} (${entry.before} → ${entry.after} / ${entry.max})`).join('; ')
 		});
 	}
 
@@ -1925,7 +1892,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 						{/if}
 					</div>
 					<p class="text-xs text-gray-500 mb-3">
-						Проверка каждой характеристики (к100 ≤ значение). Успех → ½ макс., дубль или крит «1» → ⅔.
+						Без проверок восстанавливается ½ максимума каждого ресурса (округление вниз), не выше максимума.
 						Один раз между продолжительными.
 					</p>
 					<button
@@ -2116,24 +2083,14 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 						<thead class="bg-white/60">
 							<tr>
 								<th class="text-left px-2 py-1">Ресурс</th>
-								<th class="text-left px-2 py-1">Проверка</th>
 								<th class="text-right px-2 py-1">Восстановлено</th>
 								<th class="text-right px-2 py-1">Итог</th>
 							</tr>
 						</thead>
 						<tbody>
-							{#each lastRest.results.filter((entry) => !hideReligion || entry.resource !== 'grace') as r}
+							{#each lastRest.results.filter((entry) => !hideReligion || entry.resourceId !== 'grace') as r}
 								<tr class="border-b border-blue-200">
 									<td class="px-2 py-1 font-semibold">{r.short}</td>
-									<td class="px-2 py-1 text-gray-600">
-										к100 = <span class="font-mono">{r.roll}</span> ≤ {r.charValue} ({r.charShort}) —
-										<span class="font-semibold
-											{r.resultLabel.includes('Успех') ? 'text-green-700' :
-											 r.resultLabel.includes('Правь') || r.resultLabel.includes('Явь') ? 'text-blue-700' :
-											 'text-red-600'}">
-											{r.resultLabel}
-										</span>
-									</td>
 									<td class="px-2 py-1 text-right font-mono">+{r.restored}</td>
 									<td class="px-2 py-1 text-right font-mono">
 										{r.before} → <span class="font-bold">{r.after}</span>
@@ -2559,6 +2516,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 						{@const bonusDetails = getSkillBonusDetails(char, s.id)}
 						{@const bonusSum = bonusDetails.reduce((a, b) => a + b.value, 0)}
 						{@const trackingBonus = s.id === 'perception' ? getSkillBonusDetails(char, s.id, 'tracking').reduce((a, b) => a + b.value, 0) - bonusSum : 0}
+						{@const backgroundContext = BACKGROUNDS.find(b => b.id === char?.backgroundId)?.skillBonusContexts?.[s.id]}
 						{@const trackingTarget = s.id === 'perception' ? getSkillCheckTarget(char, s.id, condMods, 'tracking') : target}
 						<tr class="border-t hover:bg-gray-50">
 							<td class="px-3 py-1">
@@ -2581,7 +2539,14 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 									onclick={() => rollSkill(s.id, s.name)}>
 									к100
 								</button>
-								{#if trackingBonus > 0}
+								{#if backgroundContext}
+         <button class="px-2 py-0.5 bg-green-700 text-white text-xs rounded hover:bg-green-800"
+          title="Ситуативный бонус предыстории +2"
+          onclick={() => rollSkill(s.id, `${s.name} (${backgroundContext === 'search_herbs' ? 'поиск трав' : 'поиск ингредиентов'})`, backgroundContext)}>
+          {backgroundContext === 'search_herbs' ? 'Поиск трав' : 'Ингредиенты'} +2
+         </button>
+        {/if}
+        {#if trackingBonus > 0}
 									<button
 										class="px-2 py-0.5 bg-green-700 text-white text-xs rounded hover:bg-green-800"
 										title="Проверка Наблюдательности при поиске следов: ≤ {trackingTarget}"
@@ -2880,8 +2845,8 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 							<p class="text-sm text-gray-600 mt-1">{bg.description}</p>
 						</div>
 						<div class="border-t pt-3">
-							<div class="font-semibold">Особенность «{bg.feature.name}»</div>
-							<p class="text-sm text-gray-600 mt-1">{bg.feature.description}</p>
+							<div class="font-semibold">{bg.passiveFeature ? 'Умения предыстории' : `Особенность «${bg.feature.name}»`}</div>
+							<p class="text-sm text-gray-600 mt-1 whitespace-pre-line whitespace-pre-line">{bg.feature.description}</p>
 						</div>
 						<div class="border-t pt-3 text-sm text-gray-600">
 							<strong>Снаряжение:</strong> {bg.equipment}

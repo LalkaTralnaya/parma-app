@@ -494,7 +494,7 @@ export const ABILITIES: Ability[] = [
 	{ id: 'alchemy_conc_poison', name: 'Концентрированный яд', skillId: 'alchemy', tier: 2, type: 'passive',
 		description: 'Яд на оружии держится вдвое дольше.' },
 	{ id: 'alchemy_fast', name: 'Быстрое приготовление', skillId: 'alchemy', tier: 2, type: 'active',
-		description: 'Простое зелье или яд за 10 минут (вместо 1 часа). Стоит 1 бодрости.' },
+		description: 'Простое зелье или яд: 10 минут вместо часа; сложное зелье: 3 часа вместо восьми. Стоит 1 бодрости; требования рецепта сохраняются.' },
 	{ id: 'alchemy_skilled2', name: 'Искусный алхимик II', skillId: 'alchemy', tier: 3, type: 'passive',
 		description: 'Эффективность +2 куба (суммарно).' },
 	{ id: 'alchemy_purity', name: 'Чистота', skillId: 'alchemy', tier: 3, type: 'passive',

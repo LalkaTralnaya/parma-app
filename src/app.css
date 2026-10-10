@@ -1,4 +1,37 @@
 @import "tailwindcss";
+/* Береста: фактура коры с горизонтальными слоями и чечевичками. */
+#content:has(> main.character-sheet) {
+  --birch-texture: url("/birch-bark.png");
+}
+body:has(#content > main.character-sheet:is([data-decay-stage="0"], [data-decay-stage="1"])) { background-color: #e6d6b3; }
+#content:has(> main.character-sheet:is([data-decay-stage="0"], [data-decay-stage="1"])) {
+  background-color: #e8dabd;
+  background-image: radial-gradient(ellipse at 50% 15%, #fff7e566, transparent 70%), var(--birch-texture);
+  background-size: auto, 720px 520px;
+}
+#content > main.character-sheet {
+  background-color: #ebcea0;
+  background-image: linear-gradient(#fff1d23d, #fff1d23d), var(--birch-texture);
+  background-size: auto, 720px 520px;
+  border-inline: 1px solid #a48a683d;
+  box-shadow: 0 0 28px #5d442517;
+}
+#content > main.character-sheet:is([data-decay-stage="0"], [data-decay-stage="1"]) :is(.bg-white, table, .sheet-nav, .roll-result-panel) {
+  background-color: #fcf3de;
+}
+#content > main.character-sheet:is([data-decay-stage="0"], [data-decay-stage="1"]) :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+  background-color: #fff8e9;
+}
+#content > main.character-sheet:is([data-decay-stage="0"], [data-decay-stage="1"]) .sheet-nav { border-color: #b9a886; }
+#content > main.character-sheet:is([data-decay-stage="2"], [data-decay-stage="3"], [data-decay-stage="4"]) {
+  --birch-texture: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22720%22%20height%3D%22520%22%20viewBox%3D%220%200%20720%20520%22%3E%3Cfilter%20id%3D%22grain%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%22.012%20.32%22%20numOctaves%3D%223%22%20seed%3D%2214%22%2F%3E%3CfeColorMatrix%20type%3D%22saturate%22%20values%3D%220%22%2F%3E%3C%2Ffilter%3E%3Crect%20width%3D%22720%22%20height%3D%22520%22%20opacity%3D%22.075%22%20filter%3D%22url(%23grain)%22%2F%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22%23816344%22%20stroke-linecap%3D%22round%22%3E%3Cpath%20opacity%3D%22.16%22%20d%3D%22M12%2040q30-3%2058-1m7%200h17M506%2084q46-2%2079-1m8%200h12M173%20171q37%202%2061%200M627%20211h42M28%20278q45-2%2080%200m8%200h17M421%20329q38-2%2065%200M205%20412q32-2%2059%200m9%200h12M583%20467q40%201%2073-1%22%20stroke-width%3D%221%22%2F%3E%3Cpath%20opacity%3D%22.08%22%20d%3D%22M0%20116q180-4%20320%201t400-2M0%20245q230%204%20407%200t313%200M0%20389q160-3%20336%201t384-1M0%20499q250%203%20401-1t319%201%22%20stroke-width%3D%22.7%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E");
+  background-color: var(--decay-card);
+  background-image: linear-gradient(90deg, #00000012, transparent 7%, transparent 93%, #00000012), var(--birch-texture);
+  border-color: var(--decay-border);
+}
+@media print {
+  #content > main.character-sheet { background: #fff !important; box-shadow: none; border: 0; }
+}
 /* Резьба: общий орнамент панелей. SVG остаётся чётким при любом масштабе. */
 #content :is(main section.border, main article.border, main .grid > .border.rounded-lg, .toolbox, .empty, .roll-result-panel, .ornament-frame) {
   --carving-size: 38px;
