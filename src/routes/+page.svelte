@@ -69,7 +69,7 @@
     <div class="journey-copy">
       <span class="journey-note">Мир славянского сказа · меча и магии</span>
       <h1 id="journey-title">Ваша сага<br />начинается в Парме.</h1>
-      <p>Создайте героя, соберите друзей и отправляйтесь навстречу истории. Листы персонажей и инструменты мастера — всегда под рукой.</p>
+      <p>Создайте героя, соберите друзей и отправляйтесь навстречу истории. Листы персонажей и инструменты сказителя — всегда под рукой.</p>
       <div class="hero-actions">
         <a class="button hero-button" href="/new"><Icon name="plus" size={20} /> Создать персонажа</a>
         <a class="hero-link" href="/adventures">Найти приключение <Icon name="arrow" size={17} /></a>
@@ -92,7 +92,7 @@
     <details class="world-details">
       <summary>Познакомиться с миром</summary>
       <div>
-        <p>Парма — мир славянского сказа, меча и магии. Боги взирают на дела смертных из Прави. Лесовики берегут леса, а под сводами гор ждут Пробуждённые механизмы, созданные ушедшей расой дженази.</p>
+        <p>Парма — мир славянского сказа, меча и магии. Боги взирают на дела смертных из Прави. Лесовики берегут леса, а под сводами гор ждут Пробуждённые механизмы, созданные ушедшей расой предтеч.</p>
         <p>В Парме нет классов: вы сами выбираете сочетание навыков и умений. Герои растут, совершая значимые поступки — заключая союзы, побеждая в сюжетных битвах и разгадывая тайны древних руин.</p>
         <p>Магия Живы пронизывает всё сущее. Путь Нави тоже даёт силу, но оставляет след Тлена. У каждого выбора есть цена, а история героя важнее цифр.</p>
         <small>По вступлению «Добро пожаловать в Парму» из книги игры.</small>
@@ -143,14 +143,14 @@
       <CloudAccount compact />
     </section>
     <aside class="toolbox ornament-frame" aria-labelledby="tools-title">
-      <h2 id="tools-title">За ширмой мастера</h2><p>Подготовьте встречу и ведите игру.</p>
+      <h2 id="tools-title">За ширмой сказителя</h2><p>Подготовьте встречу и ведите игру.</p>
       <a href="/adventures" class="tool"><span class="tool-icon"><Icon name="compass" /></span><span><strong>Приключения</strong><small>Готовые истории для группы</small></span><Icon name="arrow" size={17} /></a>
-      <a href="/gm" class="tool"><span class="tool-icon"><Icon name="dice" /></span><span><strong>Пульт мастера</strong><small>Группа и общие проверки</small></span><Icon name="arrow" size={17} /></a>
-      <a href="/room" class="tool"><span class="tool-icon"><Icon name="people" /></span><span><strong>Комната</strong><small>Общий стол для мастера и игроков</small></span><Icon name="arrow" size={17} /></a>
+      <a href="/gm" class="tool"><span class="tool-icon"><Icon name="dice" /></span><span><strong>Пульт сказителя</strong><small>Группа и общие проверки</small></span><Icon name="arrow" size={17} /></a>
+      <a href="/room" class="tool"><span class="tool-icon"><Icon name="people" /></span><span><strong>Комната</strong><small>Общий стол для сказителя и игроков</small></span><Icon name="arrow" size={17} /></a>
       <a href="/gm/combat" class="tool"><span class="tool-icon"><Icon name="sword" /></span><span><strong>Боевой трекер</strong><small>Инициатива, ходы и здоровье</small></span><Icon name="arrow" size={17} /></a>
       <a href="/gm/bestiary" class="tool"><span class="tool-icon"><Icon name="shield" /></span><span><strong>Бестиарий</strong><small>Противники для вашей истории</small></span><Icon name="arrow" size={17} /></a>
       <a href="/gm/cheatsheet" class="tool"><span class="tool-icon"><Icon name="book" /></span><span><strong>Правила под рукой</strong><small>Краткая шпаргалка за столом</small></span><Icon name="arrow" size={17} /></a>
-      <div class="table-note"><Icon name="leaf" size={23} /><p>Мастер и листы игроков могут быть открыты в разных вкладках одного браузера.</p></div>
+      <div class="table-note"><Icon name="leaf" size={23} /><p>Сказитель и листы игроков могут быть открыты в разных вкладках одного браузера.</p></div>
     </aside>
   </div>
 </main>

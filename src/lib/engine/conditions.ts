@@ -1,3 +1,4 @@
+import { getCheckDifficulty } from './checkDifficulty';
 import { findCondition, type ConditionDef, type ConditionModifiers } from '../rules/conditions';
 import { CHARACTERISTICS } from '../rules/characteristics';
 import { SKILLS } from '../rules/skills';
@@ -50,7 +51,7 @@ export function getConditionSaveTarget(
 
 	const modifiers = getConditionModifiers(char);
 	const charValue = getCharacteristicValue(char, charId, modifiers);
-	const baseTarget = skillId ? getSkillCheckTarget(char, skillId, modifiers) : charValue + (modifiers.skills ?? 0);
+	const baseTarget = skillId ? getSkillCheckTarget(char, skillId, modifiers) : charValue + (modifiers.skills ?? 0) + getCheckDifficulty(char);
 	const fortitudeBonus = ['poisoned', 'diseased', 'exhausted'].includes(def.id) && charId === 'strength'
 		? Math.max(
 			isAbilityLearned(char, 'fortitude_strong_body') ? 5 : 0,

@@ -5,6 +5,7 @@
 	import { scaleMonster, type ScaledMonster } from '$lib/engine/bestiary';
 	import Dialog from '$lib/components/Dialog.svelte';
 	import Icon from '$lib/components/Icon.svelte';
+	import { isTargetedSpecial } from '$lib/engine/combatEffects';
 	const initialMonster = BESTIARY.find(monster => monster.id === page.url.searchParams.get('monster'));
 	let selectedId = $state(initialMonster?.id ?? '');
 	let targetLevel = $state(initialMonster?.baseLevel ?? 1);
@@ -179,9 +180,11 @@
 							{/if}
 							{#if atk.notes}
 								<div class="text-xs text-gray-500">{atk.notes}</div>
+								{#if !atk.save && isTargetedSpecial(atk.notes)}<a class="button primary" href={`/gm/combat?monster=${scaled.base.id}&level=${scaled.level}&special=${encodeURIComponent(`${atk.name}: ${atk.notes}`)}`}>Применить эффект к цели</a>{/if}
 							{/if}
 							{#if atk.save}
 								<div class="text-xs text-gray-500">Избавление: {atk.save}</div>
+								<a class="button primary" href={`/gm/combat?monster=${scaled.base.id}&level=${scaled.level}&special=${encodeURIComponent(`${atk.name}: ${atk.save}`)}`}>Применить эффект к цели</a>
 							{/if}
 						</div>
 					{/each}
@@ -193,7 +196,7 @@
 				<h3 class="font-semibold mb-2">Особенности</h3>
 				<ul class="text-sm space-y-1 list-disc list-inside">
 					{#each scaled.base.traits as t}
-						<li>{t}</li>
+						<li>{t}{#if isTargetedSpecial(t)} <a class="button primary" href={`/gm/combat?monster=${scaled.base.id}&level=${scaled.level}&special=${encodeURIComponent(t)}`}>Применить к цели</a>{/if}</li>
 					{/each}
 				</ul>
 				{#if scaled.base.resistance}

@@ -88,7 +88,7 @@ export const RACES: Race[] = [
 	{
 		id: 'aasimar',
 		name: 'Аасимары (Посланцы Богов)',
-		description: 'Дети богов. Мифическая раса (по согласованию с Мастером).',
+		description: 'Дети богов. Мифическая раса (по согласованию с Сказителем).',
 		bonus: { eloquence: 4, religion: 2 },
 		skillAffinityChoice: { count: 1, amount: 2, from: ['persuasion', 'prayer'] },
 		skillAffinity: { intimidation: 1, restoration: 1 },
@@ -97,7 +97,7 @@ export const RACES: Race[] = [
 	{
 		id: 'mechanism',
 		name: 'Разумный Механизм (Пробуждённый)',
-		description: 'Создан дженази. Ищет своё место в мире.',
+		description: 'Создан предтечами. Ищет своё место в мире.',
 		bonus: { strength: 4, intelligence: 2 },
 		skillAffinityChoice: { count: 1, amount: 2, from: ['athletics', 'perception', 'smithing', 'destruction'] },
 		skillAffinity: { fortitude: 1 },

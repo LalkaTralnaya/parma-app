@@ -110,7 +110,7 @@
 		<div class="map-heading">
 			<div><span class="map-eyebrow">Место действия</span><h2 id="map-title">Заречье и окрестности</h2></div>
 			<button type="button" class="map-toggle" aria-pressed={showSecretMarkers} onclick={() => showSecretMarkers = !showSecretMarkers}>
-				{showSecretMarkers ? 'Скрыть тайные места' : 'Показать точки мастера'}
+				{showSecretMarkers ? 'Скрыть тайные места' : 'Показать точки сказителя'}
 			</button>
 		</div>
 		<figure>
@@ -139,7 +139,7 @@
 			</section>
 
 			<details class="gm-materials">
-				<summary><Icon name="book" size={21} /> Материалы для мастера <span>Сюжетные тайны и сцены</span></summary>
+				<summary><Icon name="book" size={21} /> Материалы для сказителя <span>Сюжетные тайны и сцены</span></summary>
 				<div class="gm-content">
 					<section class="panel secret" aria-labelledby="secret-title">
 						<h2 id="secret-title">Что происходит на самом деле</h2>

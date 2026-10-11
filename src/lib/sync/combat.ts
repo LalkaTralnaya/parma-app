@@ -1,3 +1,5 @@
+import type { Character } from '../type';
+import type { CombatEffect } from '../engine/combatEffects';
 export interface MonsterAttackData {
 	name: string;
 	hitBonus: number;
@@ -28,6 +30,9 @@ export interface CombatParticipant {
 	notes?: string;
 	attacks?: MonsterAttackData[];
 	primaryMod?: number;
+	statMods?: Record<string, number>;
+	characterSnapshot?: Character;
+	effects?: CombatEffect[];
 }
 
 export interface CombatState {

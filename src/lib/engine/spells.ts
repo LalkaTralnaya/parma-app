@@ -1,3 +1,4 @@
+import { getCheckDifficulty, applyCheckDifficulty } from './checkDifficulty';
 import { SKILLS } from '../rules/skills';
 import {
 	SPELLS,
@@ -23,7 +24,7 @@ export function getSpellCastTarget(char: Character, school: string): number {
 	if (!skill) return 0;
 	const charValue = getCharacteristicValue(char, skill.parent);
 	const skillTotal = getSkillTotal(char, school);
-	return Math.min(MAX_CHECK_TARGET, charValue + skillTotal);
+	return applyCheckDifficulty(charValue + skillTotal, char);
 }
 
 /** Цель магической атаки: значение характеристики + полный итог навыка школы + бонусы. Броня цели не влияет на сотворение. */
@@ -42,7 +43,7 @@ export function getSpellAttackTarget(
 		if (spell.id === 'rage' && isAbilityLearned(char, 'illusion_frenzy')) abilityBonus += 5;
 		if (['minor_illusion', 'invisibility'].includes(spell.id) && isAbilityLearned(char, 'illusion_eyes')) abilityBonus += 5;
 	}
-	return Math.max(0, charValue + getSkillTotal(char, school) + attackBonus + abilityBonus);
+	return Math.max(0, charValue + getSkillTotal(char, school) + attackBonus + abilityBonus + getCheckDifficulty(char));
 }
 
 /** Уровень владения школой у персонажа (0 — не умеет, 1+ — умеет) */
@@ -50,7 +51,7 @@ export function getSpellSkillLevel(char: Character, school: string): number {
 	return char.skillPoints[school] ?? 0;
 }
 
-/** Стоимость сотворения с учётом умений «Ученик/Адепт/Мастер школы X» */
+/** Стоимость сотворения с учётом умений «Ученик/Адепт/Сказитель школы X» */
 export function getSpellCost(
 	char: Character,
 	spell: Spell,
@@ -67,7 +68,7 @@ export function getSpellCost(
 	const skill = SKILLS.find((s) => s.id === spell.school);
 	if (!skill) return { base, reduced: base, reduction: 0, resource: 'mana' };
 
-	// Скидки от умений «Ученик/Адепт/Мастер школы»
+	// Скидки от умений «Ученик/Адепт/Сказитель школы»
 	const reductions: Array<{ id: string; value: number }> = [
 		{ id: `${spell.school}_apprentice`, value: 1 },
 		{ id: `${spell.school}_adept`, value: 2 },

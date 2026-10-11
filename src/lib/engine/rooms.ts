@@ -84,11 +84,11 @@ export async function createRoom(name: string): Promise<Room> {
 			.single();
 
 		if (!error && data) {
-			// Мастер автоматически становится участником
+			// Сказитель автоматически становится участником
 			await supabase.from('room_participants').insert({
 				room_id: data.id,
 				device_id: deviceId,
-				display_name: getPlayerName() || 'Мастер',
+				display_name: getPlayerName() || 'Сказитель',
 				role: 'master'
 			});
 			// Создаём пустое состояние боя
@@ -338,7 +338,7 @@ export async function publishToActiveRoom(
 		// молча — не хотим ломать бросок из-за проблем с сетью
 	}
 }
-/** Список комнат, где текущий пользователь — мастер */
+/** Список комнат, где текущий пользователь — сказитель */
 export async function listMyMasterRooms(): Promise<Room[]> {
 	const deviceId = getDeviceId();
 	const { data, error } = await supabase
@@ -350,7 +350,7 @@ export async function listMyMasterRooms(): Promise<Room[]> {
 	return (data ?? []) as Room[];
 }
 
-/** Удалить комнату целиком (только для мастера) */
+/** Удалить комнату целиком (только для сказителя) */
 export async function deleteRoom(roomId: string): Promise<void> {
 	const deviceId = getDeviceId();
 
@@ -379,7 +379,7 @@ export async function touchRoom(roomId: string): Promise<void> {
 		.update({ updated_at: new Date().toISOString() })
 		.eq('id', roomId);
 }
-/** Мастер передаёт персонажа игроку (сохраняет как «подарок») */
+/** Сказитель передаёт персонажа игроку (сохраняет как «подарок») */
 export async function setPendingCharacter(
 	participantId: string,
 	character: Character
@@ -454,7 +454,7 @@ export async function getRoomCombat(roomId: string): Promise<RoomCombatState> {
 	};
 }
 
-/** Записать состояние боя (только мастер обычно) */
+/** Записать состояние боя (только сказитель обычно) */
 export async function updateRoomCombat(
 	roomId: string,
 	state: RoomCombatState
@@ -592,7 +592,7 @@ export async function setCharacterLock(
 		.eq('id', participantId);
 	if (error) throw new Error(`Ошибка замка персонажа: ${error.message}`);
 }
-// ─── Запросы мастера к игрокам (через Supabase) ───
+// ─── Запросы сказителя к игрокам (через Supabase) ───
 
 export interface RoomRequestResult {
 	characterId: string;
@@ -614,7 +614,7 @@ export interface RoomRequest {
 	closed: boolean;
 }
 
-/** Создать запрос от мастера */
+/** Создать запрос от сказителя */
 export async function createRoomRequest(
 	roomId: string,
 	requestType: string,
@@ -657,7 +657,7 @@ export async function submitRoomRequestResult(
 	if (error) throw new Error(`Ошибка отправки результата: ${error.message}`);
 }
 
-/** Мастер закрывает запрос */
+/** Сказитель закрывает запрос */
 export async function closeRoomRequest(requestId: string): Promise<void> {
 	const { error } = await supabase
 		.from('room_requests')

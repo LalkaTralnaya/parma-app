@@ -1,4 +1,8 @@
 <script lang="ts">
+	import { applyCheckDifficulty, getCheckDifficulty } from '$lib/engine/checkDifficulty';
+	import CombatEffects from '$lib/components/CombatEffects.svelte';
+	import { combatModifiers, effectSaveTarget } from '$lib/engine/combatEffects';
+	import { subscribeCombat } from '$lib/sync/combat';
 	// ────────────────────────────────────────────
 	// ИМПОРТЫ
 	// ────────────────────────────────────────────
@@ -24,7 +28,7 @@
 		type RoomRequest,
 } from '../../../lib/engine/rooms';
 
-	// Сессия (запросы мастера)
+	// Сессия (запросы сказителя)
 	import {
 		getSession,
 		submitResult,
@@ -183,6 +187,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	// Отписки
 	let unsubSession: (() => void) | null = null;
 	let unsubRoomCombat: (() => void) | null = null;
+	let unsubLocalCombat: (() => void) | null = null;
 	let unsubCharUpdates: (() => void) | null = null;
 
 	// Бой
@@ -236,7 +241,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		loading = false;
 		activeRoomCode = getCurrentRoom();
 
-		// Подписка на запросы мастера (BroadcastChannel — между вкладками одного браузера)
+		// Подписка на запросы сказителя (BroadcastChannel — между вкладками одного браузера)
 		session = getSession();
 		unsubSession = subscribeSession((s) => {
 			session = s;
@@ -244,6 +249,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 
 		// Начальное состояние боя из localStorage
 		combat = getCombat();
+		unsubLocalCombat = subscribeCombat((state) => { if (state) void handleRoomCombatUpdate(state, false); else combat = null; });
 
 		// Если мы в комнате — синхронизация боя через Supabase
 		if (activeRoomCode) {
@@ -277,6 +283,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		cancelManualDie();
 		unsubSession?.();
 		unsubRoomCombat?.();
+		unsubLocalCombat?.();
 		unsubCharUpdates?.();
 		unsubRequests?.();
 	});
@@ -284,10 +291,10 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	// ────────────────────────────────────────────
 	// СИНХРОНИЗАЦИЯ БОЯ
 	// ────────────────────────────────────────────
-	async function handleRoomCombatUpdate(newState: CombatState | null) {
+	async function handleRoomCombatUpdate(newState: CombatState | null, persistLocal = true) {
 		if (!newState) return;
 		combat = newState;
-		saveCombat(newState);
+		if (persistLocal) saveCombat(newState);
 
 		const s = newState;
 		if (!s.active || !char) return;
@@ -351,6 +358,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 
 	/** Единая запись боя: локально + в комнату, если мы в ней */
 	async function writeCombatState(next: CombatState) {
+	if (char) next = { ...next, participants: next.participants.map(p => p.isPlayer && p.sourceId === char?.id ? { ...p, characterSnapshot: $state.snapshot(char) as Character } : p) };
 	console.log('[char/combat] writeCombatState', next);
 	combat = next;
 
@@ -385,7 +393,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	// ────────────────────────────────────────────
 	let condMods = $derived(
 		char
-			? getConditionModifiers(char)
+			? combatModifiers(char, combat?.participants.find(p => p.isPlayer && p.sourceId === char?.id))
 			: { characteristics: 0, attacks: 0, skills: 0, saves: 0, armor: 0, speed: 0, maxStamina: 0, skipTurn: false, canAct: true }
 	);
 
@@ -536,7 +544,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	let result: 'crit_success' | 'success' | 'fail' | 'crit_fail' | 'double';
 
 	if (type === 'initiative') {
-		const entered = await requestDie(20, 'Запрос мастера: прыть');
+		const entered = await requestDie(20, 'Запрос сказителя: прыть');
 		if (entered === null) return;
 		roll = entered;
 		modifier = getModifier(getCharacteristicValue(char, 'dexterity'));
@@ -545,7 +553,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		setParticipantInitiative(char.id, roll, modifier);
 	} else if (skillId) {
 		target = getSkillCheckTarget(char, skillId);
-		const entered = await requestDie(100, 'Запрос мастера: проверка', target);
+		const entered = await requestDie(100, 'Запрос сказителя: проверка', target);
 		if (entered === null) return;
 		roll = entered;
 		modifier = 0;
@@ -1158,7 +1166,10 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	}
 	function getConditionSaveTarget(def: any, useAlternative: boolean): { target: number; label: string } | null {
 		if (!char) return null;
-		return calculateConditionSaveTarget(char, def, useAlternative);
+		const original = calculateConditionSaveTarget(char, def, useAlternative);
+        if (!original || !myCombatParticipant) return original;
+        const target = effectSaveTarget(myCombatParticipant, { id: 'save-preview', name: def.name, description: '', sourceId: '', sourceName: '', conditionId: def.id, modifiers: {}, save: def.save, penalty: 0, roundsLeft: null }, char, useAlternative);
+        return target === null ? original : { target, label: original.label.replace(/ = .*/, ` = ${target}`) };
 	}
 
 	async function addCondition(conditionId: string, roundsLeft: number | null) {
@@ -1430,7 +1441,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		let result: 'crit_success' | 'success' | 'fail' | 'crit_fail' | 'double';
 
 		if (type === 'initiative') {
-			const entered = await requestDie(20, 'Запрос мастера: прыть');
+			const entered = await requestDie(20, 'Запрос сказителя: прыть');
 			if (entered === null) return;
 			roll = entered;
 			modifier = getModifier(getCharacteristicValue(char, 'dexterity'));
@@ -1439,7 +1450,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 			setParticipantInitiative(char.id, roll, modifier);
 		} else if (skillId) {
 			target = getSkillCheckTarget(char, skillId);
-			const entered = await requestDie(100, 'Запрос мастера: проверка', target);
+			const entered = await requestDie(100, 'Запрос сказителя: проверка', target);
 			if (entered === null) return;
 			roll = entered;
 			modifier = 0;
@@ -1484,7 +1495,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		let result: 'crit_success' | 'success' | 'fail' | 'crit_fail' | 'double';
 
 		if (session.type === 'initiative') {
-			const entered = await requestDie(20, 'Запрос мастера: прыть');
+			const entered = await requestDie(20, 'Запрос сказителя: прыть');
 			if (entered === null) return;
 			roll = entered;
 			modifier = getModifier(getCharacteristicValue(char, 'dexterity'));
@@ -1493,7 +1504,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 			setParticipantInitiative(char.id, roll, modifier);
 		} else if (skillId) {
 			target = getSkillCheckTarget(char, skillId);
-			const entered = await requestDie(100, 'Запрос мастера: проверка', target);
+			const entered = await requestDie(100, 'Запрос сказителя: проверка', target);
 			if (entered === null) return;
 			roll = entered;
 			modifier = 0;
@@ -1526,7 +1537,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	async function rollCharacteristicCheck(charId: string, charName: string) {
 		if (!char) return;
 		const value = getCharacteristicValue(char, charId, condMods) + (condMods.saves ?? 0);
-		const target = Math.min(95, Math.max(0, value));
+		const target = applyCheckDifficulty(value, char);
 		const roll = await requestDie(100, charName, target);
 		if (roll === null) return;
 		const result = classifyRoll(roll, target);
@@ -1638,7 +1649,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 				{#if activeRoomCode}
 			<div class="print-hide border-2 border-amber-400 bg-amber-50 rounded-lg p-3 mb-4 flex justify-between items-center flex-wrap gap-2">
 				<div class="text-sm">
-					<span class="text-amber-900">🎲 Вы в комнате мастера:</span>
+					<span class="text-amber-900">🎲 Вы в комнате сказителя:</span>
 					<span class="font-mono font-bold text-amber-800 ml-2">{activeRoomCode}</span>
 					<span class="text-amber-700 ml-2 text-xs">Все броски отправляются в общий стол</span>
 				</div>
@@ -1676,7 +1687,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 					<div class="flex justify-between items-center gap-3 flex-wrap">
 						<div>
 							<div class="font-semibold text-amber-900">
-								Мастер запросил: {activeRequest.label}
+								Сказитель запросил: {activeRequest.label}
 							</div>
 							<div class="text-sm text-amber-800">
 								{activeRequest.request_type === 'initiative'
@@ -1694,7 +1705,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 			{/if}
 		{#if session && char && session.results[char.id]}
 			<div class="border border-green-400 bg-green-50 rounded-lg p-3 mb-4 text-sm">
-				<span class="text-green-800">✓ Бросок отправлен мастеру:</span>
+				<span class="text-green-800">✓ Бросок отправлен сказителю:</span>
 				<span class="font-semibold">
 					{#if session.type === 'initiative'}
 						{session.results[char.id].roll + session.results[char.id].modifier}
@@ -1747,6 +1758,8 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
           <a href="#characteristics">Характеристики</a><a href="#resources">Ресурсы</a><a href="#battle">Бой</a><a href="#skills">Навыки</a><a href="#abilities">Умения</a><a href="#spells">Магия</a><a href="#inventory">Инвентарь</a><a href="#personality">Личность</a><a href="#conditions">Состояния</a><a href="#decay">Тлен</a><a href="#rest">Отдых</a>
         </nav>
 
+
+		{#if getCheckDifficulty(char) !== 0}<p class="text-sm border rounded p-2">Сложность к100 от сказителя: <strong>{getCheckDifficulty(char) > 0 ? '+' : ''}{getCheckDifficulty(char)}</strong></p>{/if}
 
 		<section>
 			<h2 id="characteristics" class="text-xl font-semibold mb-3">Характеристики</h2>
@@ -1919,6 +1932,9 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		</section>
 		<section>
 			<h2 id="conditions" class="text-xl font-semibold mb-3">Состояния</h2>
+			{#if combat && myCombatParticipant}
+				<CombatEffects participant={myCombatParticipant} encounter={combat} character={char} onchange={writeCombatState} />
+			{/if}
 
 			<!-- Активные состояния -->
 			{#if (char.conditions ?? []).length === 0}
@@ -2157,7 +2173,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 							<button
 								class="px-4 py-2 bg-amber-600 text-white text-sm rounded hover:bg-amber-700 font-semibold"
 								onclick={respondToRequest}>
-								🎲 Бросить (по запросу мастера)
+								🎲 Бросить (по запросу сказителя)
 							</button>
 						{/if}
 					{:else}

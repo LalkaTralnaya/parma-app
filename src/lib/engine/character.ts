@@ -1,3 +1,4 @@
+import { applyCheckDifficulty } from './checkDifficulty';
 import { BASE_CHARACTERISTIC_VALUE, MAX_CHECK_TARGET } from '../rules/characteristics';
 import { SKILLS } from '../rules/skills';
 import { RACES } from '../rules/races';
@@ -128,7 +129,7 @@ export function getSkillCheckTarget(
 	const base = charValue + skillTotal;
 	const withState = base + (condMods?.skills ?? 0)
 		+ getDecaySkillModifier(char.decay?.points ?? 0, skillId, targetIsGoodPerson);
-	return Math.min(MAX_CHECK_TARGET, Math.max(0, withState));
+	return applyCheckDifficulty(withState, char);
 }
 
 /** Максимум ресурса */

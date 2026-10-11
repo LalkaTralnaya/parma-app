@@ -11,6 +11,8 @@ export interface Character {
 	resourceRolls: Record<string, number[]>;
 	currentResources: Record<string, number>;
 	shortRestUsed?: boolean;
+	/** Модификатор к100, заданный сказителем. Не меняет характеристики и прыть. */
+	checkDifficulty?: number;
 	abilities: string[];
 	/** Нераспределённые очки умений, полученные при повышении уровня. */
 	abilityPoints?: number;

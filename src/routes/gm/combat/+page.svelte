@@ -8,6 +8,9 @@
 	type RoomParticipant
 } from '../../../lib/engine/rooms';
 	import Dialog from '$lib/components/Dialog.svelte';
+	import CombatEffects from '$lib/components/CombatEffects.svelte';
+	import { combatModifiers, participantCharacter, tickCombatEffects } from '$lib/engine/combatEffects';
+	import { page } from '$app/state';
 	import { listCharacters, getCurrentResource } from '../../../lib/db/characters';
 	import { createRequest, SESSION_LABELS } from '../../../lib/sync/session';
 	import { getCharacter, saveCharacter } from '../../../lib/db/characters';
@@ -83,7 +86,9 @@
 		if (!pendingAttack) return;
 		const { attacker, attack } = pendingAttack;
 		const roll = rollD100();
-		const targetValue = (attack.hitTarget ?? 30 + attack.hitBonus) - (attack.ignoresArmor ? 0 : target.armor);
+		const mods = combatModifiers(participantCharacter(attacker), attacker);
+		if (mods.canAct === false) { alert('Участник не может действовать из-за состояния.'); return; }
+		const targetValue = (attack.hitTarget ?? 30 + attack.hitBonus) + (mods.characteristics ?? 0) + (mods.attacks ?? 0) - (attack.ignoresArmor ? 0 : effectiveArmor(target));
 
 		let outcome: 'hit' | 'miss' | 'critical_hit' | 'critical_miss' | 'double';
 		if (roll === 1) outcome = 'critical_hit';
@@ -182,6 +187,12 @@
 
 	onMount(async () => {
 	await loadCharacters();
+	const requestedMonster = page.url.searchParams.get('monster');
+	if (requestedMonster && BESTIARY.some(m => m.id === requestedMonster)) {
+		enemyMonsterId = requestedMonster;
+		enemyLevel = Number(page.url.searchParams.get('level')) || BESTIARY.find(m => m.id === requestedMonster)!.baseLevel;
+	}
+
 
 	// Проверяем, есть ли активная комната
 	const code = getCurrentRoom();
@@ -243,6 +254,7 @@
 });
 
 	async function persist(newState: CombatState) {
+	newState = { ...newState, participants: newState.participants.map(p => p.isPlayer ? { ...p, characterSnapshot: playerSnapshot(p) ?? p.characterSnapshot } : p) };
 	combatState = newState;
 	saveCombat(newState); // локально всегда — на случай офлайна
 
@@ -290,6 +302,7 @@ async function addSelectedPlayers() {
 				playerName: p.display_name || undefined,
 				sourceId: c.id,
 				isPlayer: true,
+				characterSnapshot: c,
 				maxHp: hpMax,
 				currentHp: realHp + tempHp,
 				armor: armorInfo.total,
@@ -316,6 +329,7 @@ async function addSelectedPlayers() {
 				name: c.name || '(без имени)',
 				sourceId: c.id,
 				isPlayer: true,
+				characterSnapshot: c,
 				maxHp: hpMax,
 				currentHp: realHp + tempHp,
 				armor: armorInfo.total,
@@ -365,6 +379,7 @@ async function addSelectedPlayers() {
 				extraDamageDice: a.extraDamageDice,
 				damageType: a.damageType
 			})),
+			statMods: scaled.scaledMods,
 			primaryMod: scaled.scaledMods[base.primaryStat]
 		});
 		await persist(s);
@@ -408,7 +423,8 @@ async function addSelectedPlayers() {
 	async function next() {
 	const prevRound = combatState.round;
 	nextTurn();
-	const s = getCombat()!;
+	let s = getCombat()!;
+	if (s.round > prevRound) s = tickCombatEffects(s);
 	await persist(s); // ← отправили в комнату
 	if (s.round > prevRound) {
 		tickConditionsForPlayers(); // это про персонажей — оставляем как есть
@@ -444,7 +460,8 @@ async function addSelectedPlayers() {
 	async function removeParticipant_click(id: string) {
 	const prevRound = combatState.round;
 	removeParticipant(id);
-	const s = getCombat()!;
+	let s = getCombat()!;
+	if (s.round > prevRound) s = tickCombatEffects(s);
 	await persist(s);
 	if (s.round > prevRound) await tickConditionsForPlayers();
 }
@@ -472,6 +489,15 @@ async function addSelectedPlayers() {
 	const currentParticipant = $derived(combatState.active ? getCurrentParticipant(combatState) : null);
 	const players = $derived(combatState.participants.filter((p) => p.isPlayer));
 	const enemies = $derived(combatState.participants.filter((p) => !p.isPlayer));
+
+	function playerSnapshot(p: CombatParticipant): Character | null {
+		return characters.find(c => c.id === p.sourceId) ?? roomParticipants.find(r => r.character_snapshot?.id === p.sourceId)?.character_snapshot ?? p.characterSnapshot ?? null;
+	}
+
+	function effectiveArmor(p: CombatParticipant): number {
+		if (p.isPlayer && !playerSnapshot(p)) return p.armor;
+		return Math.max(0, p.armor + (combatModifiers(participantCharacter(p, playerSnapshot(p)), p).armor ?? 0));
+	}
 
 	function hpColor(p: CombatParticipant): string {
 		const ratio = p.currentHp / p.maxHp;
@@ -521,7 +547,7 @@ async function addSelectedPlayers() {
 					disabled={combatState.participants.length === 0}
 					onclick={begin}>▶ Начать бой</button>
 			{/if}
-			<a href="/gm" class="px-4 py-2 border rounded hover:bg-gray-50">← К мастеру</a>
+			<a href="/gm" class="px-4 py-2 border rounded hover:bg-gray-50">← К сказителю</a>
 		</div>
 	</header>
 
@@ -563,7 +589,7 @@ async function addSelectedPlayers() {
 								{p.name}
 							</span>
 							<span class="text-xs {isCurrent ? 'text-purple-100' : 'text-gray-500'}">
-								{p.isPlayer ? 'игрок' : 'враг'} · ЗДР {p.currentHp}/{p.maxHp} · Броня {p.armor}
+								{p.isPlayer ? 'игрок' : 'враг'} · ЗДР {p.currentHp}/{p.maxHp} · Броня {effectiveArmor(p)}
 							</span>
 						</div>
 						<span class="font-mono text-lg {isCurrent ? 'text-white' : 'text-purple-700'}">
@@ -595,7 +621,7 @@ async function addSelectedPlayers() {
 										{/if}
 										{p.name}
 									</div>
-									<div class="text-xs text-gray-500">Броня {p.armor} · прыть {p.initiative}</div>
+									<div class="text-xs text-gray-500">Броня {effectiveArmor(p)} · прыть {p.initiative}</div>
 								</div>
 								<button
 									class="text-red-500 hover:text-red-700 px-2"
@@ -617,12 +643,16 @@ async function addSelectedPlayers() {
 									<button class="px-2 py-1 text-xs border rounded hover:bg-gray-100" onclick={() => hp(p.id, +5)}>+5</button>
 								</div>
 							</div>
+							<CombatEffects participant={p} encounter={combatState} onchange={persist} character={p.isPlayer ? playerSnapshot(p) : null} initialText={p.id === enemies.find(e => e.sourceId === page.url.searchParams.get('monster'))?.id ? page.url.searchParams.get('special') ?? '' : ''} />
 						</div>
 					{/each}
 				</div>
 			</section>
 		{/if}
 
+		{#if page.url.searchParams.get('monster') && !enemies.some(p => p.sourceId === page.url.searchParams.get('monster'))}
+			<button class="px-3 py-2 border rounded" onclick={addEnemy}>Добавить выбранного из бестиария противника и применить спецнавык</button>
+		{/if}
 		<!-- Враги -->
 		{#if enemies.length > 0}
 			<section>
@@ -639,7 +669,7 @@ async function addSelectedPlayers() {
 										{/if}
 										{p.name}
 									</div>
-									<div class="text-xs text-gray-500">Броня {p.armor} · прыть {p.initiative}</div>
+									<div class="text-xs text-gray-500">Броня {effectiveArmor(p)} · прыть {p.initiative}</div>
 								</div>
 								<button
 									class="text-red-500 hover:text-red-700 px-2"
@@ -700,6 +730,7 @@ async function addSelectedPlayers() {
 									{p.traits.join(' · ')}
 								</div>
 							{/if}
+							<CombatEffects participant={p} encounter={combatState} onchange={persist} character={p.isPlayer ? playerSnapshot(p) : null} initialText={p.id === enemies.find(e => e.sourceId === page.url.searchParams.get('monster'))?.id ? page.url.searchParams.get('special') ?? '' : ''} />
 						</div>
 					{/each}
 				</div>
@@ -816,7 +847,7 @@ async function addSelectedPlayers() {
 				{#if pendingAttack.attack.notes}<p class="text-sm text-gray-600 mb-2">{pendingAttack.attack.notes}</p>{/if}
 				{#if pendingAttack.attack.save}<p class="text-sm text-gray-600 mb-2">Избавление: {pendingAttack.attack.save}</p>{/if}
 				<div class="space-y-2 mb-4 max-h-64 overflow-y-auto">
-					{#each players as target (target.id)}
+					{#each combatState.participants.filter(p => p.id !== pendingAttack?.attacker.id) as target (target.id)}
 						<button
 							class="w-full text-left px-3 py-2 border rounded hover:bg-gray-50"
 							onclick={() => confirmAttack(target)}>
@@ -828,8 +859,8 @@ async function addSelectedPlayers() {
 								{target.name}
 							</div>
 							<div class="text-xs text-gray-500">
-								Броня {target.armor} · ЗДР {target.currentHp}/{target.maxHp}
-								→ цель проверки {(pendingAttack!.attack.hitTarget ?? (30 + pendingAttack!.attack.hitBonus)) - (pendingAttack!.attack.ignoresArmor ? 0 : target.armor)}
+								Броня {effectiveArmor(target)} · ЗДР {target.currentHp}/{target.maxHp}
+								→ цель проверки {(pendingAttack!.attack.hitTarget ?? (30 + pendingAttack!.attack.hitBonus)) - (pendingAttack!.attack.ignoresArmor ? 0 : effectiveArmor(target))}
 							</div>
 						</button>
 					{/each}

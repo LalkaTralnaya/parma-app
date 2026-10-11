@@ -1,3 +1,4 @@
+import { getCheckDifficulty } from './checkDifficulty';
 import { WEAPONS, ARMORS, SHIELDS, type Weapon, type Armor, type Shield, type AttackType, ATTACK_SPEED_BONUS } from '../rules/weapons';
 import { getCharacteristicValue, getModifier, getSkillTotal, isAbilityLearned } from './character';
 import { SKILLS } from '../rules/skills';
@@ -100,7 +101,8 @@ export function getAttackTarget(
 
 	// Атака: значение характеристики + модификатор навыка + вложенное значение навыка (если есть)
 	// + скорость и прочие применимые бонусы − Броня цели.
-	const target = charValue + skillTotal + speedBonus + weaponBonus + abilityBonus - targetArmor + armorPierce;
+	const difficulty = getCheckDifficulty(char);
+	const target = charValue + skillTotal + speedBonus + weaponBonus + abilityBonus - targetArmor + armorPierce + difficulty;
 	const characteristicLabel = weapon.parent === 'strength' ? 'Сила' : 'Ловкость';
 	const skillLabel = skill?.name ?? weapon.skill;
 
@@ -115,6 +117,7 @@ export function getAttackTarget(
 			...(weaponBonus ? [{ label: 'бонус оружия', value: weaponBonus }] : []),
 			...(abilityBonus ? [{ label: 'изученные умения', value: abilityBonus }] : []),
 			...(armorPierce ? [{ label: 'пробивание Брони', value: armorPierce }] : []),
+			...(difficulty ? [{ label: 'сложность от сказителя', value: difficulty }] : []),
 			{ label: 'Броня цели', value: -targetArmor }
 		]
 	};

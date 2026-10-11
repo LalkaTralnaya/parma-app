@@ -54,7 +54,7 @@ export function getDecayStage(points: number): DecayStage {
     level: 4,
     bookStage: '4+',
     name: 'Поглощённый',
-    effects: ['Персонаж становится неигровым или перерождается как тень; решение принимает Мастер.'],
+    effects: ['Персонаж становится неигровым или перерождается как тень; решение принимает Сказитель.'],
     isPlayerCharacter: false
   };
   if (total >= 10) return {
@@ -126,7 +126,7 @@ function requireInteger(value: number, min: number, max: number, label: string):
   return value;
 }
 
-/** Не бросает кости: результат броска или решение Мастера передаётся явно. */
+/** Не бросает кости: результат броска или решение Сказителя передаётся явно. */
 export function gainDecay(char: Character, source: DecaySource): { character: Character; gained: number; stageChanged: boolean } {
   const gained = source.kind === 'nezhiva_cast' ? 1
     : source.kind === 'navi_critical_failure' ? requireInteger(source.d4, 1, 4, 'к4')

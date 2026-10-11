@@ -9,7 +9,7 @@
   const links = [
     { href: '/', label: 'Персонажи', icon: 'people' },
     { href: '/adventures', label: 'Приключения', icon: 'compass' },
-    { href: '/gm', label: 'Мастер', icon: 'dice' },
+    { href: '/gm', label: 'Сказитель', icon: 'dice' },
     { href: '/gm/combat', label: 'Бой', icon: 'sword' },
     { href: '/gm/bestiary', label: 'Бестиарий', icon: 'shield' },
     { href: '/gm/cheatsheet', label: 'Правила', icon: 'book' },
@@ -32,7 +32,7 @@
 
 <svelte:head>
   <title>Парма — спутник приключений</title>
-  <meta name="description" content="Персонажи, игровые броски, заклинания и инструменты мастера для настольной ролевой игры Парма." />
+  <meta name="description" content="Персонажи, игровые броски, заклинания и инструменты сказителя для настольной ролевой игры Парма." />
   <meta name="theme-color" content="#173d30" />
   <link rel="icon" href={favicon} />
 </svelte:head>
@@ -51,5 +51,5 @@
 <div id="content" tabindex="-1">{@render children()}</div>
 <RollChat />
 <DiceOverlay />
-<footer class="app-footer"><span>Парма · Помощник игрока и мастера</span><span><Icon name="shield" size={16} /> Данные сохраняются локально; для облака войдите в аккаунт</span></footer>
+<footer class="app-footer"><span>Парма · Помощник игрока и сказителя</span><span><Icon name="shield" size={16} /> Данные сохраняются локально; для облака войдите в аккаунт</span></footer>
 <style>.header-inner { flex-wrap: wrap; } .primary-nav { flex-wrap: wrap; }</style>

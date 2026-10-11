@@ -1,8 +1,10 @@
 <script lang="ts">
+	import { getCheckDifficulty, normalizeCheckDifficulty } from '$lib/engine/checkDifficulty';
+	import { notifyCharacterUpdate, subscribeCharacterUpdates } from '$lib/sync/combat';
 	import { getArmorValue } from '../../lib/engine/combat';
 	import { onMount, onDestroy } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { listCharacters, getCurrentResource } from '../../lib/db/characters';
+	import { listCharacters, getCurrentResource, getCharacter, saveCharacter } from '../../lib/db/characters';
 	import { RACES } from '../../lib/rules/races';
 	import { RESOURCES } from '../../lib/rules/resources';
 	import { getCharacteristicValue, getModifier, getResourceMax, getSkillCheckTarget } from '../../lib/engine/character';
@@ -24,8 +26,38 @@
 	} from '../../lib/engine/rooms';
 	import type { Character } from '$lib/type';
 
+	const NOTES_KEY = 'parma_storyteller_notes';
+	let storytellerNotes = $state('');
+	let notesStatus = $state('');
+	let notesStorageReady = $state(false);
+
+	function saveNotes(event: Event) {
+		storytellerNotes = (event.currentTarget as HTMLTextAreaElement).value;
+		try {
+			localStorage.setItem(NOTES_KEY, storytellerNotes);
+			notesStatus = 'Сохранено в этом браузере.';
+		} catch {
+			notesStatus = 'Не удалось сохранить в браузере. Выгрузите заметки в файл.';
+		}
+	}
+
+	function exportNotes() {
+		const blob = new Blob(['\uFEFF', storytellerNotes], { type: 'text/plain;charset=utf-8' });
+		const url = URL.createObjectURL(blob);
+		const link = document.createElement('a');
+		link.href = url;
+		link.download = 'parma-storyteller-notes.txt';
+		document.body.appendChild(link);
+		link.click();
+		link.remove();
+		setTimeout(() => URL.revokeObjectURL(url), 1000);
+	}
+
 	let characters = $state<Character[]>([]);
 	let loading = $state(true);
+	let savingDifficulty = $state<Record<string,boolean>>({});
+	let difficultyError = $state('');
+	let unsubscribeCharacters: (() => void) | null = null;
 	let session = $state<SessionRequest | null>(null);
 	let unsubscribe: (() => void) | null = null;
 
@@ -45,6 +77,20 @@
 	async function load() {
 		characters = await listCharacters();
 		loading = false;
+	}
+
+	async function changeDifficulty(id: string, delta: number | null) {
+		if (savingDifficulty[id]) return;
+		savingDifficulty = { ...savingDifficulty, [id]: true }; difficultyError = '';
+		try {
+			const current = await getCharacter(id);
+			if (!current) throw new Error('Персонаж не найден.');
+			const next = { ...current, checkDifficulty: delta === null ? 0 : normalizeCheckDifficulty(getCheckDifficulty(current) + delta) };
+			await saveCharacter(next);
+			characters = characters.map(c => c.id === id ? next : c);
+			notifyCharacterUpdate(id);
+		} catch (error) { difficultyError = (error as Error).message; }
+		finally { savingDifficulty = { ...savingDifficulty, [id]: false }; }
 	}
 
 	function rollD20(): number {
@@ -153,8 +199,17 @@
 		return { average: Math.round(sum / values.length), count: values.length };
 	}
 
+	onMount(() => {
+		try {
+			storytellerNotes = localStorage.getItem(NOTES_KEY) ?? '';
+			notesStatus = 'Заметки сохраняются автоматически в этом браузере.';
+		} catch { notesStatus = 'Хранилище браузера недоступно. Заметки можно выгрузить в файл.'; }
+		notesStorageReady = true;
+	});
+
 	onMount(async () => {
 		await load();
+		unsubscribeCharacters = subscribeCharacterUpdates(() => { void load(); });
 		session = getSession();
 		unsubscribe = subscribe((s) => {
 			session = s;
@@ -176,6 +231,7 @@
 
 	onDestroy(() => {
 		unsubscribe?.();
+		unsubscribeCharacters?.();
 		unsubRequests?.();
 	});
 </script>
@@ -183,7 +239,7 @@
 <main class="max-w-6xl mx-auto p-6">
 	<header class="flex justify-between items-center mb-6 flex-wrap gap-3">
 		<div>
-			<h1 class="text-3xl font-bold">Режим мастера</h1>
+			<h1 class="text-3xl font-bold">Режим сказителя</h1>
 			<p class="text-sm text-gray-500">
 				Всего персонажей: {characters.length}
 			</p>
@@ -252,6 +308,16 @@
 		</div>
 	</header>
 
+	<section class="border rounded-lg bg-white p-4 mb-6" aria-labelledby="storyteller-notes-title">
+		<div class="flex justify-between items-center gap-3 flex-wrap mb-3">
+			<h2 id="storyteller-notes-title" class="font-semibold">Заметки сказителя</h2>
+			<button class="px-3 py-2 border rounded hover:bg-gray-50 disabled:opacity-50" disabled={!notesStorageReady || !storytellerNotes.trim()} onclick={exportNotes}>Скачать .txt</button>
+		</div>
+		<label for="storyteller-notes" class="sr-only">Заметки сказителя</label>
+		<textarea id="storyteller-notes" class="w-full min-h-48 resize-y border rounded p-3 text-sm" rows="8" placeholder="Сюжетные планы, события сессии, персонажи и другие записи…" bind:value={storytellerNotes} oninput={saveNotes} disabled={!notesStorageReady} aria-describedby="storyteller-notes-status"></textarea>
+		<p id="storyteller-notes-status" class="text-xs text-gray-500 mt-2" role="status">{notesStatus}</p>
+	</section>
+
 	<p class="notice mb-6">Пульт видит персонажей этого браузера. Для общих проверок откройте их листы в соседних вкладках. Между разными устройствами данные не передаются.</p>
 	<!-- Панель запросов -->
 	<section class="border rounded-lg bg-white p-4 mb-6">
@@ -311,6 +377,7 @@
 		{/if}
 	</section>
 
+	{#if difficultyError}<p role="alert" class="text-red-700 mb-3">{difficultyError}</p>{/if}
 	{#if loading}
 		<p class="text-gray-500">Загрузка…</p>
 	{:else if characters.length === 0}
@@ -341,6 +408,14 @@
 						{/if}
 					</div>
 
+					<div class="mb-3 rounded border p-2" role="group" aria-label={`Сложность проверки: ${c.name}`}>
+						<div class="flex justify-between text-sm mb-2"><span>Сложность проверки</span><strong>{getCheckDifficulty(c) > 0 ? '+' : ''}{getCheckDifficulty(c)}</strong></div>
+						<div class="flex flex-wrap gap-1">
+							{#each [-1,-5,-10,1,5,10] as amount}<button class="px-2 py-1 border rounded text-sm hover:bg-gray-100 disabled:opacity-50" disabled={savingDifficulty[c.id]} aria-label={`Сложность ${amount > 0 ? '+' : ''}${amount}: ${c.name}`} onclick={() => changeDifficulty(c.id,amount)}>{amount > 0 ? '+' : '−'}{Math.abs(amount)}</button>{/each}
+							<button class="px-2 py-1 border rounded text-sm" disabled={savingDifficulty[c.id]} onclick={() => changeDifficulty(c.id,null)}>Сброс</button>
+						</div>
+						<p class="text-xs text-gray-500 mt-1">Минус усложняет к100, плюс облегчает. Прыть не меняется.</p>
+					</div>
 										<div class="grid grid-cols-2 gap-2 mb-3 text-sm">
 						<div class="border rounded p-2 text-center bg-gray-50">
 							<div class="text-xs text-gray-500 uppercase">Броня</div>

@@ -11,10 +11,10 @@
 <main class="max-w-4xl mx-auto p-6">
 	<header class="flex justify-between items-center mb-6 flex-wrap gap-3">
 		<div>
-			<h1 class="text-3xl font-bold">Шпаргалка мастера</h1>
+			<h1 class="text-3xl font-bold">Шпаргалка сказителя</h1>
 			<p class="text-sm text-gray-500">Быстрая справка по правилам «Пармы»</p>
 		</div>
-		<a href="/gm" class="px-3 py-2 border rounded hover:bg-gray-50">← К мастеру</a>
+		<a href="/gm" class="px-3 py-2 border rounded hover:bg-gray-50">← К сказителю</a>
 	</header>
 
 	<div class="space-y-2">

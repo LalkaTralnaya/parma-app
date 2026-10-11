@@ -111,7 +111,7 @@ async function acceptGift(p: RoomParticipant) {
 }
 
 async function declineGift(p: RoomParticipant) {
-	if (!confirm('Отклонить персонажа от мастера?')) return;
+	if (!confirm('Отклонить персонажа от сказителя?')) return;
 	if (!room) return;
 	try {
 		await clearPendingCharacter(p.id);
@@ -184,7 +184,7 @@ async function declineGift(p: RoomParticipant) {
 	const displayName = localStorage.getItem('parma_player_name') || 'Гость';
 	await joinRoom(room.id, displayName, char);
 
-	// После выбора персонажа — блокируем смену (кроме мастера)
+	// После выбора персонажа — блокируем смену (кроме сказителя)
 	if (!isMaster) {
 		const me = participants.find((p) => p.device_id === deviceId);
 		if (me) {
@@ -312,7 +312,7 @@ async function declineGift(p: RoomParticipant) {
 	{:else if room}
 		<header class="mb-6 flex justify-between items-start flex-wrap gap-3">
 			<div>
-				<div class="text-sm text-gray-500">{isMaster ? 'Вы — мастер' : 'Вы — игрок'}</div>
+				<div class="text-sm text-gray-500">{isMaster ? 'Вы — сказитель' : 'Вы — игрок'}</div>
 				<h1 class="text-3xl font-bold">{room.name || 'Комната'}</h1>
 				<div class="text-sm text-gray-600 mt-1">
 					Код для входа:
@@ -325,7 +325,7 @@ async function declineGift(p: RoomParticipant) {
 					<button
 						class="px-3 py-2 border rounded hover:bg-gray-50 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
 						disabled={!isMaster && !!myParticipant?.character_locked}
-						title={!isMaster && myParticipant?.character_locked ? 'Персонаж закреплён. Попросите мастера разрешить смену.' : ''}
+						title={!isMaster && myParticipant?.character_locked ? 'Персонаж закреплён. Попросите сказителя разрешить смену.' : ''}
 						onclick={() => (showCharPicker = !showCharPicker)}>
 						{#if !isMaster && myParticipant?.character_locked}
 							🔒 Персонаж закреплён
@@ -386,13 +386,13 @@ async function declineGift(p: RoomParticipant) {
 								<div class="font-semibold">
 									{p.display_name || 'Безымянный'}
 									{#if p.role === 'master'}
-										<span class="text-xs text-amber-700 ml-2">мастер</span>
+										<span class="text-xs text-amber-700 ml-2">сказитель</span>
 									{/if}
 									{#if p.device_id === deviceId}
 										<span class="text-xs text-blue-700 ml-2">вы</span>
 									{/if}
 								</div>
-								<!-- Кнопка мастера: подарить персонажа игроку -->
+								<!-- Кнопка сказителя: подарить персонажа игроку -->
 								{#if isMaster && p.device_id !== deviceId && p.role !== 'master'}
 									<div class="flex gap-2 mt-2 flex-wrap">
 										<button
@@ -410,11 +410,11 @@ async function declineGift(p: RoomParticipant) {
 									</div>
 								{/if}
 
-								<!-- Уведомление для игрока: мастер передал персонажа -->
+								<!-- Уведомление для игрока: сказитель передал персонажа -->
 								{#if p.device_id === deviceId && p.pending_character}
 									<div class="mt-2 border-2 border-purple-400 bg-purple-50 rounded-lg p-2">
 										<div class="text-xs font-semibold text-purple-900 mb-1">
-											🎁 Мастер передал вам персонажа
+											🎁 Сказитель передал вам персонажа
 										</div>
 										<div class="text-sm font-medium">{p.pending_character.name || '(без имени)'}</div>
 										<div class="text-xs text-purple-700 mb-2">

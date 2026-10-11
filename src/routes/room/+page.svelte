@@ -94,7 +94,7 @@ async function loadMyRooms() {
 }
 
 async function openMyRoom(room: Room) {
-	await joinRoom(room.id, localStorage.getItem('parma_player_name') || 'Мастер', null);
+	await joinRoom(room.id, localStorage.getItem('parma_player_name') || 'Сказитель', null);
 	await touchRoom(room.id);
 	goto(`/room/${room.code}`);
 }
@@ -153,7 +153,7 @@ onMount(() => {
 			<button
 				class="border-2 border-green-300 rounded-lg p-6 text-left hover:bg-green-50 transition-colors"
 				onclick={() => (mode = 'create')}>
-				<div class="text-2xl font-bold text-green-800 mb-2">Я мастер</div>
+				<div class="text-2xl font-bold text-green-800 mb-2">Я сказитель</div>
 				<div class="text-sm text-gray-600">
 					Создать комнату и получить код для игроков
 				</div>
@@ -164,7 +164,7 @@ onMount(() => {
 				onclick={() => (mode = 'join')}>
 				<div class="text-2xl font-bold text-blue-800 mb-2">Я игрок</div>
 				<div class="text-sm text-gray-600">
-					Войти по коду мастера
+					Войти по коду сказителя
 				</div>
 			</button>
 		</div>
@@ -178,7 +178,7 @@ onMount(() => {
 					id="master-name"
 					type="text"
 					bind:value={name}
-					placeholder="Например, Мастер Владислав"
+					placeholder="Например, Сказитель Владислав"
 					class="w-full px-3 py-2 border rounded" />
 			</div>
 
