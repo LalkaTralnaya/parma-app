@@ -1,7 +1,9 @@
 import type { Character, HeldSpell } from '$lib/type';
 import { SPELLS, type Spell } from '../rules/spells';
 import { getResourceMax } from './character';
-import { rollSpellEffect, type SpellEffectRoll, type SpellOutcome } from './spells';
+import { getTreeRankBonus } from './combat';
+import { isAbilityLearned } from './character';
+import { parseSpellEffect, rollSpellEffect, type SpellEffectRoll, type SpellOutcome } from './spells';
 
 export function canHoldSpell(spell: Spell): boolean {
 	return spell.holdCost !== undefined && spell.holdCost >= 0;
@@ -22,6 +24,7 @@ export function advanceSpellHolding(char: Character): { character: Character; co
 	const spell = getHeldSpell(char);
 	if (!held || !spell) return { character: { ...char, heldSpell: null }, cost: 0, round: 0, ended: true, reason: 'Нет удерживаемого заклинания.' };
 	if (spell.holdRounds && held.round >= spell.holdRounds) return { character: { ...char, heldSpell: null }, cost: 0, round: held.round, ended: true, reason: 'Длительность заклинания истекла.' };
+	if(char.currentResources?.hp===0 && (char.tempHp??0)<=0) return {character:{...char,heldSpell:null},cost:0,round:held.round,ended:true,reason:'Удержание прекращено: нет возможности действовать.'};
 	const cost = spell.holdCost ?? 0;
 	const current = char.currentResources?.mana ?? getResourceMax(char, 'mana');
 	if (current < cost) return { character: { ...char, heldSpell: null }, cost: 0, round: held.round, ended: true, reason: 'Не хватает Живы. Удержание прекращено.' };
@@ -36,11 +39,8 @@ export function advanceSpellHolding(char: Character): { character: Character; co
 export function rollHeldSpellEffect(char: Character, spell: Spell, held: HeldSpell, die: (sides: number) => number = (sides) => Math.floor(Math.random() * sides) + 1): SpellEffectRoll | null {
 	// Урон удержания указан отдельно: он не повторяет урон первоначального сотворения.
 	if (spell.holdDamage) {
-		const match = spell.holdDamage.match(/(\d+)[кd](\d+)/i);
-		if (!match) return null;
-		const diceCount = Number(match[1]), diceSides = Number(match[2]);
-		const rolls = Array.from({ length: diceCount }, () => die(diceSides));
-		return { total: rolls.reduce((a, b) => a + b, 0), rolls, diceCount, diceSides, modValue: 0, modId: null, typeLabel: 'Урон удержания', extraDice: 0, abilityBonus: 0 };
+        return rollSpellEffect(char,{...spell,damage:spell.holdDamage,additionalDamage:undefined},held.useTwoHands,held.useGrace,die);
+
 	}
 	if (spell.holdEffect) return rollSpellEffect(char, { ...spell, damage: undefined, effect: spell.holdEffect }, held.useTwoHands, held.useGrace, die);
 	return null;

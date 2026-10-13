@@ -23,21 +23,9 @@ test('a level grants +6 characteristic and five ability points; skills follow th
   assert.equal(applyLevelUp(raised, 'strength', []).abilityPoints, 10);
 });
 
-test('ability tiers require points and the prior branch', () => {
-  let char = makeChar();
-  char.characteristics.strength.levelUpBonus = 36;
-  char.abilityPoints = 5;
-  assert.match(getAbilityBlockReason(char, 'one_handed_strong'), /предыдущей ступени/);
-  char = learnAbility(char, 'one_handed_base');
-  assert.equal(char.abilityPoints, 4);
-  char = learnAbility(char, 'one_handed_strong');
-  assert.equal(char.abilityPoints, 3);
-  char = learnAbility(char, 'one_handed_stance');
-  assert.equal(char.abilityPoints, 2);
-  assert.match(getAbilityBlockReason(char, 'one_handed_strong3'), /Сильная рука II/);
-  char = learnAbility(char, 'one_handed_strong2');
-  char = learnAbility(char, 'one_handed_strong3');
-  assert.equal(char.abilityPoints, 0);
-  assert.equal(learnAbility(char, 'one_handed_quick'), null);
-  assert.equal(learnAbility(char, 'one_handed_strong3'), null);
+test('new tree uses points and explicit predecessors without attribute thresholds', () => {
+ let char=makeChar();char.abilityPoints=5;
+ assert.match(getAbilityBlockReason(char,'OH.base2'),/Сильная рука/);
+ for(const id of ['OH.base1','OH.base2','OH.stance1','OH.base3','OH.base4']) {char=learnAbility(char,id);assert.ok(char);}
+ assert.equal(char.abilityPoints,0);assert.equal(learnAbility(char,'OH.base5'),null);assert.equal(learnAbility(char,'OH.base1'),null);
 });

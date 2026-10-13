@@ -1,11 +1,13 @@
 <script lang="ts">
+  import { playerText, playerTable } from '$lib/ui/player-copy';
   type Block = { kind: 'paragraph'; text: string; level?: number } | { kind: 'table'; rows: string[][] };
   type Entry = { id: string; title: string; category: string; blocks: Block[]; source?: string };
   let { title, description, entries }: { title: string; description: string; entries: Entry[] } = $props();
   let query = $state('');
   let category = $state('Все');
-  const categories = $derived(['Все', ...new Set(entries.map(entry => entry.category))]);
-  const visible = $derived(entries.filter(entry => (category === 'Все' || category === entry.category) && JSON.stringify(entry).toLocaleLowerCase('ru').includes(query.trim().toLocaleLowerCase('ru'))));
+  const playerEntries = $derived(entries.filter(entry => entry.title !== 'Перенос уже созданного героя').map(entry => ({ id: entry.id, title: playerText(entry.title), category: playerText(entry.category), blocks: entry.blocks.map(block => block.kind === 'table' ? { ...block, rows: playerTable(block.rows) } : { ...block, text: playerText(block.text) }).filter(block => block.kind === 'table' ? block.rows.length > 0 : Boolean(block.text)) })).filter(entry => entry.blocks.length));
+  const categories = $derived(['Все', ...new Set(playerEntries.map(entry => entry.category))]);
+  const visible = $derived(playerEntries.filter(entry => (category === 'Все' || category === entry.category) && JSON.stringify([entry.title, entry.category, entry.blocks]).toLocaleLowerCase('ru').includes(query.trim().toLocaleLowerCase('ru'))));
 </script>
 
 <svelte:head><title>{title} — Парма</title></svelte:head>
@@ -20,7 +22,6 @@
     <details class="border rounded-lg bg-white" open={Boolean(query.trim())}>
       <summary class="p-4 cursor-pointer font-semibold"><span class="text-xs text-gray-500 mr-2">{entry.category}</span>{entry.title}</summary>
       <div class="px-4 pb-4 space-y-3">
-        {#if entry.source}<p class="text-xs text-gray-500">{entry.source}</p>{/if}
         {#each entry.blocks as block}
           {#if block.kind === 'table'}
             <div class="overflow-x-auto"><table class="w-full text-sm border-collapse"><thead><tr>{#each block.rows[0] as cell}<th class="border p-2 text-left bg-gray-100" scope="col">{cell}</th>{/each}</tr></thead><tbody>{#each block.rows.slice(1) as row}<tr>{#each row as cell}<td class="border p-2 align-top">{cell}</td>{/each}</tr>{/each}</tbody></table></div>
@@ -30,6 +31,5 @@
       </div>
     </details>
   {:else}<p class="notice">Ничего не найдено. Измените запрос или категорию.</p>{/each}
-  <p class="text-xs text-gray-500">Материалы «НРИ Парма». Справочник дополнен по единой книге 16.</p>
 </main>
 <style>.chosen { background: #24543c; color: white; } summary:hover { background: #efefe6; } td { min-width: 100px; } @media(max-width:600px) { h1 { font-size: 2rem; } }</style>

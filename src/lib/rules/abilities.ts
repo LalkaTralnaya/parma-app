@@ -1,8 +1,13 @@
+import { DRAFT_ABILITIES } from './draft-trees';
 export type AbilityTier = 0 | 1 | 2 | 3;
 export type AbilityType = 'passive' | 'active' | 'reaction';
 
 export interface Ability {
 	id: string;
+	treeId?: string;
+	draft?: boolean;
+	requiresAll?: string[];
+	requiresAny?: string[];
 	name: string;
 	skillId: string;
 	tier: AbilityTier;
@@ -28,7 +33,7 @@ export const ABILITY_THRESHOLDS: Record<AbilityTier, number> = {
 	3: 72
 };
 
-export const ABILITIES: Ability[] = [
+export const LEGACY_ABILITIES: Ability[] = [
 	// ═══════════════ ИНТЕЛЛЕКТ ═══════════════
 
 	// ─── Разрушение ───
@@ -684,6 +689,8 @@ export const ABILITIES: Ability[] = [
 	{ id: 'higher_judgment', name: 'Божественный приговор', skillId: 'higher_power', tier: 3, type: 'active',
 		description: '13 благодати, 1/день. Враг получает 4к8 святого урона (половина при спасброске). Нежить и демоны — двойной урон.' }
 ];
+
+export const ABILITIES: Ability[] = [...DRAFT_ABILITIES, ...LEGACY_ABILITIES];
 
 export const ABILITIES_BY_SKILL: Record<string, Ability[]> = ABILITIES.reduce(
 	(acc, a) => {

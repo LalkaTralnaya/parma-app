@@ -6,6 +6,8 @@ export type WeaponCategory = 'one_handed' | 'two_handed' | 'ranged';
 export interface Weapon {
 	ammunition?: 'arrow' | 'bolt' | 'sling';
 	noFastAttack?: boolean;
+	mechanical?: boolean;
+	capacity?: number;
 	id: string;
 	durability?: number;
 	name: string;
@@ -36,7 +38,7 @@ const LEGACY_WEAPONS: Weapon[] = [
 		id: 'dagger', name: 'Кинжал', category: 'one_handed',
 		damageOneHand: '1d4', damageType: 'piercing',
 		parent: 'strength', skill: 'one_handed',
-		description: 'Лёгкое. Можно нанести два удара за действие без штрафов.'
+		description: 'Лёгкое. Сложность серии ниже на 5, минимум 0. Нужны умения серии; цена 2/4 Бодрости сохраняется.'
 	},
 	{
 		id: 'short_sword', name: 'Короткий меч', category: 'one_handed',
@@ -129,18 +131,20 @@ export const WEAPONS = mergeEquipment(LEGACY_WEAPONS, EQUIPMENT_WEAPONS);
 export const ARMORS = mergeEquipment(LEGACY_ARMORS, EQUIPMENT_ARMORS);
 export const SHIELDS = mergeEquipment(LEGACY_SHIELDS, EQUIPMENT_SHIELDS);
 
-export type AttackType = 'normal' | 'strong' | 'fast';
+export type AttackType = 'normal' | 'strong' | 'fast' | 'triple';
 
 export const ATTACK_SPEED_BONUS: Record<AttackType, number> = {
 	normal: 0,
 	strong: 10,
-	fast: -5
+	fast: -5,
+	triple: -10
 };
 
 export const ATTACK_TYPE_LABEL: Record<AttackType, string> = {
 	normal: 'Обычная',
-	strong: 'Силовая (+10 к атаке, +1 куб урона)',
-	fast: 'Быстрая (−5 к атаке, два удара)'
+	strong: 'Силовая (+10, +1 куб, 3 Бодрости)',
+	fast: 'Двойная серия (−5, 2 Бодрости)',
+	triple: 'Тройная серия (−10, 4 Бодрости)'
 };
 
 export const DAMAGE_TYPE_LABEL: Record<DamageType, string> = {

@@ -58,6 +58,6 @@
       </details>
     </section>
   {:else}<p class="notice">Таблицы не найдены. Измените поиск или категорию.</p>{/each}
-  <p class="text-xs text-gray-500">Таблицы книги «НРИ Парма», редакция «литправка 12». Дополнительные броски и решения, указанные в событии, выполняет Сказитель.</p>
+  <p class="text-xs text-gray-500">Дополнительные броски и решения, указанные в событии, выполняет Сказитель.</p>
 </main>
 <style>.chosen { background:#24543c; color:white; } .selected { background:#dceade; font-weight:600; } td { min-width:100px; } td:first-child { min-width:60px; } @media(max-width:600px) { h1 { font-size:2rem; } }</style>

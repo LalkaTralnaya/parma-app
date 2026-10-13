@@ -51,5 +51,5 @@
 <div id="content" tabindex="-1">{@render children()}</div>
 <RollChat />
 <DiceOverlay />
-<footer class="app-footer"><span>Парма · Помощник игрока и сказителя</span><span><Icon name="shield" size={16} /> Данные сохраняются локально; для облака войдите в аккаунт</span></footer>
+<footer class="app-footer"><span>Парма · Помощник игрока и сказителя</span></footer>
 <style>.header-inner { flex-wrap: wrap; } .primary-nav { flex-wrap: wrap; }</style>

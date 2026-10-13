@@ -4,6 +4,7 @@ import { SKILLS } from '../rules/skills';
 import { RACES } from '../rules/races';
 import { RESOURCES } from '../rules/resources';
 import type { Character } from '$lib/type';
+import { LEGACY_NODE_ALIASES } from '../rules/draft-trees';
 import { ABILITIES, ABILITY_THRESHOLDS, type Ability } from '../rules/abilities';
 import { BACKGROUNDS } from '../rules/backgrounds';
 import { getDecaySkillModifier } from './decay';
@@ -92,6 +93,7 @@ export function getSkillBonusDetails(char: Character, skillId: string, checkCont
 
 	for (const a of ABILITIES) {
 		if (!isAbilityLearned(char, a.id)) continue;
+		if (!a.draft && LEGACY_NODE_ALIASES[a.id]) continue;
 		const target = a.bonusTo ?? a.skillId;
 		if (target !== skillId) continue;
 		if (a.bonusContext && a.bonusContext !== checkContext) continue;
@@ -143,12 +145,11 @@ export function getResourceMax(
 	if (!res) return 0;
 	const mod = getModifier(getCharacteristicValue(char, res.parent, condMods));
 	const base = res.base + mod * res.baseModMul;
-	const levelBonus = (char.resourceRolls[resourceId] ?? []).reduce((a, b) => a + b, 0);
+	const levelBonus = (char.resourceRolls?.[resourceId] ?? []).reduce((a, b) => a + b, 0);
 
 	let total = base + levelBonus;
 	if (resourceId === 'hp') {
-		total += isAbilityLearned(char, 'fortitude_strong_body3') ? 20
-			: isAbilityLearned(char, 'fortitude_strong_body2') ? 10 : 0;
+		total += isAbilityLearned(char,'ST.health2') || isAbilityLearned(char,'fortitude_strong_body3') ? 20 : isAbilityLearned(char,'ST.health1') || isAbilityLearned(char,'fortitude_strong_body2') ? 10 : 0;
 	}
 
 	// Изнеможение
@@ -167,46 +168,27 @@ export function getResourceMax(
 
 /** Какие умения открыты у персонажа по конкретному навыку */
 export function isAbilityAvailable(char: Character, abilityId: string): boolean {
-	const ability = ABILITIES.find((item) => item.id === abilityId);
-	if (!ability) return false;
-	const skill = SKILLS.find((item) => item.id === ability.skillId);
-	return !!skill && getCharacteristicValue(char, skill.parent) >= ABILITY_THRESHOLDS[ability.tier];
+ const ability = ABILITIES.find(a => a.id === abilityId);
+ if (!ability) return false;
+ if (ability.skillId === 'werewolf' || ability.skillId === 'vampire') return (char.storyForms ?? []).includes(ability.skillId);
+ return true;
 }
-
-/** Изученное умение действует, пока выполнен порог его характеристики. */
+/** Previously learned IDs remain readable; ranks no longer depend on characteristic thresholds. */
 export function isAbilityLearned(char: Character, abilityId: string): boolean {
-	return (char.abilities ?? []).includes(abilityId) && isAbilityAvailable(char, abilityId);
+ return (char.abilities ?? []).some(id => id === abilityId || LEGACY_NODE_ALIASES[id] === abilityId);
 }
-
-/** Почему умение пока нельзя изучить. Каждое умение стоит одно очко. */
 export function getAbilityBlockReason(char: Character, abilityId: string): string | null {
-	const ability = ABILITIES.find((item) => item.id === abilityId);
-	if (!ability) return 'Умение не найдено';
-	if ((char.abilities ?? []).includes(abilityId)) return 'Уже изучено';
-	if (!isAbilityAvailable(char, abilityId)) return `Нужна характеристика ${ABILITY_THRESHOLDS[ability.tier]}+`;
-	if ((char.abilityPoints ?? 0) < 1) return 'Нет очков умений';
-	if (ability.tier === 0) return null;
-
-	const priorTier = ability.tier - 1;
-	const previousTierAbilities = ABILITIES.filter((item) => item.skillId === ability.skillId && item.tier === priorTier);
-	if (!previousTierAbilities.some((item) => isAbilityLearned(char, item.id))) {
-		return `Изучите умение предыдущей ступени навыка`;
-	}
-
-	// Продолжения одного умения образуют отдельную ветку дерева.
-	let predecessor: Ability | undefined;
-	if (ability.progressiveGroup) {
-		predecessor = previousTierAbilities.find((item) => item.progressiveGroup === ability.progressiveGroup);
-	} else if (/[23]$/.test(ability.id)) {
-		const id = ability.id.slice(0, -1) + (ability.id.endsWith('3') ? '2' : '');
-		predecessor = previousTierAbilities.find((item) => item.id === id);
-	} else if (ability.id.endsWith('_adept')) {
-		predecessor = previousTierAbilities.find((item) => item.id === ability.id.replace(/_adept$/, '_apprentice'));
-	} else if (ability.id.endsWith('_master')) {
-		predecessor = previousTierAbilities.find((item) => item.id === ability.id.replace(/_master$/, '_adept'));
-	}
-	if (predecessor && !isAbilityLearned(char, predecessor.id)) return `Сначала изучите «${predecessor.name}»`;
-	return null;
+ const ability = ABILITIES.find(a => a.id === abilityId);
+ if (!ability) return 'Умение не найдено';
+ if (isAbilityLearned(char, abilityId)) return 'Уже изучено';
+ if (!ability.draft) return 'Прежняя редакция: изучайте узлы нового дерева';
+ if (!isAbilityAvailable(char, abilityId)) return 'Сначала получите эту форму по сюжету';
+ const missing = (ability.requiresAll ?? []).filter(id => !isAbilityLearned(char,id));
+ const names = (ids: string[]) => ids.map(id => ABILITIES.find(a=>a.id===id)?.name ?? id).join(', ');
+ if (missing.length) return 'Сначала: ' + names(missing);
+ if (ability.requiresAny?.length && !ability.requiresAny.some(id => isAbilityLearned(char,id))) return 'Нужно одно из: ' + names(ability.requiresAny);
+ if ((char.abilityPoints ?? 0) < 1) return 'Нет очков умений';
+ return null;
 }
 
 export function learnAbility(char: Character, abilityId: string): Character | null {
@@ -220,25 +202,13 @@ export function learnAbility(char: Character, abilityId: string): Character | nu
 
 /** Какие умения доступны для изучения по конкретному навыку */
 export function getUnlockedAbilities(char: Character, skillId: string): Ability[] {
-	const skill = SKILLS.find((s) => s.id === skillId);
-	if (!skill) return [];
-	const charValue = getCharacteristicValue(char, skill.parent);
-	return ABILITIES.filter(
-		(a) => a.skillId === skillId && ABILITY_THRESHOLDS[a.tier] <= charValue
-	);
+ return ABILITIES.filter(a => a.draft && a.skillId === skillId);
 }
-
-/** Какие умения ещё закрыты по конкретному навыку */
 export function getLockedAbilities(char: Character, skillId: string): Ability[] {
-	const skill = SKILLS.find((s) => s.id === skillId);
-	if (!skill) return [];
-	const charValue = getCharacteristicValue(char, skill.parent);
-	return ABILITIES.filter(
-		(a) => a.skillId === skillId && ABILITY_THRESHOLDS[a.tier] > charValue
-	);
+ return getUnlockedAbilities(char,skillId).filter(a=>getAbilityBlockReason(char,a.id) !== null && !isAbilityLearned(char,a.id));
 }
 
 /** Все открытые умения персонажа (по всем навыкам) */
 export function getAllUnlockedAbilities(char: Character): Ability[] {
-	return SKILLS.flatMap((s) => getUnlockedAbilities(char, s.id));
+	return ABILITIES.filter(a=>a.draft && isAbilityAvailable(char,a.id));
 }

@@ -48,16 +48,16 @@ test('ice storm expires at four rounds including the casting round', () => {
   assert.equal(held.heldSpell, null);
   assert.equal(held.currentResources.mana, 70);
 });
-test('holding rolls its own damage; healing retains hands and modifier', () => {
+test('holding rolls its own damage; healing retains hands without repeating the initial modifier', () => {
   const held = { ...options, spellId: 'fire_chaos', round: 2 };
-  const fire = rollHeldSpellEffect(mage, spell('fire_chaos'), held, () => 6);
-  assert.equal(fire.total, 6);
-  assert.equal(fire.diceSides, 6);
+  const fire = rollHeldSpellEffect(mage, spell('fire_chaos'), held, () => 4);
+  assert.equal(fire.total, 4);
+  assert.equal(fire.diceSides, 4);
   const storm = rollHeldSpellEffect(mage, spell('ice_storm'), held, () => 8);
   assert.equal(storm.total, 16);
   assert.equal(storm.diceCount, 2);
-  const heal = rollHeldSpellEffect(mage, spell('heal'), { ...held, useTwoHands: true }, () => 6);
+  const heal = rollHeldSpellEffect(mage, spell('heal'), { ...held, useTwoHands: true }, () => 4);
   assert.equal(heal.diceCount, 2);
-  assert.equal(heal.total, 24);
+  assert.equal(heal.total, 8);
   assert.equal(rollHeldSpellEffect(mage, spell('steady_ward'), held), null);
 });

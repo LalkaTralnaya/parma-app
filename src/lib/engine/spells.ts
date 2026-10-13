@@ -1,3 +1,4 @@
+import { getTreeRankBonus } from './combat';
 import { getCheckDifficulty, applyCheckDifficulty } from './checkDifficulty';
 import { SKILLS } from '../rules/skills';
 import {
@@ -37,11 +38,11 @@ export function getSpellAttackTarget(
 	const skill = SKILLS.find((s) => s.id === school);
 	if (!skill) return 0;
 	const charValue = getCharacteristicValue(char, skill.parent);
-	let abilityBonus = 0;
+	let abilityBonus = spell?.usesNezhiva ? getTreeRankBonus(char,'NV','base',[5,10,15]) : 0;
 	if (spell?.school === 'illusion') {
-		if (spell.id === 'calm' && isAbilityLearned(char, 'illusion_hypnosis')) abilityBonus += 5;
-		if (spell.id === 'rage' && isAbilityLearned(char, 'illusion_frenzy')) abilityBonus += 5;
-		if (['minor_illusion', 'invisibility'].includes(spell.id) && isAbilityLearned(char, 'illusion_eyes')) abilityBonus += 5;
+		if (spell.id === 'calm' && isAbilityLearned(char, 'IL.calm')) abilityBonus += 5;
+		if (spell.id === 'rage' && isAbilityLearned(char, 'IL.rage')) abilityBonus += 5;
+		if (['minor_illusion', 'invisibility'].includes(spell.id) && isAbilityLearned(char, 'IL.people')) abilityBonus += 5;
 	}
 	return Math.max(0, charValue + getSkillTotal(char, school) + attackBonus + abilityBonus + getCheckDifficulty(char));
 }
@@ -56,7 +57,8 @@ export function getSpellCost(
 	char: Character,
 	spell: Spell,
 	useTwoHands: boolean
-): { base: number; reduced: number; reduction: number; resource: 'mana' | 'grace' } {
+): { base: number; reduced: number; reduction: number; resource: 'mana' | 'grace' | 'hp' } {
+	if (spell.costResource==='hp') return {base:spell.costOneHand??0,reduced:spell.costOneHand??0,reduction:0,resource:'hp'};
 	if (spell.costGrace) {
 		return { base: spell.costGrace, reduced: spell.costGrace, reduction: 0, resource: 'grace' };
 	}
@@ -68,28 +70,10 @@ export function getSpellCost(
 	const skill = SKILLS.find((s) => s.id === spell.school);
 	if (!skill) return { base, reduced: base, reduction: 0, resource: 'mana' };
 
-	// Скидки от умений «Ученик/Адепт/Сказитель школы»
-	const reductions: Array<{ id: string; value: number }> = [
-		{ id: `${spell.school}_apprentice`, value: 1 },
-		{ id: `${spell.school}_adept`, value: 2 },
-		{ id: `${spell.school}_master`, value: 4 }
-	];
-
-	let maxReduction = 0;
-	for (const r of reductions) {
-		if (isAbilityLearned(char, r.id)) {
-			maxReduction = Math.max(maxReduction, r.value);
-		}
-	}
-
-	let reduced = Math.max(1, base - maxReduction);
-
-	// Нестабильность: если целевое число ниже порога школы — двойная стоимость
-	const castTarget = getSpellCastTarget(char, spell.school);
-	const stabilityThreshold = SCHOOL_STABILITY_THRESHOLDS[spell.school] ?? 36;
-	if (castTarget < stabilityThreshold) {
-		reduced = reduced * 2;
-	}
+ const tree = SCHOOL_TREE[spell.school];
+ const maxReduction = spell.maintenanceOnly ? 0 : getTreeRankBonus(char,tree ?? '', 'base', [0,1,2,3,4]);
+ let reduced=Math.max(1,base-maxReduction);
+ if(spell.skillLevel===0 && !isSchoolStable(char,spell.school)) reduced*=2;
 
 	return { base, reduced, reduction: base - reduced, resource: 'mana' };
 }
@@ -99,50 +83,25 @@ export function getSpellCost(
 /** Уровень персонажа в конкретной школе — максимальный доступный круг заклинаний.
  *  0-й уровень доступен по порогу стабильности, 1+ — по характеристике.
  *  Возвращает -1, если даже 0-й уровень недоступен. */
+export const SCHOOL_TREE: Record<string,string> = {destruction:'DE',transmutation:'AL',witchcraft:'CO',illusion:'IL',restoration:'RE'};
 export function getMaxSpellLevel(char: Character, school: string): number {
-	const skill = SKILLS.find((s) => s.id === school);
-	if (!skill) return -1;
-
-	const charValue = getCharacteristicValue(char, skill.parent);
-	const castTarget = getSpellCastTarget(char, school);
-	const stabilityThreshold = SCHOOL_STABILITY_THRESHOLDS[school] ?? 36;
-
-	let maxLevel = -1;
-	// 0-й уровень доступен, если целевое число ≥ порог стабильности
-	if (castTarget >= stabilityThreshold) maxLevel = 0;
-
-	// 1+ уровни — по характеристике
-	for (let level = 1; level <= 4; level++) {
-		const threshold = SPELL_LEVEL_THRESHOLDS[level];
-		if (charValue >= threshold) maxLevel = level;
-	}
-	return maxLevel;
+ const tree=SCHOOL_TREE[school];
+ if(!tree) return (char.spells??[]).length ? 4 : -1;
+ let max=-1;for(let i=1;i<=5;i++) if(isAbilityLearned(char,`${tree}.base${i}`))max=i-1;
+ return max;
 }
-
-/** Возвращает все заклинания школы с флагом «доступно/недоступно».
- *  НЕ скрывает школу, если очков вложено 0 — только помечает
- *  заклинания как недоступные, если не пройдены пороги. */
+/** Previously known spells and explicit racial gifts keep access; a rank does not teach new spells. */
 export function getSpellsWithAccess(char: Character, school: string): SpellWithAccess[] {
-	const skill = SKILLS.find((s) => s.id === school);
-	if (!skill) return [];
-
-	const charValue = getCharacteristicValue(char, skill.parent);
-	const castTarget = getSpellCastTarget(char, school);
-	const stabilityThreshold = SCHOOL_STABILITY_THRESHOLDS[school] ?? 36;
-	const zeroLevelAvailable = castTarget >= stabilityThreshold;
-
-	return SPELLS
-		.filter((s) => s.school === school)
-		.map((spell) => {
-			let available = false;
-			if (spell.skillLevel === 0) {
-				available = zeroLevelAvailable;
-			} else {
-				const threshold = SPELL_LEVEL_THRESHOLDS[spell.skillLevel];
-				available = charValue >= threshold;
-			}
-			return { spell, available };
-		});
+ return SPELLS.filter(s=>s.school===school).map(spell=>({spell,available:(char.spells??[]).includes(spell.id) || spell.skillLevel<=getMaxSpellLevel(char,school)}));
+}
+export function getSpellVersionReason(char: Character, spell: Spell, two: boolean): string | null {
+ if(spell.id==='balance' && (char.spellUsesSinceLongRest??[]).includes('balance')) return 'Равновесие уже использовано до продолжительного отдыха.';
+ if(spell.requiredAbility && !isAbilityLearned(char,spell.requiredAbility)) return 'Нужно изучить '+spell.requiredAbility;
+ if(two && !spell.requiresTwoHands) {
+  if(!spell.enhanced) return 'У этого заклинания нет описанной усиленной версии.';
+  if(!isAbilityLearned(char,`${SCHOOL_TREE[spell.school]}.dual`)) return 'Нужно двойное сотворение выбранной школы.';
+ }
+ return null;
 }
 
 /** Признак: школа стабильна для персонажа (характеристика ≥ порога стабильности) */
@@ -266,39 +225,26 @@ export function rollSpellEffect(
 	const parsed = parseSpellEffect(source, useTwoHands);
 	if (!parsed) return null;
 
-	let extraDice = 0;
-	const doubleId = `${spell.school}_double`;
-	if (useTwoHands && ['destruction', 'restoration'].includes(spell.school) && isAbilityLearned(char, doubleId)) {
-		extraDice += 1;
-	}
+ const extraDice = 0; // Version dice already include double casting; elemental perks are flat bonuses.
 
-	if (spell.school === 'destruction') {
-		const typeLabel = parsed.typeLabel.toLowerCase();
-		let enhancedId: string | null = null;
-		if (typeLabel.includes('огон')) enhancedId = 'destruction_flame';
-		else if (typeLabel.includes('холод') || typeLabel.includes('мороз')) enhancedId = 'destruction_frost';
-		else if (typeLabel.includes('электр') || typeLabel.includes('молни')) enhancedId = 'destruction_lightning';
-
-		if (enhancedId && isAbilityLearned(char, enhancedId)) {
-			extraDice += 1;
-		}
-	}
-
-	const totalDice = parsed.diceCount + extraDice;
+	const extraDamage = spell.additionalDamage ? parseSpellEffect(spell.additionalDamage,false) : null;
+	const totalDice = parsed.diceCount + extraDice + (extraDamage?.diceSides===parsed.diceSides ? extraDamage.diceCount : 0);
 	const rolls: number[] = [];
 	for (let i = 0; i < totalDice; i++) {
 		rolls.push(die(parsed.diceSides));
 	}
-	const sum = rolls.reduce((a, b) => a + b, 0);
-	const abilityBonus = spell.school === 'destruction' && spell.damage && isAbilityLearned(char, 'destruction_base')
-		? (char.skillPoints.destruction ?? 0)
-		: spell.school === 'restoration' && ['heal', 'fast_heal'].includes(spell.id) && isAbilityLearned(char, 'restoration_base')
-			? (char.skillPoints.restoration ?? 0) : 0;
+	let sum = rolls.reduce((a, b) => a + b, 0);
 
-	// Модификатор: если в строке явно указан — берём его.
-	// Иначе — по школе и режиму (жива vs благодать).
-	const modId = parsed.modId ?? getCastingModId(char, spell.school, useGrace);
-	const modValue = Math.floor(getCharacteristicValue(char, modId) / 6);
+
+ let abilityBonus=0;
+ if(spell.school==='destruction' && spell.damage) {
+  const label=parsed.typeLabel.toLowerCase();
+  const line=label.includes('огон')?'fire':label.includes('холод')?'frost':label.includes('электр')?'shock':'';
+  abilityBonus=(char.skillPoints.destruction??0)+(line?getTreeRankBonus(char,'DE',line,[1,2]):0);
+ }
+ if(spell.school==='restoration' && ['heal','fast_heal'].includes(spell.id)) abilityBonus=(char.skillPoints.restoration??0)+(isAbilityLearned(char,'RE.regen')?2:0);
+ const modId=parsed.modId;
+ const modValue=modId ? Math.floor(getCharacteristicValue(char,modId)/6) : 0;
 
 	return {
 		total: sum + modValue + abilityBonus,
@@ -316,8 +262,9 @@ export function rollSpellEffect(
 /** Проверка ресурса до броска: критический успех не позволяет начать бесплатное сотворение без ресурсов. */
 export function getSpellCastingAvailability(char: Character, spell: Spell, useTwoHands: boolean, useGrace: boolean) {
 	const cost = getSpellCost(char, spell, useTwoHands).reduced;
-	const resource = useGrace || spell.costGrace !== undefined ? 'grace' : 'mana';
+	const resource = spell.costResource==='hp' ? 'hp' : useGrace || spell.costGrace !== undefined ? 'grace' : 'mana';
 	const current = char.currentResources?.[resource] ?? getResourceMax(char, resource);
-	const affordable = current >= cost;
-	return { cost, resource, current, affordable, reason: affordable ? '' : 'Не хватает ' + (resource === 'grace' ? 'Благодати' : 'Живы') + ': нужно ' + cost + ', доступно ' + current + '.' };
+	const versionReason=char.currentResources?.hp===0 && (char.tempHp??0)<=0 ? 'Нельзя сотворять без Здравия и возможности действовать.' : getSpellVersionReason(char,spell,useTwoHands);
+	const affordable = current >= cost && !versionReason;
+	return { cost, resource, current, affordable, reason: versionReason ?? (affordable ? '' : 'Не хватает ' + (resource === 'grace' ? 'Благодати' : 'Живы') + ': нужно ' + cost + ', доступно ' + current + '.') };
 }

@@ -17,7 +17,7 @@ export interface MonsterAttackData {
 export interface CombatParticipant {
 	id: string;
 	name: string;
-	playerName?: string; 
+	playerName?: string;
 	sourceId?: string;
 	isPlayer: boolean;
 	maxHp: number;
@@ -33,6 +33,8 @@ export interface CombatParticipant {
 	statMods?: Record<string, number>;
 	characterSnapshot?: Character;
 	effects?: CombatEffect[];
+	prone?: boolean;
+	grapple?: { sourceId: string; kind: 'grab'|'clinch'|'hold'; round: number; chokeSuccesses?: number; chokeRound?: number; };
 }
 
 export interface CombatState {

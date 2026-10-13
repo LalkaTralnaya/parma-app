@@ -808,7 +808,7 @@ async function addSelectedPlayers() {
 							{#each BESTIARY_SECTIONS as section}
 								<optgroup label={section.name}>
 									{#each section.monsters as m}
-										<option value={m.id}>{m.name} (база: {m.dangerLabel}){m.source === 'custom' ? ' · авторская карточка' : ''}</option>
+										<option value={m.id}>{m.name} (база: {m.dangerLabel})</option>
 									{/each}
 								</optgroup>
 							{/each}

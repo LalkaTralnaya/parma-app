@@ -1,5 +1,6 @@
 import { giveBackgroundStartingInventory } from '../engine/backgrounds';
 import { normalizeDecay } from '../engine/decay';
+import { characterSnapshot } from './characterSnapshot';
 import Dexie, { type Table } from 'dexie';
 import type { Character } from '$lib/type';
 
@@ -76,11 +77,14 @@ export async function getCharacter(id: string): Promise<Character | undefined> {
 }
 
 export async function saveCharacter(char: Character): Promise<void> {
+	// Capture the submitted state before awaiting auth; later UI edits must not change this write.
+	const record = characterSnapshot(char);
+	record.updatedAt = Date.now();
 	const { db, userId } = await activeDb();
-	char.updatedAt = Date.now();
-	await db.characters.put(char);
-	await db.deletions.delete(char.id);
-	if (userId) void import('$lib/sync/cloudCharacters').then(({ queueCharacterSync }) => queueCharacterSync(char, userId)).catch(console.error);
+	await db.characters.put(record);
+	await db.deletions.delete(record.id);
+	char.updatedAt = record.updatedAt;
+	if (userId) void import('$lib/sync/cloudCharacters').then(({ queueCharacterSync }) => queueCharacterSync(record, userId)).catch(console.error);
 }
 
 export async function deleteCharacter(id: string): Promise<void> {

@@ -72,7 +72,7 @@
           <article class="monster-card" aria-labelledby={'monster-' + monster.id}>
             <div class="card-type"><span>{getMonsterSection(monster.id)?.name}</span><span class="level-badge">Ур. {monster.dangerLabel}</span></div>
             <h3 id={'monster-' + monster.id}>{monster.name}</h3>
-            {#if monster.source === 'custom'}<p class="custom-label">Авторское существо</p>{/if}
+
             <p class="card-description">{monster.description}</p>
             <dl class="card-stats"><div><dt>Здравие</dt><dd>{monster.hp}</dd></div><div><dt>Броня</dt><dd>{monster.armor}</dd></div><div><dt>Скорость</dt><dd>{monster.speed}<small> саж.</small></dd></div></dl>
             <div class="card-habitats">{#each getMonsterHabitats(monster.id) as habitat}<span>{habitat.name}</span>{/each}</div>
@@ -98,7 +98,7 @@
 			<div class="flex justify-between items-start mb-4 flex-wrap gap-2">
 				<div>
 					<h3 class="text-lg font-bold">Характеристики противника</h3>
-					<div class="text-sm text-gray-600">{getMonsterSection(scaled.base.id)?.name}{scaled.base.source === 'custom' ? ' · авторская карточка' : ''}</div>
+					<div class="text-sm text-gray-600">{getMonsterSection(scaled.base.id)?.name}</div>
 					<div class="text-sm text-gray-600">
 						Уровень {scaled.level}
 						{#if scaled.levelsGained > 0}
@@ -234,7 +234,6 @@
 .card-type { display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:10px; color:#6d795e; }
 .level-badge { flex-shrink:0; background:#ecf0e1; color:#435538; padding:3px 7px; border-radius:5px; font-weight:700; }
 .monster-card h3 { font-family:Georgia,serif; font-size:23px; font-weight:700; line-height:1.3; margin:12px 0 8px; color:#173d30; }
-.custom-label { font-size:11px; color:#7c643b; margin-bottom:5px; }
 .card-description { font-size:13px; line-height:1.65; color:#596750; margin-bottom:16px; }
 .card-stats { display:grid; grid-template-columns:repeat(3,1fr); border-top:1px solid #e1e3d6; border-bottom:1px solid #e1e3d6; padding:12px 0; gap:6px; margin-top:auto; }
 .card-stats dt { color:#6d795e; font-size:10px; }

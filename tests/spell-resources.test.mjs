@@ -14,8 +14,8 @@ test('zero and insufficient mana block casting before any roll; exact cost is su
   assert.equal(getSpellCastingAvailability({ ...mage, currentResources: { mana: 2 } }, heal, false, false).affordable, true);
 });
 test('two handed casting needs its full cost', () => {
-  assert.equal(getSpellCastingAvailability({ ...mage, currentResources: { mana: 4 } }, heal, true, false).affordable, false);
-  assert.equal(getSpellCastingAvailability({ ...mage, currentResources: { mana: 5 } }, heal, true, false).affordable, true);
+  assert.equal(getSpellCastingAvailability({ ...mage, abilities:['RE.dual'], currentResources: { mana: 4 } }, heal, true, false).affordable, false);
+  assert.equal(getSpellCastingAvailability({ ...mage, abilities:['RE.dual'], currentResources: { mana: 5 } }, heal, true, false).affordable, true);
 });
 test('casting with grace checks grace even when mana is plentiful or empty', () => {
   const plentiful = { ...mage, currentResources: { mana: 100, grace: 1 } };

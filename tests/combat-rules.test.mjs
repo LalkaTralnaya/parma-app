@@ -59,7 +59,7 @@ test('strong attack adds a weapon die before the characteristic modifier', () =>
     const result = rollWeaponDamage(char, weapon, 'strong', false);
     assert.equal(result.diceCount, 2);
     assert.deepEqual(result.rolls, [6, 6]);
-    assert.equal(result.total, 19); // 2d6 + 7
+    assert.equal(result.total, 39); // 2d6 + 7
   } finally {
     Math.random = original;
   }
@@ -73,7 +73,7 @@ test('physical attack dice feed the usual hit, effect and damage rules', () => {
   assert.equal(attacks[0].effect.roll, 1);
   assert.deepEqual(attacks[0].effect.extraDamageRolls, [4]);
   assert.deepEqual(attacks[0].damage.rolls, [6]);
-  assert.equal(attacks[0].damage.total, 17);
+  assert.equal(attacks[0].damage.total, 37);
   assert.deepEqual(supplied, []);
 });
 

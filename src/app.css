@@ -250,9 +250,12 @@ body:has(#content > main.character-sheet[data-decay-stage="4"]) { background: #0
 #content > main.character-sheet:is([data-decay-stage="2"], [data-decay-stage="3"], [data-decay-stage="4"]) {
   color: var(--decay-text);
 }
-#content > main.character-sheet:is([data-decay-stage="2"], [data-decay-stage="3"], [data-decay-stage="4"]) :is([class*="bg-"], table, details, .sheet-nav) {
+#content > main.character-sheet:is([data-decay-stage="2"], [data-decay-stage="3"], [data-decay-stage="4"]) :is([class*="bg-"], table, details, .sheet-nav, .roll-result-panel) {
   background-color: var(--decay-card) !important;
   border-color: var(--decay-border) !important;
+}
+#content > main.character-sheet:is([data-decay-stage="2"], [data-decay-stage="3"], [data-decay-stage="4"]) .roll-result-panel {
+  color: var(--decay-text);
 }
 #content > main.character-sheet:is([data-decay-stage="2"], [data-decay-stage="3"], [data-decay-stage="4"]) :is(input, select, textarea) {
   background-color: var(--decay-card) !important;

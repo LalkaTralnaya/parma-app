@@ -17,6 +17,7 @@ export const SKILLS: Skill[] = [
 	{ id: 'animal_handling', name: 'Обращение с животными',   parent: 'intelligence' },
 
 	// ─── Сила (Воин) ───
+	{ id: 'martial', name: 'Ратная рукопашная', parent: 'strength' },
 	{ id: 'smithing',        name: 'Кузнечное дело',          parent: 'strength' },
 	{ id: 'heavy_armor',     name: 'Тяжёлая броня',           parent: 'strength' },
 	{ id: 'blocking',        name: 'Блокирование',            parent: 'strength' },

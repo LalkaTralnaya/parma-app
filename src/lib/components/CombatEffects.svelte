@@ -14,7 +14,7 @@
 	let conditionId=$state(''),stat=$state('strength'),skill=$state(''),penalty=$state(0),rounds=$state<number|null>(null),targetId=$state(''),needsSave=$state(true),physical=$state(false),die=$state(50);
 	let seenText='';
 	let attackMod=$state(0),armorMod=$state(0),speedMod=$state(0),saveMod=$state(0),cannotAct=$state(false);
-	const presets=$derived(character ? [...SPELLS.filter(s=>character?.spells.includes(s.id)).map(s=>({name:s.name,text:`${s.name}: ${s.effect}. ${s.save??''}`})),...ABILITIES.filter(a=>character?.abilities.includes(a.id)).map(a=>({name:a.name,text:`${a.name}: ${a.description}`}))] : []);
+	const presets=$derived(character ? [...SPELLS.filter(s=>character?.spells.includes(s.id)).map(s=>({name:s.name,text:`${s.name}: ${s.draftText??s.effect??s.description}. ${s.save??''}`})),...ABILITIES.filter(a=>character?.abilities.includes(a.id)).map(a=>({name:a.name,text:`${a.name}: ${a.description}`}))] : []);
 	function begin(description='') {
 		text=description;name=description.split(':')[0] || 'Особый эффект';
 		const p=effectPreset(description);conditionId=p.conditionId;stat=p.charA;skill=p.skillA;penalty=p.penalty;rounds=p.rounds;message='';targetId='';needsSave=true;open=true;

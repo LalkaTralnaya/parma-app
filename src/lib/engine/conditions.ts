@@ -52,12 +52,8 @@ export function getConditionSaveTarget(
 	const modifiers = getConditionModifiers(char);
 	const charValue = getCharacteristicValue(char, charId, modifiers);
 	const baseTarget = skillId ? getSkillCheckTarget(char, skillId, modifiers) : charValue + (modifiers.skills ?? 0) + getCheckDifficulty(char);
-	const fortitudeBonus = ['poisoned', 'diseased', 'exhausted'].includes(def.id) && charId === 'strength'
-		? Math.max(
-			isAbilityLearned(char, 'fortitude_strong_body') ? 5 : 0,
-			isAbilityLearned(char, 'fortitude_strong_body2') ? 10 : 0,
-			isAbilityLearned(char, 'fortitude_strong_body3') ? 15 : 0
-		) : 0;
+	const fortitudeBonus = 0; // Fortitude tree bonuses already enter the skill target once.
+
 	const target = Math.min(95, Math.max(0, baseTarget + (modifiers.saves ?? 0) + fortitudeBonus));
 
 	const charName = CHARACTERISTICS.find((item) => item.id === charId)?.short ?? charId;

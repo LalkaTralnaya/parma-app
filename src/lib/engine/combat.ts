@@ -1,6 +1,6 @@
 import { getCheckDifficulty } from './checkDifficulty';
 import { WEAPONS, ARMORS, SHIELDS, type Weapon, type Armor, type Shield, type AttackType, ATTACK_SPEED_BONUS } from '../rules/weapons';
-import { getCharacteristicValue, getModifier, getSkillTotal, isAbilityLearned } from './character';
+import { getCharacteristicValue, getModifier, getSkillTotal, isAbilityLearned, getResourceMax } from './character';
 import { SKILLS } from '../rules/skills';
 import type { Character } from '$lib/type';
 
@@ -17,48 +17,55 @@ export function getArmorValue(char: Character): { total: number; dexMod: number;
 	const armor = ARMORS.find((a) => a.id === (char.equipment?.armorId ?? 'none'));
 	const shield = SHIELDS.find((s) => s.id === (char.equipment?.shieldId ?? 'none'));
 	const armorSkill = armor?.category === 'heavy' ? 'heavy_armor' : 'light_armor';
-	const armorTraining = armor?.id !== 'none' && isAbilityLearned(char, `${armorSkill}_base`)
+	const armorTraining = armor && armor.id !== 'none'
 		? Math.min(6, char.skillPoints[armorSkill] ?? 0) : 0;
-	const armorRanks = armor?.category === 'heavy'
-		? ['heavy_armor_prof', 'heavy_armor_prof2', 'heavy_armor_prof3']
-		: ['light_armor_defense', 'light_armor_defense2', 'light_armor_defense3'];
-	const armorMastery = armor?.id !== 'none'
-		? Math.max(...armorRanks.map((id, index) => isAbilityLearned(char, id) ? (index + 1) * 2 : 0)) : 0;
+	const armorMastery = armor && armor.id !== 'none' ? getTreeRankBonus(char, armor.category === 'heavy' ? 'HA' : 'LA') : 0;
 	const armorBonus = (armor?.armorBonus ?? 0) + armorTraining + armorMastery;
-	const shieldTraining = shield && shield.id !== 'none' && isAbilityLearned(char, 'blocking_base')
+	const shieldTraining = shield && shield.id !== 'none'
 		? Math.min(6, char.skillPoints.blocking ?? 0) : 0;
-	const shieldBearer = Math.max(
-		isAbilityLearned(char, 'blocking_shield_bearer') ? 2 : 0,
-		isAbilityLearned(char, 'blocking_shield_bearer2') ? 4 : 0,
-		isAbilityLearned(char, 'blocking_shield_bearer3') ? 6 : 0
-	);
+	const shieldBearer = getTreeRankBonus(char, 'BL');
 	const shieldBonus = (shield?.armorBonus ?? 0) + (shield?.id !== 'none' ? shieldTraining + shieldBearer : 0);
 	return { total: dexMod + armorBonus + shieldBonus, dexMod, armor: armorBonus, shield: shieldBonus };
 }
 
 /** Бонусы изученных оружейных умений; улучшения I–III не складываются между собой. */
-function getWeaponAbilityBonuses(char: Character, weapon: Weapon, attackType: AttackType): { attack: number; damage: number } {
-	const skill = weapon.skill;
-	if (!['two_handed', 'one_handed', 'archery'].includes(skill)) return { attack: 0, damage: 0 };
-	const baseDamage = isAbilityLearned(char, `${skill}_base`) ? (char.skillPoints[skill] ?? 0) : 0;
-	const line = skill === 'two_handed' ? 'barbarian' : skill === 'one_handed' ? 'strong' : 'tension';
-	const learnedTier = Math.max(
-		isAbilityLearned(char, `${skill}_${line}`) ? 2 : 0,
-		isAbilityLearned(char, `${skill}_${line}2`) ? 4 : 0,
-		isAbilityLearned(char, `${skill}_${line}3`) ? 6 : 0
-	);
-	const quick = skill === 'one_handed' && attackType === 'fast' && isAbilityLearned(char, 'one_handed_quick') ? 5 : 0;
-	const rapid = skill === 'archery' && isAbilityLearned(char, 'archery_rapid')
-		? (attackType === 'fast' ? 5 : attackType === 'normal' ? 10 : 0) : 0;
-	return { attack: learnedTier + quick + rapid, damage: baseDamage + learnedTier };
+export const WEAPON_TREE: Record<string,string> = { one_handed:'OH', two_handed:'TH', archery:'AR', martial:'RU' };
+export function getTreeRankBonus(char: Character, tree: string, line='base', values=[2,3,4,5,6]): number {
+ return Math.max(0,...values.map((value,i)=>isAbilityLearned(char,`${tree}.${line}${i+1}`)?value:0));
 }
-
+function getWeaponAbilityBonuses(char: Character, weapon: Weapon, attackType: AttackType): { attack: number; damage: number } {
+ const rank = getTreeRankBonus(char, WEAPON_TREE[weapon.skill] ?? '');
+ return { attack: rank, damage: (char.skillPoints[weapon.skill] ?? 0) + rank };
+}
+/** Number of weapon dice, not number of percentile checks. */
 export function getAttackCount(char: Character, weapon: Weapon, attackType: AttackType): number {
-	if (weapon.noFastAttack) return 1;
-	if (weapon.skill === 'archery' && isAbilityLearned(char, 'archery_rapid')) {
-		return attackType === 'fast' ? 3 : attackType === 'normal' ? 2 : 1;
-	}
-	return attackType === 'fast' ? 2 : 1;
+ return attackType === 'triple' ? 3 : attackType === 'fast' ? 2 : 1;
+}
+export function getMaxAttackCount(char: Character, weapon: Weapon): number {
+ if (weapon.noFastAttack) return 1;
+ if(weapon.mechanical)return isAbilityLearned(char,'AR.series')?2:1;
+ const tree=WEAPON_TREE[weapon.skill];
+ return isAbilityLearned(char,`${tree}.master`) ? 3 : isAbilityLearned(char,`${tree}.series`) ? 2 : 1;
+}
+export function getAttackCost(char: Character, weapon: Weapon, attackType: AttackType): number {
+ if(attackType==='strong') {
+  if(weapon.noFastAttack||weapon.mechanical) return 0;
+  const reduction=getTreeRankBonus(char, WEAPON_TREE[weapon.skill] ?? '', 'stance', [1,2]);
+  return Math.max(1,3-reduction);
+ }
+ return attackType==='triple'?4:attackType==='fast'?2:0;
+}
+export function getAttackBlockReason(char: Character, weapon: Weapon, attackType: AttackType): string | null {
+ if (getAttackCount(char,weapon,attackType)>getMaxAttackCount(char,weapon)) return weapon.noFastAttack ? 'Самострел не допускает серии без модификации.' : 'Сначала изучите соответствующее умение серии.';
+ if((weapon.noFastAttack||weapon.mechanical) && (char.crossbowCharges?.[weapon.id] ?? weapon.capacity ?? 1)<getAttackCount(char,weapon,attackType)) return 'Самострел разряжен. Потратьте основное действие на перезарядку.';
+ const cost=getAttackCost(char,weapon,attackType),current=char.currentResources?.stamina ?? getResourceMax(char,'stamina');
+ if(current<cost) return 'Не хватает Бодрости: нужно '+cost+', доступно '+current+'.';
+ return null;
+}
+export function spendAttackCost(char: Character, weapon: Weapon, attackType: AttackType): Character {
+ const reason=getAttackBlockReason(char,weapon,attackType); if(reason) throw new Error(reason);
+ const current=char.currentResources?.stamina ?? getResourceMax(char,'stamina');
+ return {...char,currentResources:{...char.currentResources,stamina:current-getAttackCost(char,weapon,attackType)},...(weapon.noFastAttack||weapon.mechanical ? {crossbowCharges:{...char.crossbowCharges,[weapon.id]:(char.crossbowCharges?.[weapon.id]??weapon.capacity??1)-getAttackCount(char,weapon,attackType)}} : {})};
 }
 
 /** Взять оружие из экипировки */
@@ -89,7 +96,8 @@ export function getAttackTarget(
 	const skillValue = char.skillPoints[weapon.skill] ?? 0;
 	const skillTotal = getSkillTotal(char, weapon.skill);
 	const otherSkillBonuses = skillTotal - skillModifier - skillValue;
-	const speedBonus = ATTACK_SPEED_BONUS[attackType];
+	const knife = /нож|кинжал/i.test(weapon.name);
+	const speedBonus = attackType==='fast'||attackType==='triple' ? -Math.max(0, (attackType==='triple'?10:5)-(knife?5:0)) : ATTACK_SPEED_BONUS[attackType];
 	const weaponBonus = weapon.attackBonus ?? 0;
 	const abilityBonus = getWeaponAbilityBonuses(char, weapon, attackType).attack;
 	const armorPierce = weapon.category === 'two_handed' && weapon.id === 'halberd'
@@ -170,9 +178,9 @@ export function rollWeaponDamage(
 
 	const parsed = parseDamageDice(damageStr);
 
-	let extraDice = attackType === 'strong' ? 1 : 0;
+	let extraDice = attackType === 'strong' && !weapon.noFastAttack && !weapon.mechanical ? 1 : 0;
 
-	const totalDice = parsed.count + extraDice;
+	const totalDice = parsed.count * getAttackCount(char, weapon, attackType) + extraDice;
 	const rolls: number[] = [];
 	for (let i = 0; i < totalDice; i++) {
 		rolls.push(criticalSuccess ? parsed.sides : die(parsed.sides));
@@ -200,11 +208,10 @@ export function rollWeaponDamage(
 		bonusSum += s;
 	}
 
-	const charMod = getModifier(getCharacteristicValue(char, weapon.parent));
-	const extraMod = weapon.skill === 'archery'
-		? (isAbilityLearned(char, 'archery_steady_hand2') ? 2 : isAbilityLearned(char, 'archery_steady_hand') ? 1 : 0)
-		: weapon.skill === 'two_handed' && attackType === 'strong' && isAbilityLearned(char, 'two_handed_crushing') ? 1 : 0;
-	const abilityDamage = getWeaponAbilityBonuses(char, weapon, attackType).damage + extraMod * charMod;
+ const charMod = weapon.noFastAttack||weapon.mechanical ? 0 : getModifier(getCharacteristicValue(char, weapon.parent));
+ const steady = weapon.skill==='archery' ? getTreeRankBonus(char,'AR','steady',[1,2]) : 0;
+ const extraMod = weapon.noFastAttack||weapon.mechanical ? 0 : weapon.skill==='archery' ? steady : weapon.skill==='two_handed' && attackType==='strong' && isAbilityLearned(char,'TH.power') ? 1 : 0;
+ const abilityDamage = getWeaponAbilityBonuses(char,weapon,attackType).damage + extraMod*charMod + (weapon.noFastAttack||weapon.mechanical ? steady*2 : 0);
 
 	return {
 		total: sum + bonusSum + charMod + abilityDamage,
@@ -297,7 +304,8 @@ export function rollAttack(
 ): SingleAttackRoll[] {
 	const { target } = getAttackTarget(char, weapon, attackType, targetArmor, useTwoHands);
 	const attacks: SingleAttackRoll[] = [];
-	const attackCount = getAttackCount(char, weapon, attackType);
+	const reason=getAttackBlockReason(char,weapon,attackType); if(reason) throw new Error(reason);
+	const attackCount = 1; // One k100 and one sign table for the entire series.
 
 	for (let i = 0; i < attackCount; i++) {
 		const roll = die(100);

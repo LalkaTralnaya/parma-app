@@ -16,7 +16,12 @@ export interface Character {
 	abilities: string[];
 	/** Нераспределённые очки умений, полученные при повышении уровня. */
 	abilityPoints?: number;
+	/** Особые формы подтверждаются по сюжету, а не покупкой корня дерева. */
+	storyForms?: Array<'werewolf' | 'vampire'>;
+	/** Заряды механического самострела; отсутствие записи означает заряженный. */
+	crossbowCharges?: Record<string, number>;
 	spells: string[];
+	spellUsesSinceLongRest?: string[];
 	useGraceForSpells: boolean;
 	heldSpell?: HeldSpell | null;
 		equipment: {

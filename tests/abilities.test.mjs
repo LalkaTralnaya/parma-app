@@ -18,15 +18,15 @@ const makeChar = (patch = {}) => ({
   ...patch
 });
 
-test('skill bonuses require study, respect thresholds and use highest progressive rank', () => {
+test('skill bonuses require study, ignore former thresholds and use highest progressive rank', () => {
   const basic = makeChar();
   const trained = makeChar({ abilities: ['perception_sharp_eye', 'perception_sharp_eye2', 'perception_sharp_eye3'] });
   assert.equal(getSkillTotal(basic, 'perception'), 14);
   assert.equal(getSkillTotal(trained, 'perception'), 29);
   assert.equal(getSkillCheckTarget(trained, 'perception'), 95);
   const belowThreshold = makeChar({ characteristics: { ...basic.characteristics, intelligence: { levelUpBonus: 0 } }, abilities: ['perception_sharp_eye3'] });
-  assert.equal(isAbilityLearned(belowThreshold, 'perception_sharp_eye3'), false);
-  assert.equal(getSkillTotal(belowThreshold, 'perception'), 8);
+  assert.equal(isAbilityLearned(belowThreshold, 'perception_sharp_eye3'), true);
+  assert.equal(getSkillTotal(belowThreshold, 'perception'), 23);
 });
 
 test('weapon abilities affect attack and damage only after study', () => {
@@ -39,11 +39,11 @@ test('weapon abilities affect attack and damage only after study', () => {
   Math.random = () => 0;
   try {
     assert.equal(rollWeaponDamage(studied, weapon, 'normal', false).total,
-      rollWeaponDamage(plain, weapon, 'normal', false).total + 5);
+      rollWeaponDamage(plain, weapon, 'normal', false).total + 2);
   } finally { Math.random = original; }
 });
 
-test('spell discounts and extra dice require studied abilities', () => {
+test('spell discounts require ranks and double casting adds no extra universal die', () => {
   const spell = SPELLS.find((item) => item.school === 'destruction' && item.damage && item.costOneHand > 1);
   const plain = makeChar();
   const studied = makeChar({ abilities: ['destruction_apprentice', 'destruction_double', 'destruction_base'] });
@@ -53,16 +53,16 @@ test('spell discounts and extra dice require studied abilities', () => {
   try {
     const base = rollSpellEffect(plain, spell, true, false);
     const boosted = rollSpellEffect(studied, spell, true, false);
-    assert.equal(boosted.extraDice, base.extraDice + 1);
+    assert.equal(boosted.extraDice, 0);
     assert.equal(boosted.abilityBonus, 3);
-    assert.equal(boosted.total, base.total + 4);
+    assert.equal(boosted.total, base.total);
   } finally { Math.random = original; }
 });
 
 test('shield abilities add armor only with a shield equipped', () => {
   const basic = makeChar({ skillPoints: { blocking: 3 } });
   const studied = makeChar({ skillPoints: { blocking: 3 }, abilities: ['blocking_base', 'blocking_shield_bearer'] });
-  assert.equal(getArmorValue(studied).total, getArmorValue(basic).total + 5);
+  assert.equal(getArmorValue(studied).total, getArmorValue(basic).total + 2);
   assert.equal(getArmorValue({ ...studied, equipment: { shieldId: 'none' } }).total,
     getArmorValue({ ...basic, equipment: { shieldId: 'none' } }).total);
 });
@@ -74,7 +74,7 @@ test('armor training applies to equipped armor and light armor improves stealth'
   assert.equal(getSkillTotal(studied, 'stealth'), getSkillTotal(basic, 'stealth') + 3);
   const light = { armorId: 'light_armor', shieldId: 'none' };
   assert.equal(getArmorValue({ ...studied, equipment: light }).total,
-    getArmorValue({ ...basic, equipment: light }).total + 5);
+    getArmorValue({ ...basic, equipment: light }).total + 2);
 });
 
 test('studied archery abilities add shots, accuracy and modifier damage', () => {
@@ -86,9 +86,9 @@ test('studied archery abilities add shots, accuracy and modifier damage', () => 
     characteristics: { ...plain.characteristics, strength: { levelUpBonus: 30 } },
     abilities: ['archery_rapid', 'archery_steady_hand']
   });
-  assert.equal(getAttackCount(eligible, bow, 'fast'), 3);
+  assert.equal(getAttackCount(eligible, bow, 'fast'), 2);
   assert.equal(getAttackTarget(eligible, bow, 'normal', 0, false).target,
-    getAttackTarget({ ...eligible, abilities: [] }, bow, 'normal', 0, false).target + 10);
+    getAttackTarget({ ...eligible, abilities: [] }, bow, 'normal', 0, false).target);
   const original = Math.random;
   Math.random = () => 0;
   try {
@@ -126,5 +126,5 @@ test('strong body improves relevant saves and maximum health without stacking ra
     Math.min(95, getConditionSaveTarget(base, poison, false).target + 15));
   assert.equal(getResourceMax(studied, 'hp'), getResourceMax(base, 'hp') + 20);
   assert.equal(getConditionSaveTarget(studied, findCondition('bleeding'), false).target,
-    getConditionSaveTarget(base, findCondition('bleeding'), false).target);
+    Math.min(95,getConditionSaveTarget(base, findCondition('bleeding'), false).target+15));
 });

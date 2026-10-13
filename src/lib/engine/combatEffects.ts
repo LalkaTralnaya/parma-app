@@ -72,8 +72,8 @@ export function effectSaveTarget(p:CombatParticipant,e:CombatEffect,live?:Charac
 	const stat = alternative && e.save.charB ? e.save.charB : e.save.charA;
 	const skill = alternative && e.save.charB ? e.save.skillB : e.save.skillA;
 	const base = skill ? getSkillCheckTarget(char,skill,mods) : getCharacteristicValue(char,stat,mods)+(mods.skills??0)+getCheckDifficulty(char);
-	const bonus = ['poisoned','diseased','exhausted'].includes(e.conditionId??'') && stat==='strength'
-		? Math.max(isAbilityLearned(char,'fortitude_strong_body')?5:0,isAbilityLearned(char,'fortitude_strong_body2')?10:0,isAbilityLearned(char,'fortitude_strong_body3')?15:0) : 0;
+	const bonus = 0; // Fortitude tree bonuses already enter the skill target once.
+
 	return Math.max(0,Math.min(95,base+(mods.saves??0)+e.penalty+bonus));
 }
 

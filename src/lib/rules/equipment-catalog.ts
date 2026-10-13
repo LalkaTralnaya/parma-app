@@ -3,6 +3,8 @@ import type { Item } from './items';
 import type { Weapon, Armor, Shield } from './weapons';
 
 export const EQUIPMENT_ITEMS: Item[] = [
+ {id:'double_crossbow',name:'Двухзарядный самострел',category:'weapon',price:180,description:'1к10; до двойной серии при изученном умении: 2 Бодрости, −5, 2к10 и постоянные бонусы один раз. Перезарядка обоих зарядов — действие.',durability:5},
+ {id:'crossbow_modification',name:'Модификация самострела на два заряда',category:'misc',price:60,description:'Работа ремесленника. Заменяет обычный самострел двухзарядным; оформление предмета после завершения работы.',durability:5},
   {
     "id": "dagger",
     "name": "Боевой нож",
@@ -184,7 +186,7 @@ export const EQUIPMENT_ITEMS: Item[] = [
     "name": "Самострел",
     "category": "weapon",
     "price": 60,
-    "description": "1к10 колющий. Перезарядка за действие; быстрая атака недоступна. ПР 5.",
+    "description": "1к10 колющий. Перезарядка за действие; обычные серии недоступны. ПР 5.",
     "durability": 5
   },
   {
@@ -908,6 +910,7 @@ export const EQUIPMENT_ITEMS: Item[] = [
   }
 ];
 export const EQUIPMENT_WEAPONS: Weapon[] = [
+ {id:'double_crossbow',name:'Двухзарядный самострел',category:'ranged',damageOneHand:'1d10',damageType:'piercing',parent:'dexterity',skill:'archery',ammunition:'bolt',mechanical:true,capacity:2,durability:5,description:'Два заряда, не более двойной серии. 2 Бодрости, −5, один к100 и 2к10; модификатор характеристики в урон не входит.'},
   {
     "id": "dagger",
     "name": "Боевой нож",
@@ -1163,7 +1166,7 @@ export const EQUIPMENT_WEAPONS: Weapon[] = [
     "damageType": "piercing",
     "parent": "dexterity",
     "skill": "archery",
-    "description": "1к10 колющий. Перезарядка за действие; быстрая атака недоступна. ПР 5.",
+    "description": "1к10 колющий. Перезарядка за действие; обычные серии недоступны. ПР 5.",
     "durability": 5,
     "ammunition": "bolt",
     "noFastAttack": true
