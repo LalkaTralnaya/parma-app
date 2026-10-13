@@ -33,6 +33,7 @@ export interface CombatParticipant {
 	statMods?: Record<string, number>;
 	characterSnapshot?: Character;
 	effects?: CombatEffect[];
+	itemTreatments?: Array<{ id: string; conditionId: string }>;
 	prone?: boolean;
 	grapple?: { sourceId: string; kind: 'grab'|'clinch'|'hold'; round: number; chokeSuccesses?: number; chokeRound?: number; };
 }

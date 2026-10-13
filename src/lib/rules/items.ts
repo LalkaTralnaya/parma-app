@@ -61,7 +61,7 @@ const LEGACY_ITEMS: Item[] = [
 	{ id: 'potion_health', name: 'Зелье здоровья', category: 'consumable', weight: 0.1, price: 5, stackable: true, consumable: true, restoresHp: true, useDice: '1к6+2', useEffect: 'Восстанавливает 1к6+2 здравия. Действие.' },
 	{ id: 'potion_heal', name: 'Зелье лечения (мастерское)', category: 'consumable', weight: 0.1, price: 30, stackable: true, consumable: true, restoresHp: true, useDice: '2к6+4', useEffect: 'Восстанавливает 2к6+4 здравия. Действие.' },
 	{ id: 'holy_water', name: 'Святая вода', category: 'consumable', weight: 0.2, price: 5, stackable: true, consumable: true, useEffect: '1к6 урона излучением нежити. Метательное, даль 4 сажени.' },
-	{ id: 'antidote', name: 'Противоядие', category: 'consumable', weight: 0.1, price: 10, stackable: true, consumable: true, curesCondition: 'poison', useEffect: 'Снимает состояние Отрава.' },
+	{ id: 'antidote', name: 'Противоядие', category: 'consumable', weight: 0.1, price: 10, stackable: true, consumable: true, curesCondition: 'poisoned', useEffect: 'Снимает состояние Отрава.' },
 	{ id: 'torch', name: 'Факел', category: 'consumable', weight: 0.3, price: 1, stackable: true, description: 'Свет 4 сажени, горит 1 час' },
 	{ id: 'oil_flask', name: 'Фляга масла', category: 'consumable', weight: 0.5, price: 3, stackable: true, consumable: true, description: 'Для ламп, разжигания или метания (1к4 огня)' },
 	{ id: 'rations', name: 'Сухой паёк', category: 'consumable', weight: 0.3, price: 1, stackable: true, consumable: true, description: 'Еда на 1 день' },

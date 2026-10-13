@@ -1,4 +1,6 @@
 <script lang="ts">
+ import Dialog from '$lib/components/Dialog.svelte';
+ import { applyItemTreatments, treatWithItem } from '$lib/engine/itemTreatment';
  import { playerText } from '$lib/ui/player-copy';
   import SpellInfo from '$lib/components/SpellInfo.svelte';
   import SpellRules from '$lib/components/SpellRules.svelte';
@@ -48,6 +50,7 @@
 		findParticipantBySource,
 		setParticipantInitiative,
 		subscribeCharacterUpdates,
+		notifyCharacterUpdate,
 		type CombatState,
 	} from '../../../lib/sync/combat';
 
@@ -56,7 +59,7 @@
 import { getConditionModifiers, getConditionSaveTarget as calculateConditionSaveTarget, rollConditionsDotDamage } from '../../../lib/engine/conditions';
 	import { adjustDecayPoints, canUseDecayPower, canUseGraceWithDecay, getAvailableDecayPowers, getDecayStage, markDecayPowerUsed, resetDecayPowers } from '../../../lib/engine/decay';
 	import { PERSONALITY_TRAITS, IDEALS, BONDS, FLAWS, findOption } from '../../../lib/rules/personality';
-	import { ITEMS, CATEGORY_LABEL, type ItemCategory } from '../../../lib/rules/items';
+	import { ITEMS } from '../../../lib/rules/items';
 	import { BACKGROUNDS } from '../../../lib/rules/backgrounds';
 	import { CHARACTERISTICS } from '../../../lib/rules/characteristics';
 	import { SKILLS } from '../../../lib/rules/skills';
@@ -84,18 +87,17 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		listInventory,
 		getInventoryWeapons,
 		clearUnavailableWeapon,
-		addItemToInventory,
 		removeItemFromInventory,
 		adjustItemQuantity,
 		getTotalWeight,
 		normalizeMoney,
-		canAfford,
-		spendSilver,
 	} from '../../../lib/engine/inventory';
 
 	// Персонаж
 	import {
 		getCharacter,
+		listCharacters,
+		saveCharacters,
 		deleteCharacter,
 		saveCharacter,
 		spendResource,
@@ -227,10 +229,14 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	} | null>(null);
 
 	// Инвентарь
-	let showItemPicker = $state(false);
-	let itemFilter = $state<ItemCategory | 'all'>('all');
-	let itemSearch = $state('');
 	let selectedAmmoId = $state('');
+ let treatmentItem = $state<string | null>(null);
+ let treatmentName = $state('');
+ let treatmentTarget = $state('');
+ let treatmentTargets = $state<Array<{id:string;name:string;characterId?:string;participantId?:string}>>([]);
+ let treatmentBusy = $state(false);
+ let itemNotice = $state('');
+
 
 	// Состояния
 	let showConditionPicker = $state(false);
@@ -260,6 +266,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 
 		// Начальное состояние боя из localStorage
 		combat = getCombat();
+  if (combat) await handleRoomCombatUpdate(combat, false);
 		unsubLocalCombat = subscribeCombat((state) => { if (state) void handleRoomCombatUpdate(state, false); else combat = null; });
 
 		// Если мы в комнате — синхронизация боя через Supabase
@@ -269,7 +276,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 				if (room) {
 					// Первичная загрузка состояния
 					const remote = await getRoomCombatState(room.id);
-					if (remote) combat = remote;
+					if (remote) await handleRoomCombatUpdate(remote);
 					activeRequest = await getActiveRoomRequest(room.id);
 					unsubRequests = subscribeToRoomRequests(room.id, (req) => {
 						activeRequest = req;
@@ -308,10 +315,16 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		if (persistLocal) saveCombat(newState);
 
 		const s = newState;
-		if (!s.active || !char) return;
+		if (!char) return;
 
 		const myP = findParticipantBySource(s, char.id);
 		if (!myP) return;
+  const treated = applyItemTreatments(char, myP);
+  if (treated !== char) {
+   await saveCharacter(treated);
+   char = treated;
+  }
+  if (!s.active) return;
 
 		// Первая синхронизация — запоминаем, что видим
 		if (lastCombatHp === null) {
@@ -1346,14 +1359,6 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		await saveCharacter($state.snapshot(char) as Character);
 	}
 
-	async function addItem(itemId: string) {
-		if (!char) return;
-		const item = ITEMS.find((i) => i.id === itemId);
-		const qty = item?.bundleQuantity ?? 1;
-		char = addItemToInventory(char, itemId, qty);
-		await persistInventory();
-	}
-
 	async function removeItem(instanceId: string) {
 		if (!char) return;
 		char = removeItemFromInventory(char, instanceId);
@@ -1371,6 +1376,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		const entry = inventoryEntries.find((e) => e.instance.instanceId === instanceId);
 		if (!entry) return;
 		const item = entry.item;
+  if (item.curesCondition) { await chooseTreatmentTarget(instanceId, item.name); return; }
 
 		if (item.restoresHp && item.useDice) {
 			const m = item.useDice.match(/^(\d+)[кd](\d+)([+-]\d+)?$/i);
@@ -1416,6 +1422,40 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		await persistInventory();
 	}
 
+ async function chooseTreatmentTarget(instanceId: string, name: string) {
+  if (!char || treatmentBusy) return;
+  treatmentBusy = true; itemNotice = '';
+  try {
+   const characters = await listCharacters();
+   const targets: Array<{id:string;name:string;characterId?:string;participantId?:string}> = characters.map(c => ({id:c.id,name:c.name || 'Безымянный',characterId:c.id,participantId:combat?.participants.find(p=>p.isPlayer && p.sourceId===c.id)?.id}));
+   if (!targets.some(t=>t.id===char!.id)) targets.unshift({id:char.id,name:char.name || 'Безымянный',characterId:char.id,participantId:myCombatParticipant?.id});
+   for (const p of combat?.participants.filter(p=>p.isPlayer) ?? []) {
+    if (!targets.some(t=>t.participantId===p.id)) targets.push({id:`combat:${p.id}`,name:p.name,characterId:p.sourceId,participantId:p.id});
+   }
+   treatmentTargets = targets; treatmentTarget = char.id; treatmentName = name; treatmentItem = instanceId;
+  } catch { itemNotice = 'Не удалось загрузить цели для лечения.'; }
+  finally { treatmentBusy = false; }
+ }
+ async function useTreatment() {
+  if (!char || !treatmentItem || treatmentBusy) return;
+  treatmentBusy = true; itemNotice = '';
+  try {
+   const target = treatmentTargets.find(t=>t.id===treatmentTarget);
+   if (!target) throw new Error('Выберите цель.');
+   const self = target.characterId === char.id;
+   const recipient = self ? $state.snapshot(char) as Character : target.characterId ? await getCharacter(target.characterId) : null;
+   const result = treatWithItem($state.snapshot(char) as Character, treatmentItem, recipient ?? null, combat, target.participantId ?? null, crypto.randomUUID());
+   await saveCharacters(result.recipient && recipient && !self ? [result.actor, result.recipient] : [result.actor]);
+   char = result.actor;
+   if (result.recipient && recipient && !self) notifyCharacterUpdate(result.recipient.id);
+   if (result.state) await writeCombatState(result.state);
+   itemNotice = `${target.name}: снято состояние «${findCondition(result.conditionId)?.name ?? result.conditionId}». ${treatmentName} использован.`;
+   publishToActiveRoom(char.name || 'Безымянный', 'effect', {label:treatmentName,details:itemNotice});
+   treatmentItem = null;
+  } catch (cause) { itemNotice = cause instanceof Error ? cause.message : 'Не удалось применить предмет.'; }
+  finally { treatmentBusy = false; }
+ }
+
 	async function adjustMoney(type: 'copper' | 'silver' | 'gold', delta: number) {
 		if (!char) return;
 		if (!char.money) char.money = { copper: 0, silver: 0, gold: 0 };
@@ -1427,19 +1467,6 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	async function normalizeMoneyNow() {
 		if (!char) return;
 		char.money = normalizeMoney(char.money ?? { copper: 0, silver: 0, gold: 0 });
-		await persistInventory();
-	}
-
-	async function buyItem(itemId: string, priceSilver: number) {
-		if (!char) return;
-		if (!canAfford(char, priceSilver)) {
-			alert(`Недостаточно денег. Нужно ${priceSilver} серебряников.`);
-			return;
-		}
-		const item = ITEMS.find((i) => i.id === itemId);
-		const qty = item?.bundleQuantity ?? 1;
-		char.money = spendSilver(char, priceSilver);
-		char = addItemToInventory(char, itemId, qty);
 		await persistInventory();
 	}
 
@@ -1572,8 +1599,6 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	// ────────────────────────────────────────────
 	// ПРОКРУТКА (функции для HTML, объявленные ниже — на случай если Svelte ругается)
 	// ────────────────────────────────────────────
-	function openItemPicker() { showItemPicker = true; }
-	function closeItemPicker() { showItemPicker = false; }
 </script>
 <style>
 	.roll-result-panel {
@@ -2233,7 +2258,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 								<option value={w.id}>{w.name}</option>
 							{/each}
 						</select>
-						{#if inventoryWeapons.length === 0}<p class="text-xs text-gray-500 mt-1">В инвентаре нет оружия. <a href="#inventory" class="underline">Добавить оружие</a></p>{/if}
+						{#if inventoryWeapons.length === 0}<p class="text-xs text-gray-500 mt-1">В инвентаре нет оружия. <a href={`/lavka?character=${encodeURIComponent(char.id)}`} class="underline">Купить оружие в лавке</a></p>{/if}
 					</div>
 					<div>
 						<label for="field-4" class="block text-xs text-gray-500 mb-1">Доспех</label>
@@ -2947,73 +2972,13 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 				<span>Предметов: <strong>{inventoryEntries.length}</strong></span>
 			</div>
 
-			<!-- Кнопка добавления -->
-			<button
-				class="w-full px-4 py-2 border-2 border-dashed rounded hover:bg-gray-50 text-sm mb-3"
-				onclick={() => (showItemPicker = !showItemPicker)}>
-				{showItemPicker ? '✕ Закрыть выбор' : '+ Добавить предмет'}
-			</button>
+			<a class="block w-full px-4 py-3 border rounded text-center mb-3" href={`/lavka?character=${encodeURIComponent(char.id)}`}>В лавку · купить предметы</a>
 
-			<!-- Выбор предмета -->
-			{#if showItemPicker}
-				<div class="border rounded-lg p-4 bg-blue-50 mb-3">
-					<div class="flex gap-2 mb-3 flex-wrap">
-						<button
-							class="px-2 py-1 text-xs rounded border {itemFilter === 'all' ? 'bg-blue-600 text-white' : 'bg-white'}"
-							onclick={() => (itemFilter = 'all')}>Все</button>
-						{#each Object.entries(CATEGORY_LABEL) as [cat, label]}
-							<button
-								class="px-2 py-1 text-xs rounded border {itemFilter === cat ? 'bg-blue-600 text-white' : 'bg-white'}"
-								onclick={() => (itemFilter = cat as ItemCategory)}>{label}</button>
-						{/each}
-					</div>
-					<label for="equipment-search" class="block text-xs text-gray-500 mb-1">Поиск предметов</label>
-					<input id="equipment-search" bind:value={itemSearch} type="search" placeholder="Название или свойство" class="w-full px-3 py-2 border rounded mb-3" />
-					<div class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-96 overflow-y-auto">
-						{#each ITEMS.filter((i) => (itemFilter === 'all' || i.category === itemFilter) && (i.name + ' ' + (i.description ?? '')).toLocaleLowerCase('ru').includes(itemSearch.trim().toLocaleLowerCase('ru'))) as item}
-							{@const price = item.price ?? 0}
-							{@const affordable = char && canAfford(char, price)}
-							<div class="text-left border rounded p-2 bg-white/50 text-sm">
-								<div class="font-medium">{item.name}</div>
-								{#if item.description}
-									<div class="text-xs text-gray-500">{item.description}</div>
-								{/if}
-								{#if price > 0}
-									<div class="text-xs text-gray-500 mt-1">
-										Цена: <strong>{price < 1 ? `${Math.round(price * 100)} м.` : `${price} с.`}</strong>
-										{#if item.bundleQuantity && item.bundleQuantity > 1}
-											<span class="text-blue-600">за упаковку {item.bundleQuantity} шт.</span>
-										{/if}
-										{#if !affordable}
-											<span class="text-red-600 ml-1">не хватает</span>
-										{/if}
-									</div>
-								{/if}
-								<div class="flex gap-1 mt-2">
-									<button
-										class="px-2 py-1 text-xs border rounded hover:bg-gray-100"
-										onclick={() => { addItem(item.id); showItemPicker = false; }}>
-										Взять
-									</button>
-									{#if price > 0}
-										<button
-											class="px-2 py-1 text-xs rounded {affordable ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}"
-											disabled={!affordable}
-											onclick={async () => { await buyItem(item.id, price); showItemPicker = false; }}>
-											Купить
-										</button>
-									{/if}
-								</div>
-							</div>
-						{/each}
-					</div>
-				</div>
-			{/if}
-
+   {#if itemNotice && !treatmentItem}<p role="status" class="mb-3">{itemNotice}</p>{/if}
 			<!-- Список инвентаря -->
 			{#if inventoryEntries.length === 0}
 				<p class="text-sm text-gray-500 text-center py-4 border-2 border-dashed rounded">
-					Пусто. Нажмите «+ Добавить предмет».
+					Инвентарь пуст. Предметы можно купить в лавке.
 				</p>
 			{:else}
 				<div class="border rounded-lg bg-white divide-y">
@@ -3040,7 +3005,8 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 							{#if entry.item.consumable}
 								<button
 									class="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
-									onclick={() => useItem(entry.instance.instanceId)}>
+									disabled={treatmentBusy}
+          onclick={() => useItem(entry.instance.instanceId)}>
 									Использовать
 								</button>
 							{/if}
@@ -3184,3 +3150,13 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	{/if}
 
 </main>
+
+{#if treatmentItem}
+ <Dialog label="Применить предмет к цели" onclose={() => { if (!treatmentBusy) treatmentItem = null; }}>
+  <h2 class="text-xl font-semibold mb-3">{treatmentName}</h2>
+  <p class="mb-3">Снимает соответствующее состояние у выбранной цели. Предмет расходуется из вашего инвентаря.</p>
+  <label class="block mb-3">Цель лечения<select class="block w-full border rounded p-2" bind:value={treatmentTarget} disabled={treatmentBusy}>{#each treatmentTargets as target}<option value={target.id}>{target.name}{target.characterId === char?.id ? ' (на себя)' : ' (союзник)'}</option>{/each}</select></label>
+  <div class="flex gap-2"><button class="border rounded px-3 py-2" disabled={treatmentBusy} onclick={useTreatment}>{treatmentBusy ? 'Сохраняем…' : 'Применить'}</button><button class="border rounded px-3 py-2" disabled={treatmentBusy} onclick={() => treatmentItem = null}>Отмена</button></div>
+  {#if itemNotice}<p role="alert" class="mt-3">{itemNotice}</p>{/if}
+ </Dialog>
+{/if}

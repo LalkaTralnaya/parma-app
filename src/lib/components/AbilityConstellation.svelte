@@ -5,8 +5,10 @@
  import { getAbilityBlockReason, isAbilityLearned } from '$lib/engine/character';
  import { layoutAbilities } from '$lib/ui/ability-layout';
  let { nodes, treeId, character, saving, onstudy, onapply }: { nodes: Ability[]; treeId: string; character: Character; saving: boolean; onstudy: (id: string) => void | Promise<void>; onapply?: (text: string) => void } = $props();
- let selectedId = $state(''); let zoom = $state(100); let pendingId = $state(''); let circleNotice = $state('');
+ let selectedId = $state(''); let zoom = $state<number | null>(null); let viewportWidth = $state(0); let pendingId = $state(''); let circleNotice = $state('');
  const layout = $derived(layoutAbilities(nodes));
+ const autoZoom = $derived(Math.max(65, Math.min(85, viewportWidth > 0 ? Math.floor(viewportWidth / layout.width * 20) * 5 : 85)));
+ const displayedZoom = $derived(zoom ?? autoZoom);
  const selected = $derived(nodes.find(n => n.id === selectedId) ?? nodes[0]);
  const reason = $derived(selected ? getAbilityBlockReason(character, selected.id) : null);
  const learnedSelected = $derived(selected ? isAbilityLearned(character, selected.id) : false);
@@ -32,12 +34,13 @@
   <span><i class="legend-mark locked"></i> Не изучено · закрыто</span>
  </div>
  <div class="constellation-tools">
-  <label>Масштаб <input type="range" min="100" max="150" step="10" bind:value={zoom} aria-label="Масштаб созвездия"/> <span>{zoom}%</span></label>
+  <label>Масштаб <input type="range" min="50" max="150" step="5" value={displayedZoom} oninput={(event) => zoom = Number(event.currentTarget.value)} aria-label="Масштаб созвездия"/> <span>{displayedZoom}%</span></label>
+  <button type="button" class="border rounded px-2 py-1" onclick={() => zoom = null}>Автомасштаб</button>
   <span>Кружок с + — изучить за 1 очко · название — описание</span>
  </div>
- <div class="constellation-scroll" role="region" aria-label="Созвездие умений. Можно прокручивать горизонтально">
-  <div class="constellation-size" style:width={`${layout.width * zoom / 100}px`} style:height={`${layout.height * zoom / 100}px`}>
-   <div class="constellation-map" style:width={`${layout.width}px`} style:height={`${layout.height}px`} style:transform={`scale(${zoom / 100})`}>
+ <div class="constellation-scroll" bind:clientWidth={viewportWidth} role="region" aria-label="Созвездие умений. Можно прокручивать горизонтально">
+  <div class="constellation-size" style:width={`${layout.width * displayedZoom / 100}px`} style:height={`${layout.height * displayedZoom / 100}px`}>
+   <div class="constellation-map" style:width={`${layout.width}px`} style:height={`${layout.height}px`} style:transform={`scale(${displayedZoom / 100})`}>
     <svg class="constellation-lines" width={layout.width} height={layout.height} aria-hidden="true">
      <g>
       {#each layout.edges as edge}

@@ -8,6 +8,7 @@
   let { children } = $props();
   const links = [
     { href: '/', label: 'Персонажи', icon: 'people' },
+    { href: '/lavka', label: 'Лавка', icon: 'bag' },
     { href: '/adventures', label: 'Приключения', icon: 'compass' },
     { href: '/gm', label: 'Сказитель', icon: 'dice' },
     { href: '/gm/combat', label: 'Бой', icon: 'sword' },

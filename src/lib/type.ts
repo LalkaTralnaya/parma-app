@@ -31,7 +31,9 @@ export interface Character {
 	};
 	inventory: InventoryItem[];
 	money: Money;
-		conditions: Array<{
+		/** IDs of applied item treatments prevent repeated room messages from curing a new wound. */
+	appliedItemTreatments?: string[];
+	conditions: Array<{
 		id: string;
 		roundsLeft: number | null;
 		stacks?: number;

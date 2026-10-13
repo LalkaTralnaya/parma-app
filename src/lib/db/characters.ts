@@ -76,15 +76,22 @@ export async function getCharacter(id: string): Promise<Character | undefined> {
 	return migrateCharacter(found);
 }
 
+export async function saveCharacters(characters: Character[]): Promise<void> {
+ const records = characters.map(char => ({ ...characterSnapshot(char), updatedAt: Date.now() }));
+ const { db, userId } = await activeDb();
+ // Applying aid to another local hero spends the item and saves both heroes atomically.
+ await db.transaction('rw', db.characters, db.deletions, async () => {
+  await db.characters.bulkPut(records);
+  await db.deletions.bulkDelete(records.map(char => char.id));
+ });
+ characters.forEach((char, i) => { char.updatedAt = records[i].updatedAt; });
+ if (userId) void import('$lib/sync/cloudCharacters').then(({ queueCharacterSync }) => {
+  for (const record of records) queueCharacterSync(record, userId);
+ }).catch(console.error);
+}
+
 export async function saveCharacter(char: Character): Promise<void> {
-	// Capture the submitted state before awaiting auth; later UI edits must not change this write.
-	const record = characterSnapshot(char);
-	record.updatedAt = Date.now();
-	const { db, userId } = await activeDb();
-	await db.characters.put(record);
-	await db.deletions.delete(record.id);
-	char.updatedAt = record.updatedAt;
-	if (userId) void import('$lib/sync/cloudCharacters').then(({ queueCharacterSync }) => queueCharacterSync(record, userId)).catch(console.error);
+ await saveCharacters([char]);
 }
 
 export async function deleteCharacter(id: string): Promise<void> {
