@@ -25,11 +25,19 @@ export function addItemToInventory(
 	itemId: string,
 	qty: number = 1
 ): Character {
-	const updated = JSON.parse(JSON.stringify(char)) as Character;
+	let updated = JSON.parse(JSON.stringify(char)) as Character;
 	if (!updated.inventory) updated.inventory = [];
 
 	const item = getItem(itemId);
 	if (!item) return updated;
+ if (item.contents) {
+  for (const component of item.contents) {
+   const child = getItem(component.itemId);
+   if (!child || child.contents || !Number.isInteger(component.quantity) || component.quantity <= 0) throw new Error('Неверный состав подборки предметов.');
+   updated = addItemToInventory(updated, component.itemId, component.quantity * qty);
+  }
+  return updated;
+ }
 
 	if (item.stackable) {
 		const existing = updated.inventory.find((i) => i.itemId === itemId);

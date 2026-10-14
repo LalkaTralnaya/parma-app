@@ -1,11 +1,16 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { listCustomAdventures } from '$lib/db/customAdventures';
+	import type { CustomAdventure } from '$lib/engine/customAdventures';
 	import { ADVENTURES } from '$lib/rules/adventures';
 	import Icon from '$lib/components/Icon.svelte';
 	import { supabase } from '$lib/supabase/client';
 	import { listAdventureProgress, type AdventureProgress } from '$lib/sync/adventureProgress';
 	let progressBySlug = $state<Record<string, AdventureProgress>>({});
 	let progressError = $state('');
+	let custom = $state<CustomAdventure[]>([]);
+	let customError = $state('');
+	async function refreshCustom(){try{custom=await listCustomAdventures();customError='';}catch{custom=[];customError='Не удалось загрузить свои приключения.';}}
 	let loadVersion = 0;
 	async function refreshProgress() {
 		const version = ++loadVersion;
@@ -21,7 +26,8 @@
 	}
 	onMount(() => {
 		void refreshProgress();
-		const { data } = supabase.auth.onAuthStateChange(() => setTimeout(() => { void refreshProgress(); }, 0));
+		void refreshCustom();
+		const { data } = supabase.auth.onAuthStateChange(() => setTimeout(() => { void refreshProgress(); void refreshCustom(); }, 0));
 		return () => data.subscription.unsubscribe();
 	});
 </script>
@@ -36,12 +42,14 @@
 		<div class="hero-copy">
 			<span class="eyebrow"><Icon name="book" size={18} /> Истории для игрового стола</span>
 			<h1>Приключения</h1>
-			<p>Выберите готовую историю, откройте её план и ведите игроков от завязки до развязки.</p>
+			<p>Выберите готовую историю или создайте свою: с картами, героями и врагами для игры.</p><a class="button primary" href="/adventures/create">Создать своё приключение <Icon name="plus" size={18}/></a>
 		</div>
 		<img src="/forest.svg" alt="" width="540" height="330" />
 	</header>
 
-	<section aria-labelledby="catalog-title" class="catalog">
+	{#if customError}<p role="alert">{customError}</p>{/if}
+ {#if custom.length}<section class="catalog"><h2>Свои приключения <span class="count">{custom.length}</span></h2><p>Сохранены на этом устройстве в текущем аккаунте.</p><div class="adventure-grid">{#each custom as record (record.id)}<article class="adventure-card"><div class="card-art"><img src={record.adventure.map.src} alt=""/></div><div class="card-body"><span class="card-label">Своя история</span><h3>{record.adventure.title}</h3><p>{record.adventure.summary}</p><div class="facts"><span>{record.adventure.scenes.length} сцен</span><span>{record.maps.length} карт</span><span>{record.readyCharacters.length} героев</span><span>{record.enemies.reduce((sum,e)=>sum+e.count,0)} врагов</span></div><a class="button primary" href={`/adventures/custom/${record.id}`}>Открыть приключение</a><a class="button" href={`/adventures/custom/${record.id}/edit`}>Редактировать</a></div></article>{/each}</div></section>{/if}
+ <section aria-labelledby="catalog-title" class="catalog">
 		{#if progressError}<p class="progress-error" role="alert">{progressError}</p>{/if}
 		<div class="section-heading">
 			<div>

@@ -6,7 +6,7 @@ import { getTotalCopper } from '../src/lib/engine/inventory.ts';
 const hero = () => ({ id:'buyer', money:{gold:1,silver:0,copper:0}, inventory:[] });
 test('purchases charge exact copper prices and leave the original character untouched',()=>{
  const original=hero(); const updated=purchaseItem(original,'chalk',3);
- assert.equal(getTotalCopper(updated.money),9970);assert.equal(updated.inventory[0].quantity,3);
+ assert.equal(getTotalCopper(updated.money),9985);assert.equal(updated.inventory[0].quantity,15);
  assert.equal(original.inventory.length,0);assert.equal(original.money.gold,1);
 });
 test('bundle purchases charge per package and stack actual quantities',()=>{

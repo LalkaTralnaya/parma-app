@@ -13,11 +13,11 @@
  let error = $state('');
  let notice = $state('');
  let query = $state('');
- let category = $state<ItemCategory | 'all'>('all');
+ let category = $state<ItemCategory | 'all' | 'road'>('all');
  let bundles = $state(1);
  const selected = $derived(characters.find(c => c.id === selectedId));
- const filtered = $derived(ITEMS.filter(i => (category === 'all' || i.category === category) && `${i.name} ${i.description ?? ''}`.toLocaleLowerCase('ru').includes(query.trim().toLocaleLowerCase('ru'))));
- function priceLabel(price: number) { return price < 1 ? `${Math.round(price * 100)} м.` : `${price} с.`; }
+ const filtered = $derived(ITEMS.filter(i => (category === 'all' || (category === 'road' ? Boolean(i.equipmentGroup) : i.category === category)) && `${i.name} ${i.description ?? ''}`.toLocaleLowerCase('ru').includes(query.trim().toLocaleLowerCase('ru'))));
+ function priceLabel(price: number) { const copper = Math.round(price * 100); const silver = Math.floor(copper / 100); const remainder = copper % 100; return silver ? `${silver} с.${remainder ? ` ${remainder} м.` : ''}` : `${copper} м.`; }
  async function load() {
   try {
    characters = await listCharacters();
@@ -37,7 +37,7 @@
    await saveCharacter(updated);
    characters = characters.map(c => c.id === id ? updated : c);
    const item = ITEMS.find(i => i.id === itemId)!;
-   notice = `${updated.name || 'Безымянный'}: ${item.name} × ${(item.bundleQuantity ?? 1) * bundles} — добавлено в инвентарь.`;
+   notice = `${updated.name || 'Безымянный'}: ${item.name} × ${(item.bundleQuantity ?? 1) * bundles} — ${item.contents ? 'состав добавлен отдельными предметами' : 'добавлено в инвентарь'}.`;
   } catch (cause) { error = cause instanceof Error ? cause.message : 'Не удалось сохранить покупку. Попробуйте ещё раз.'; }
   finally { busy = false; }
  }
@@ -57,7 +57,7 @@
  {#if notice}<p class="feedback" role="status">{notice}</p>{/if}
  <div class="filters">
   <label>Поиск предметов<input type="search" bind:value={query} placeholder="Название или свойство" /></label>
-  <label>Категория<select bind:value={category}><option value="all">Все предметы</option>{#each Object.entries(CATEGORY_LABEL) as [id, label]}<option value={id}>{label}</option>{/each}</select></label>
+  <label>Категория<select bind:value={category}><option value="all">Все предметы</option><option value="road">Дорожное и полезное снаряжение</option>{#each Object.entries(CATEGORY_LABEL) as [id, label]}<option value={id}>{label}</option>{/each}</select></label>
   <label>Количество упаковок<input type="number" min="1" max="99" step="1" bind:value={bundles} disabled={busy}/></label>
  </div>
  <p class="catalog-count">Предметов: {filtered.length} · 100 медяков = 1 серебряник · 100 серебряников = 1 златник</p>
@@ -68,7 +68,7 @@
   {@const total = (item.price ?? 0) * (quantityValid ? bundles : 1)}
   {@const affordable = selected && priced && quantityValid && canAfford(selected, total)}
   <article class="item-card">
-   <span class="item-category">{CATEGORY_LABEL[item.category]}</span><h2>{item.name}</h2>
+   <span class="item-category">{item.equipmentGroup ?? CATEGORY_LABEL[item.category]}</span><h2>{item.name}</h2>
    {#if item.description}<p class="description">{item.description}</p>{/if}
    {#if item.useEffect && item.useEffect !== item.description}<p class="effect">{item.useEffect}</p>{/if}
    <div class="item-facts">{#if item.weight !== undefined}<span>Вес: {item.weight} пуд.</span>{/if}{#if (item.bundleQuantity ?? 1) > 1}<span>В упаковке: {item.bundleQuantity} шт.</span>{/if}</div>

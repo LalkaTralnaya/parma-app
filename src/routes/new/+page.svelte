@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { page } from '$app/state';
+	import { getCustomAdventure, saveCustomAdventure } from '$lib/db/customAdventures';
+	import { getResourceMax } from '$lib/engine/character';
 	import { goto } from '$app/navigation';
 	import { RACES } from '../../lib/rules/races';
 	import { SKILLS } from '../../lib/rules/skills';
@@ -51,8 +54,9 @@
 		char.backgroundId = backgroundId;
 		char.skillPoints = { ...skillPoints };
 		giveStartingInventory(char, backgroundId);
-		await saveCharacter(char);
-		await goto(`/char/${char.id}`);
+  const adventureId=page.url.searchParams.get('adventure');
+  if(adventureId){const record=await getCustomAdventure(adventureId);if(!record)throw new Error('Приключение не найдено.');for(const resource of Object.keys(char.currentResources))char.currentResources[resource]=getResourceMax(char,resource);await saveCharacter(char);record.readyCharacters.push(char);await saveCustomAdventure(record);await goto(`/adventures/custom/${adventureId}/edit`);}
+  else {await saveCharacter(char);await goto(`/char/${char.id}`);}
 		} catch {
 			error = 'Не удалось сохранить персонажа. Проверьте доступ к хранилищу браузера и повторите попытку.';
 		} finally { saving = false; }
@@ -61,8 +65,8 @@
 
 <main class="max-w-3xl mx-auto p-6 space-y-6">
 	<header class="flex justify-between items-center">
-		<h1 class="text-3xl font-bold">Новый персонаж</h1>
-		<a href="/" class="px-3 py-2 border rounded hover:bg-gray-50">← Отмена</a>
+		<h1 class="text-3xl font-bold">{page.url.searchParams.get("adventure") ? "Герой для приключения" : "Новый персонаж"}</h1>
+		<a href={page.url.searchParams.get("adventure") ? `/adventures/custom/${page.url.searchParams.get("adventure")}/edit` : "/"} class="px-3 py-2 border rounded hover:bg-gray-50">← Отмена</a>
 	</header>
 	<p class="notice">Имя, происхождение и первые умения — начало вашей истории. Выберите расу и предысторию, затем распределите до 10 очков навыков.</p>
 
