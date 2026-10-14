@@ -40,3 +40,10 @@ test('SMTP success requires acceptance by the fixed recipient; rejection and tra
   await assert.rejects(sendFeedback(validateFeedback(input()),{}),/SMTP_NOT_CONFIGURED/);
  } finally {nodemailer.createTransport=original;}
 });
+
+test('Gmail application password ignores display spaces while other SMTP passwords remain unchanged',()=>{
+ const base={SMTP_USER:'user',FEEDBACK_FROM:'parma@example.com',SMTP_PASS:'abcd efgh ijkl mnop'};
+ assert.equal(smtpSettings({...base,SMTP_HOST:'smtp.gmail.com'}).transport.auth.pass,'abcdefghijklmnop');
+ assert.equal(smtpSettings({...base,SMTP_HOST:'smtp.example.com'}).transport.auth.pass,'abcd efgh ijkl mnop');
+ assert.equal(smtpSettings({...base,SMTP_HOST:'smtp.gmail.com',SMTP_PASS:'   '}),null);
+});
