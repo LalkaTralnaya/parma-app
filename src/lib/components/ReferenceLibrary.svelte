@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { page } from '$app/state';
   import { playerText, playerTable } from '$lib/ui/player-copy';
   type Block = { kind: 'paragraph'; text: string; level?: number } | { kind: 'table'; rows: string[][] };
   type Entry = { id: string; title: string; category: string; blocks: Block[]; source?: string };
@@ -19,7 +20,7 @@
   </nav>
   <p class="text-sm text-gray-500" role="status">Разделов: {visible.length}</p>
   {#each visible as entry (entry.id)}
-    <details class="border rounded-lg bg-white" open={Boolean(query.trim())}>
+    <details id={entry.id} class="border rounded-lg bg-white" open={Boolean(query.trim()) || page.url.hash === `#${entry.id}`}>
       <summary class="p-4 cursor-pointer font-semibold"><span class="text-xs text-gray-500 mr-2">{entry.category}</span>{entry.title}</summary>
       <div class="px-4 pb-4 space-y-3">
         {#each entry.blocks as block}

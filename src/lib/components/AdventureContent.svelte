@@ -2,6 +2,7 @@
 	import { onMount, type Snippet } from 'svelte';
 	import type { Adventure } from '$lib/rules/adventures';
 	import Icon from '$lib/components/Icon.svelte';
+	import ReferenceBlocks from '$lib/components/ReferenceBlocks.svelte';
 	import { supabase } from '$lib/supabase/client';
 	import { getAdventureProgress, saveAdventureProgress, type AdventureProgress } from '$lib/sync/adventureProgress';
 	let { adventure, extras }: { adventure: Adventure; extras?: Snippet } = $props();
@@ -185,6 +186,9 @@
 						<h2 id="ending-title">Развязки</h2><ul>{#each adventure.endings as ending}<li>{ending}</li>{/each}</ul>
 						<h3>Награда</h3><ul>{#each adventure.rewards as reward}<li>{reward}</li>{/each}</ul>
 					</section>
+					{#if adventure.guide?.length}
+					<section class="panel" aria-labelledby="book-guide-title"><h2 id="book-guide-title">Полный текст приключения</h2><p>Подробности обряда, раздаточные тексты, прощание и возможное продолжение для Сказителя.</p>{#each adventure.guide as entry (entry.id)}<details class="panel"><summary>{entry.title}</summary><ReferenceBlocks blocks={entry.blocks} /></details>{/each}</section>
+					{/if}
 				</div>
 			</details>
 		</div>

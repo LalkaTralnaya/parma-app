@@ -237,6 +237,7 @@
 </script>
 
 <main class="max-w-6xl mx-auto p-6">
+<nav class="flex flex-wrap gap-3 mb-4" aria-label="Руководство Сказителя"><a href="/mechanics#personal-story">Личная история и награды</a><a href="/lore#koschei-rules-1">Тринадцать масок Кощея</a></nav>
 	<header class="flex justify-between items-center mb-6 flex-wrap gap-3">
 		<div>
 			<h1 class="text-3xl font-bold">Режим сказителя</h1>
