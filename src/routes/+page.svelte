@@ -80,9 +80,8 @@
   <section class="world ornament-frame" id="world" aria-labelledby="world-title">
     <div class="world-copy">
       <span class="world-note">Добро пожаловать в Парму</span>
-      <h2 id="world-title">Мир, где у всего есть память.</h2>
-      <p>Жива течёт сквозь всё сущее. Боги хранят Кон — закон равновесия, а леса и древние руины берегут свои тайны.</p>
-      <p>Здесь кузнец вкладывает в оружие частицу духа, волхв слышит шёпот трав, а судьбу героя определяют его выбор, память и воля.</p>
+      <h2 id="world-title">Парма — мир, к которому хочется возвращаться</h2>
+      <p class="world-lead">Настольная ролевая игра в мире славянского фэнтези, где слово имеет вес, природа хранит тайны, а боги могут услышать.</p>
     </div>
     <div class="world-pillars">
       <div class="world-pillar"><span class="pillar-icon"><Icon name="leaf" size={20} /></span><div><h3>Живой мир</h3><p>Боги, древние народы и тайны руин</p></div></div>
@@ -90,12 +89,16 @@
       <div class="world-pillar"><span class="pillar-icon"><Icon name="dice" size={20} /></span><div><h3>У силы есть цена</h3><p>Жива, Навь и след Тлена</p></div></div>
     </div>
     <details class="world-details">
-      <summary>Познакомиться с миром</summary>
-      <div>
-        <p>Парма — мир славянского сказа, меча и магии. Боги взирают на дела смертных из Прави. Лесовики берегут леса, а под сводами гор ждут Пробуждённые механизмы, созданные ушедшей расой предтеч.</p>
-        <p>В Парме нет классов: вы сами выбираете сочетание навыков и умений. Герои растут, совершая значимые поступки — заключая союзы, побеждая в сюжетных битвах и разгадывая тайны древних руин.</p>
-        <p>Магия Живы пронизывает всё сущее. Путь Нави тоже даёт силу, но оставляет след Тлена. У каждого выбора есть цена, а история героя важнее цифр.</p>
-        <small>По вступлению «Добро пожаловать в Парму» из книги игры.</small>
+      <summary><span class="read-more">Читать дальше</span><span class="read-less">Свернуть вступление</span><span class="disclosure-mark" aria-hidden="true"><Icon name="arrow" size={20} /></span></summary>
+      <div class="world-story">
+      <p>У каждого героя есть цель: найти пропавшего близкого, раскрыть древнюю тайну, освоить мастерство или увидеть, что лежит за пределами родных земель. Цель задаёт направление. История рождается по дороге к ней.</p>
+      <p>Вы решаете, как поступит ваш персонаж. Навыки, умения и броски кубов помогают сражаться, преодолевать препятствия и узнавать исход рискованных действий. Успех открывает возможности. Неудача меняет обстоятельства: приходится искать другой путь, принимать помощь или пересматривать замысел. Следующее решение остаётся за вами.</p>
+      <p>Рядом идут компаньоны со своими желаниями, убеждениями и привязанностями. Вы помогаете друг другу, спорите, даёте обещания и проходите испытания вместе. Чужая просьба становится общим делом. Неожиданная помощь рождает доверие. Ваши спутники видят, кем становится герой, и сами меняются рядом с ним.</p>
+      <p>Жива пронизывает мир Пармы, связывая людей, природу, богов и вещи. Старый клинок может пробудиться и обрести голос. Забытый механизм Предтечи — открыть тайну своего предназначения. Просьба у священного источника — получить ответ, смысл которого ещё предстоит понять. За знакомой дорогой всегда остаётся место неизвестному.</p>
+      <p>Между испытаниями есть время пожить: разделить ужин, послушать лес, починить любимую вещь, поговорить у огня. Найти друзей, освоиться в чужом доме, вернуться туда, где вас помнят. В такие минуты герой понимает, что стало ему дорого и ради чего хочется продолжать путь.</p>
+      <p>В Парме нет классов. Предыстория становится началом, а сочетание навыков и умений позволяет развивать героя по своему замыслу. Пережитое придаёт этому развитию смысл: у нового умения появляется учитель, у вещи — память, у обещания — человек, который ждёт его исполнения.</p>
+      <p>Цель может быть достигнута, измениться или утратить значение. Путь способен привести к тому, чего герой прежде даже не искал. Всё пережитое останется частью вашей общей истории.</p>
+      <p class="world-closing"><strong>Создайте героя. Найдите спутников. Следующую главу вы узнаете за игровым столом.</strong></p>
       </div>
     </details>
   </section>
@@ -172,23 +175,31 @@
   .hero-link { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; color: #edf0dc; font-size: 13px; }
   .hero-link:hover { text-decoration: underline; }
   .world { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 12px 34px; margin-top: 24px; background: #fffef9; align-items: center; }
+  .world-copy { min-width: 0; }
   .home :global(.ornament-frame) { padding: 38px !important; }
   .world-note { color: #87613e; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; }
-  .world h2 { margin: 8px 0 12px; font-weight: 500; }
-  .world p { color: #52614f; font-size: 14px; margin: 0 0 10px; }
+  .world h2 { margin: 10px 0 18px; font-weight: 600; font-size: clamp(25px, 3vw, 32px); line-height: 1.25; text-wrap: balance; }
+  .world p { color: #52614f; font-size: 15px; line-height: 1.8; margin: 0 0 18px; }
+  .world .world-lead { color: #315440; font-size: 15px; line-height: 1.7; margin-bottom: 0; }
+  .world .world-closing { border-top: 1px solid #d5daca; padding-top: 22px; margin: 24px 0 0; color: #173d30; }
+
   .world-pillars { display: grid; gap: 16px; padding-left: 26px; border-left: 1px solid #d5daca; }
   .world-pillar { display: flex; align-items: center; gap: 14px; }
   .world-pillar h3 { font: 18px Georgia, serif; }
-  .world-pillar p { font-size: 12px; margin: 3px 0 0; }
+  .world-pillar p { font-size: 12px; line-height: 1.5; margin: 3px 0 0; }
   .pillar-icon { display: grid; place-items: center; width: 36px; height: 36px; flex-shrink: 0; border: 1px solid #b8a17d; transform: rotate(45deg); color: #315440; }
   .pillar-icon :global(svg) { transform: rotate(-45deg); }
   .world-details { grid-column: 1 / -1; }
-  .world-details summary { width: fit-content; min-height: 44px; display: flex; align-items: center; gap: 10px; cursor: pointer; color: #315440; font-weight: 600; font-size: 13px; list-style: none; }
+  .world-details summary { display: flex; align-items: center; gap: 10px; width: fit-content; min-height: 44px; cursor: pointer; color: #315440; font-weight: 600; font-size: 13px; list-style: none; }
   .world-details summary::-webkit-details-marker { display: none; }
-  .world-details summary::after { content: '→'; }
-  .world-details[open] summary::after { content: '↓'; }
-  .world-details > div { border-top: 1px solid #d5daca; padding-top: 14px; margin-top: 6px; max-width: 850px; }
-  .world-details small { color: #727e70; font-size: 11px; }
+  .world-details summary:hover { text-decoration: underline; }
+  .world-details .read-less { display: none; }
+  .world-details[open] .read-more { display: none; }
+  .world-details[open] .read-less { display: inline; }
+  .disclosure-mark { display: inline-flex; flex-shrink: 0; transform: rotate(90deg); }
+  .world-details[open] .disclosure-mark { transform: rotate(-90deg); }
+  .world-story { border-top: 1px solid #d5daca; padding-top: 20px; max-width: 84ch; }
+  @media (max-width: 700px) { .world { grid-template-columns: 1fr; gap: 20px; } .world-pillars { border-left: 0; border-top: 1px solid #d5daca; padding: 20px 0 0; } }
   .character-utilities { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 10px; }
   .character-utilities button { background: none; border: 0; padding: 6px 0; color: #5f6c60; font-size: 12px; }
   .character-utilities button:hover { color: #173d30; text-decoration: underline; }
@@ -227,6 +238,6 @@
   .delete-confirm { border-top: 1px solid #d5daca; padding: 16px; font-size: 14px; }
   .delete-confirm > div { display: flex; gap: 10px; margin-top: 12px; }
   @media (max-width: 900px) { .home-columns { grid-template-columns: 1fr 280px; gap: 24px; } .toolbox { padding-left: 20px; } }
-  @media (max-width: 700px) { .home-columns, .world { grid-template-columns: 1fr; gap: 24px; } .home-columns { margin-top: 28px; } .toolbox { border-left: 0; padding-left: 0; } .journey-copy { padding: 28px 24px; width: 100%; } .forest { width: 100%; opacity: .2; right: 0; } .journey { min-height: auto; } .character-link { gap: 10px; padding-left: 12px; } .world-pillars { border-left: 0; border-top: 1px solid #d5daca; padding: 20px 0 0; } }
+  @media (max-width: 700px) { .home-columns { grid-template-columns: 1fr; gap: 24px; } .home-columns { margin-top: 28px; } .toolbox { border-left: 0; padding-left: 0; } .journey-copy { padding: 28px 24px; width: 100%; } .forest { width: 100%; opacity: .2; right: 0; } .journey { min-height: auto; } .character-link { gap: 10px; padding-left: 12px; } }
   @media (max-width: 600px) { .home :global(.ornament-frame) { padding: 30px !important; } .world h2 { font-size: 25px; } }
 </style>

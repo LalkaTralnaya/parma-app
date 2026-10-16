@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { autosizeTextarea } from '$lib/ui/autosize-textarea';
+ import SheetAppearanceControls from '$lib/components/SheetAppearance.svelte';
+ import { sheetAppearance, type SheetAppearance } from '$lib/ui/sheet-appearance';
  import Dialog from '$lib/components/Dialog.svelte';
  import { applyItemTreatments, treatWithItem } from '$lib/engine/itemTreatment';
  import { playerText } from '$lib/ui/player-copy';
@@ -157,6 +160,14 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	// STATE
 	// ────────────────────────────────────────────
 	let char = $state<Character | null>(null);
+ async function updateSheetAppearance(value: SheetAppearance) {
+  if (!char) return;
+  const character=char, previous=character.appearance;
+  character.appearance=value;
+  try { await saveCharacter($state.snapshot(character) as Character); }
+  catch(error) {character.appearance=previous;throw error;}
+ }
+
 	type RollMode = 'online' | 'offline';
 	let rollMode = $state<RollMode>('online');
 	let pendingDie = $state<{ sides: number; label: string; target?: number } | null>(null);
@@ -1672,7 +1683,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		}
 	}
 </style>
-<main class="character-sheet max-w-4xl mx-auto p-6 space-y-6" data-decay-stage={decayLevel}>
+<main class="character-sheet max-w-4xl mx-auto p-6 space-y-6" data-decay-stage={decayLevel} data-sheet-background={sheetAppearance(char?.appearance).background} data-sheet-frame={sheetAppearance(char?.appearance).frame}>
 	{#if pendingDie}
 		<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 print-hide" role="presentation">
 			<div class="w-full max-w-sm rounded-xl border border-gray-500 bg-white p-6 shadow-2xl text-gray-900" role="dialog" aria-modal="true" aria-label="Ввод физического броска">
@@ -1763,7 +1774,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 				</span>
 			</div>
 		{/if}
-		<header class="flex justify-between items-center">
+		<header class="flex justify-between items-center gap-3 flex-wrap">
 			<div>
 				<h1 class="text-3xl font-bold">{char.name || '(без имени)'}</h1>
 				<p class="text-gray-600">
@@ -1776,13 +1787,14 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 						<p class="decay-stage-label" aria-live="polite">Тлен · {getDecayStage(char.decay?.points ?? 0).name} · {char.decay?.points ?? 0} ОТ</p>
 					{/if}
 			</div>
-			<div class="flex gap-2">
+			<div class="flex gap-2 flex-wrap">
 				<a href="/" class="px-3 py-2 border rounded hover:bg-gray-50">← К списку</a>
 				<a
 					href="/char/{char.id}/levelup"
 					class="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-semibold">
 					+1 уровень
 				</a>
+				<SheetAppearanceControls value={char.appearance} onchange={updateSheetAppearance}/>
 				<button
 					class="px-3 py-2 bg-gray-700 text-white rounded hover:bg-gray-800 print-hide"
 					onclick={printCharacter}
@@ -2665,6 +2677,8 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 					{ field: 'bond',        title: 'Привязанность', list: BONDS },
 					{ field: 'flaw',        title: 'Слабость',   list: FLAWS }
 				] as const as entry}
+					{@const savedKey = char.bio[`${entry.field}Key` as const]}
+					{@const customAspect = savedKey && !entry.list.some((option) => option.id === savedKey)}
 					{@const religiousBond = hideReligion && entry.field === 'bond' && char.bio.bondKey === 'deity'}
 					<div class="border rounded-lg bg-white p-4">
 						<label for={"personality-" + entry.field} class="block font-semibold mb-2">{entry.title}</label>
@@ -2676,7 +2690,10 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 								e.currentTarget.value,
 								entry.list
 							)}>
-							<option value="">— не выбрано —</option>
+							<option value="">— своя формулировка —</option>
+{#if customAspect && !religiousBond}
+<option value={savedKey}>Своя формулировка</option>
+{/if}
 							{#each entry.list.filter((opt) => !hideReligion || opt.id !== 'deity') as opt}
 								<option value={opt.id}>{opt.name}</option>
 							{/each}
@@ -2696,24 +2713,24 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 			<div class="border rounded-lg bg-white p-4 mt-4 space-y-4">
 				<div>
 					<label for="field-10" class="block font-semibold mb-2">Цели</label>
-					<textarea id="field-10"
-						class="w-full px-3 py-2 border rounded text-sm min-h-[80px] focus:outline-none focus:ring-2 focus:ring-blue-500"
+					<textarea id="field-10" use:autosizeTextarea={char.bio.goals}
+						class="resize-none overflow-hidden w-full px-3 py-2 border rounded text-sm min-h-[80px] focus:outline-none focus:ring-2 focus:ring-blue-500"
 						placeholder="Например: найти способ снять Тлен, вернуть право умереть, отомстить за деревню…"
 						value={char.bio.goals}
 						onblur={(e) => updateBio({ goals: e.currentTarget.value })}></textarea>
 				</div>
 				<div>
 					<label for="field-11" class="block font-semibold mb-2">Предыстория</label>
-					<textarea id="field-11"
-						class="w-full px-3 py-2 border rounded text-sm min-h-[120px] focus:outline-none focus:ring-2 focus:ring-blue-500"
+					<textarea id="field-11" use:autosizeTextarea={char.bio.backstory}
+						class="resize-none overflow-hidden w-full px-3 py-2 border rounded text-sm min-h-[120px] focus:outline-none focus:ring-2 focus:ring-blue-500"
 						placeholder="Кем был персонаж до приключений, что привело его в путь…"
 						value={char.bio.backstory}
 						onblur={(e) => updateBio({ backstory: e.currentTarget.value })}></textarea>
 				</div>
 				<div>
 					<label for="field-12" class="block font-semibold mb-2">Внешность</label>
-					<textarea id="field-12"
-						class="w-full px-3 py-2 border rounded text-sm min-h-[80px] focus:outline-none focus:ring-2 focus:ring-blue-500"
+					<textarea id="field-12" use:autosizeTextarea={char.bio.appearance}
+						class="resize-none overflow-hidden w-full px-3 py-2 border rounded text-sm min-h-[80px] focus:outline-none focus:ring-2 focus:ring-blue-500"
 						placeholder="Как выглядит персонаж, во что одет, какие приметы…"
 						value={char.bio.appearance}
 						onblur={(e) => updateBio({ appearance: e.currentTarget.value })}></textarea>

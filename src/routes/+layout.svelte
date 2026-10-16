@@ -4,6 +4,7 @@
   import Icon from '$lib/components/Icon.svelte';
   import DiceOverlay from '$lib/components/DiceOverlay.svelte';
   import RollChat from '$lib/components/RollChat.svelte';
+  import ReleaseNotes from '$lib/components/ReleaseNotes.svelte';
   import favicon from '$lib/assets/favicon.svg';
   let { children } = $props();
   const links = [
@@ -52,5 +53,5 @@
 <div id="content" tabindex="-1">{@render children()}</div>
 <RollChat />
 <DiceOverlay />
-<footer class="app-footer"><span>Парма · Помощник игрока и сказителя</span></footer>
+<footer class="app-footer"><span>Парма · Помощник игрока и сказителя</span><ReleaseNotes showFooter={page.url.pathname === '/'} /></footer>
 <style>.header-inner { flex-wrap: wrap; } .primary-nav { flex-wrap: wrap; }</style>

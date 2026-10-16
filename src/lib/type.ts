@@ -1,4 +1,5 @@
 export interface Character {
+	appearance?: { background: 'birch' | 'parchment' | 'chronicle'; frame: 'carved' | 'simple' | 'none' };
 	id: string;
 	name: string;
 	raceId: string;
