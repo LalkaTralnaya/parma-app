@@ -39,6 +39,26 @@ const server = createServer((request, response) => {
 		proxy.web(request, response);
 		return;
 	}
+
+	// Keep document responses fresh so a browser cannot combine an older app
+	// shell with hashed assets from a newer deployment.
+	const isDocumentRequest =
+		(request.method === 'GET' || request.method === 'HEAD') &&
+		!request.url?.startsWith('/_app/') &&
+		request.headers.accept?.includes('text/html');
+	if (isDocumentRequest) {
+		const writeHead = response.writeHead.bind(response);
+		response.writeHead = (statusCode, statusMessageOrHeaders, headers) => {
+			if (typeof statusMessageOrHeaders === 'string') {
+				return writeHead(statusCode, statusMessageOrHeaders, {
+					...headers,
+					'Cache-Control': 'no-store'
+				});
+			}
+			return writeHead(statusCode, { ...statusMessageOrHeaders, 'Cache-Control': 'no-store' });
+		};
+	}
+
 	handler(request, response);
 });
 

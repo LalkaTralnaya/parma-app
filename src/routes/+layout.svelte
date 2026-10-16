@@ -6,7 +6,11 @@
   import RollChat from '$lib/components/RollChat.svelte';
   import ReleaseNotes from '$lib/components/ReleaseNotes.svelte';
   import favicon from '$lib/assets/favicon.svg';
+  import { onMount } from 'svelte';
   let { children } = $props();
+  onMount(() => {
+    try { sessionStorage.removeItem('parma.stale-build-reload'); } catch { /* Storage may be blocked. */ }
+  });
   const links = [
     { href: '/', label: 'Персонажи', icon: 'people' },
     { href: '/lavka', label: 'Лавка', icon: 'bag' },
