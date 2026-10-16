@@ -1,7 +1,7 @@
 @import "tailwindcss";
 /* Береста: фактура коры с горизонтальными слоями и чечевичками. */
 #content:has(> main.character-sheet) {
-  --birch-texture: url("/birch-bark.png");
+  --birch-texture: radial-gradient(ellipse at 50% 48%, #f3e5c9 0%, #ead8b5 72%, #c6a77a 100%);
 }
 body:has(#content > main.character-sheet:is([data-decay-stage="0"], [data-decay-stage="1"])) { background-color: #e6d6b3; }
 #content:has(> main.character-sheet:is([data-decay-stage="0"], [data-decay-stage="1"])) {
@@ -33,19 +33,19 @@ body:has(#content > main.character-sheet:is([data-decay-stage="0"], [data-decay-
   #content > main.character-sheet { background: #fff !important; box-shadow: none; border: 0; }
 }
 /* Резьба: общий орнамент панелей. SVG остаётся чётким при любом масштабе. */
-#content :is(main section.border, main article.border, main .grid > .border.rounded-lg, .toolbox, .empty, .roll-result-panel, .ornament-frame) {
+#content :is(main.character-sheet, main section.border, main article.border, main .grid > .border.rounded-lg, .toolbox, .empty, .roll-result-panel, .ornament-frame) {
   --carving-size: 38px;
   --carving-inset: 5px;
   border: 1px solid #a48a68;
   border-radius: 4px;
 }
-#content :is(main section.border, main article.border, main .grid > .border.rounded-lg, .toolbox, .empty, .roll-result-panel, .ornament-frame):not(.roll-result-panel) { position: relative; }
-#content :is(main section.border, main article.border, main .grid > .border.rounded-lg, .toolbox, .ornament-frame) {
+#content :is(main.character-sheet, main section.border, main article.border, main .grid > .border.rounded-lg, .toolbox, .empty, .roll-result-panel, .ornament-frame):not(.roll-result-panel) { position: relative; }
+#content :is(main.character-sheet, main section.border, main article.border, main .grid > .border.rounded-lg, .toolbox, .ornament-frame) {
   padding: 26px;
 }
 #content .toolbox { background-color: #fffef9; }
 #content .roll-result-panel { padding: 24px; border-radius: 4px; }
-#content :is(main section.border, main article.border, main .grid > .border.rounded-lg, .toolbox, .empty, .roll-result-panel, .ornament-frame)::before {
+#content :is(main.character-sheet, main section.border, main article.border, main .grid > .border.rounded-lg, .toolbox, .empty, .roll-result-panel, .ornament-frame)::before {
   content: "";
   position: absolute;
   inset: var(--carving-inset);
@@ -72,14 +72,14 @@ body:has(#content > main.character-sheet:is([data-decay-stage="0"], [data-decay-
   opacity: .65;
 }
 @media (max-width: 600px) {
-  #content :is(main section.border, main article.border, main .grid > .border.rounded-lg, .toolbox, .empty, .roll-result-panel, .ornament-frame) { --carving-size: 26px; --carving-inset: 4px; }
-  #content :is(main section.border, main article.border, main .grid > .border.rounded-lg, .toolbox, .ornament-frame) { padding: 20px; }
+  #content :is(main.character-sheet, main section.border, main article.border, main .grid > .border.rounded-lg, .toolbox, .empty, .roll-result-panel, .ornament-frame) { --carving-size: 26px; --carving-inset: 4px; }
+  #content :is(main.character-sheet, main section.border, main article.border, main .grid > .border.rounded-lg, .toolbox, .ornament-frame) { padding: 20px; }
   #content .roll-result-panel { padding: 18px; }
   #content :is(main section.border, main article.border, main .grid > .border.rounded-lg, .toolbox, .empty, .roll-result-panel, .ornament-frame)::before { background-size: var(--carving-size) var(--carving-size), var(--carving-size) var(--carving-size), var(--carving-size) var(--carving-size), var(--carving-size) var(--carving-size), 72px 12px; }
 }
 @media print {
-  #content :is(main section.border, main article.border, main .grid > .border.rounded-lg, .toolbox, .empty, .roll-result-panel, .ornament-frame)::before { display: none; }
-  #content :is(main section.border, main article.border, main .grid > .border.rounded-lg, .toolbox, .empty, .roll-result-panel, .ornament-frame) { border-color: #999; }
+  #content :is(main.character-sheet, main section.border, main article.border, main .grid > .border.rounded-lg, .toolbox, .empty, .roll-result-panel, .ornament-frame)::before { display: none; }
+  #content :is(main.character-sheet, main section.border, main article.border, main .grid > .border.rounded-lg, .toolbox, .empty, .roll-result-panel, .ornament-frame) { border-color: #999; }
 }
 
 @theme {
@@ -101,6 +101,20 @@ body:has(#content > main.character-sheet:is([data-decay-stage="0"], [data-decay-
   --color-gray-700: #394c3f;
   --color-gray-800: #263e30;
   --color-gray-900: #172d23;
+  --color-green-50: #edf4ee;
+  --color-green-100: #dceade;
+  --color-green-500: #397452;
+  --color-green-600: #24543c;
+  --color-green-700: #173d30;
+  --color-orange-50: #f8f0df;
+  --color-orange-100: #ecdfc2;
+  --color-orange-500: #98703d;
+  --color-orange-600: #805d31;
+  --color-red-50: #f8eeeb;
+  --color-red-100: #efdbd5;
+  --color-red-500: #963744;
+  --color-red-600: #7e2938;
+  --color-red-700: #692432;
 }
 
 @layer base {
@@ -309,19 +323,86 @@ body:has(#content > main.character-sheet[data-decay-stage]:not([data-decay-stage
 }
 
 
-/* Personal sheet paper; the decay palette continues to control text and contrast. */
-#content:has(>main.character-sheet[data-sheet-background="parchment"]) {--sheet-paper:#efe0bd;--sheet-texture:radial-gradient(ellipse at 35% 30%,#fff4dc 0%,#eddbb7 60%,#cfb082 100%);}
-#content:has(>main.character-sheet[data-sheet-background="chronicle"]) {--sheet-paper:#e3c794;--sheet-texture:url('/old-chronicle.svg');}
-#content:has(>main.character-sheet:is([data-sheet-background="parchment"],[data-sheet-background="chronicle"]):is([data-decay-stage="0"],[data-decay-stage="1"])) {background-color:var(--sheet-paper);background-image:linear-gradient(#fff3d440,#fff3d440),var(--sheet-texture);background-size:auto,720px 520px;}
-#content>main.character-sheet:is([data-sheet-background="parchment"],[data-sheet-background="chronicle"]) {background-color:var(--sheet-paper);background-image:linear-gradient(#fff0cc38,#fff0cc38),var(--sheet-texture);background-size:auto,720px 520px;}
-#content>main.character-sheet:is([data-sheet-background="parchment"],[data-sheet-background="chronicle"])[data-decay-stage="2"] {background-color:var(--decay-card);background-image:linear-gradient(#d7dddaed,#d7dddaed),var(--sheet-texture);}
-#content>main.character-sheet:is([data-sheet-background="parchment"],[data-sheet-background="chronicle"])[data-decay-stage="3"] {background-color:var(--decay-card);background-image:linear-gradient(#495451ed,#495451ed),var(--sheet-texture);}
-#content>main.character-sheet:is([data-sheet-background="parchment"],[data-sheet-background="chronicle"])[data-decay-stage="4"] {background-color:var(--decay-card);background-image:linear-gradient(#171c1df5,#171c1df5),var(--sheet-texture);}
-#content>main.character-sheet[data-sheet-frame="carved"] {border:10px solid transparent;border-inline-width:10px;border-image:url('/carved-sheet-frame.svg') 24 round;}
-#content>main.character-sheet[data-sheet-frame="simple"] {border:1px solid var(--decay-border,#a48a68);border-image:none;}
-#content>main.character-sheet[data-sheet-frame="none"] {border:0;border-image:none;box-shadow:none;}
-#content>main.character-sheet:is([data-sheet-frame="simple"],[data-sheet-frame="none"]) :is(section.border,article.border,.grid>.border.rounded-lg,.roll-result-panel,.ornament-frame)::before {display:none;}
-#content>main.character-sheet[data-sheet-frame="none"] :is(section.border,article.border,.grid>.border.rounded-lg,.roll-result-panel,.ornament-frame) {border-color:transparent!important;}
-#content>main.character-sheet:is([data-decay-stage="0"],[data-decay-stage="1"]) .sheet-appearance-settings {background:#fbf1da;}
-@media(max-width:600px) {#content>main.character-sheet[data-sheet-frame="carved"] {border-width:7px;}}
-@media print {#content>main.character-sheet[data-sheet-background] {background:#fff!important;border:0!important;border-image:none!important;box-shadow:none!important;}}
+/* Лист персонажа — единый потемневший пергамент в резной рамке. */
+#content:has(>main.character-sheet) { --sheet-paper:#ead8b5; --sheet-texture:radial-gradient(ellipse at 50% 48%,#f3e5c9 0%,#ead8b5 72%,#c6a77a 100%); }
+#content:has(>main.character-sheet:is([data-decay-stage="0"],[data-decay-stage="1"])) {
+  background-color:#e4d2ae;
+  background-image:radial-gradient(ellipse at 50% 10%,#f5e8ce,transparent 72%),linear-gradient(90deg,#8a653d20,transparent 14%,transparent 86%,#8a653d20);
+}
+#content>main.character-sheet {
+  position:relative;
+  background-color:var(--sheet-paper);
+  background-image:
+    linear-gradient(90deg,#79542d40 0%,transparent 3%,transparent 97%,#79542d40 100%),
+    linear-gradient(0deg,#79542d2b 0%,transparent 2.5%,transparent 97.5%,#79542d2b 100%),
+    var(--sheet-texture),
+    repeating-linear-gradient(0deg,#775c3410 0,#775c3410 1px,transparent 1px,transparent 7px);
+  background-size:auto;
+  border:1px solid #a48a68;
+  border-image:none;
+  border-radius:4px;
+  box-shadow:0 8px 30px #59452a2b;
+}
+#content>main.character-sheet:is([data-decay-stage="2"],[data-decay-stage="3"],[data-decay-stage="4"]) {
+  background-color:var(--decay-card);
+  background-image:linear-gradient(90deg,#00000012,transparent 7%,transparent 93%,#00000012),var(--birch-texture);
+  border-color:var(--decay-border);
+}
+#content>main.character-sheet:is([data-decay-stage="2"],[data-decay-stage="3"],[data-decay-stage="4"]) :is(section.border,article.border,.grid>.border.rounded-lg,.roll-result-panel,.ornament-frame)::before {filter:grayscale(1);opacity:.65;}
+@media print {#content>main.character-sheet {background:#fff!important;border:0!important;border-image:none!important;box-shadow:none!important;border-radius:0;}}
+
+/* Единый облик Пармы: старая бумага, хвойная зелень и охристая резьба. */
+body:not(:has(#content > main.character-sheet)) {
+  background-color: #eee7d8;
+  background-image:
+    radial-gradient(ellipse at 50% 0%, #fffaf0 0, #f2ecdf 48%, transparent 82%),
+    repeating-linear-gradient(0deg, #6d573003 0, #6d573003 1px, transparent 1px, transparent 5px);
+  background-attachment: fixed;
+}
+
+.app-header {
+  color: #efe5cf;
+  background-color: #203a31;
+  background-image: linear-gradient(112deg, #1c372e, #294437 52%, #1d382f);
+  border-bottom: 2px solid #98794f;
+  box-shadow: 0 2px 0 #f6efdf;
+}
+.brand { color: #f3e9d4; }
+.brand small { color: #c7c0a9; }
+.brand-mark { color: #e0c58b; border-color: #a98a5d; box-shadow: inset 0 0 0 3px #203a31, 0 0 0 1px #a98a5d; }
+.primary-nav a { color: #dfd7c4; transition: background-color .18s ease, color .18s ease; }
+.primary-nav a:hover { color: #fff8e9; background: #ffffff12; }
+.primary-nav a.active { color: #1e3a30; background: #e4d6b2; box-shadow: inset 0 0 0 1px #b49a6f; }
+.primary-nav a.active:hover { background: #efe2c2; }
+
+body:not(:has(#content > main.character-sheet)) .app-footer {
+  border-top-color: #b39b75;
+  color: #5b5b49;
+}
+#content:not(:has(> main.character-sheet)) > main :is(section.border, article.border, .grid > .border.rounded-lg),
+#content:not(:has(> main.character-sheet)) :is(.toolbox, .empty, .ornament-frame) {
+  background-color: #fffaf0;
+}
+#content .bg-white { background-color: #fffaf0; }
+input:not([type=checkbox]):not([type=radio]), select, textarea {
+  border-color: #b7a587;
+  background-color: #fffaf0;
+}
+input:not([type=checkbox]):not([type=radio]):hover, select:hover, textarea:hover { border-color: #8f7958; }
+input[type=checkbox], input[type=radio] { accent-color: #315541; }
+::selection { background: #d6c49b; color: #203a31; }
+.button { border-color: #b29a70; background: #fff7e7; color: #243f33; }
+.button:hover { background: #eee1c3; }
+.button.primary { background: #294b39; border-color: #294b39; color: #fff8e9; }
+.button.primary:hover { background: #1e392f; }
+.button.danger { color: #7f2938; border-color: #c49a91; background: #fff7ef; }
+.button.danger:hover { background: #f3e3dc; }
+
+body:has(#content > main.character-sheet:is([data-decay-stage="2"], [data-decay-stage="3"], [data-decay-stage="4"])) .app-header .primary-nav a.active {
+  color: var(--decay-header-text, #e1e5dc);
+  background: #68746d;
+  box-shadow: inset 0 0 0 1px #a1aaa0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .primary-nav a { transition: none; }
+}

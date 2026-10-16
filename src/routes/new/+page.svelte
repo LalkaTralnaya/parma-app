@@ -1,4 +1,6 @@
 <script lang="ts">
+	import RacePortrait from '$lib/components/RacePortrait.svelte';
+	import BackgroundPortrait from '$lib/components/BackgroundPortrait.svelte';
 	import { page } from '$app/state';
 	import { getCustomAdventure, saveCustomAdventure } from '$lib/db/customAdventures';
 	import { getResourceMax } from '$lib/engine/character';
@@ -81,7 +83,10 @@
 	</section>
 
 	<!-- Раса -->
-	<section class="border rounded-lg p-4 bg-white space-y-3">
+	<section class="border rounded-lg p-4 bg-white">
+    <div class="race-layout">
+      <RacePortrait raceId={raceId} name={selectedRace.name} />
+      <div class="race-fields space-y-3">
 		<div>
 			<label for="raceId" class="block mb-2 font-semibold">Раса</label>
 			<select
@@ -134,6 +139,8 @@
 				{/each}
 			</div>
 		{/if}
+      </div>
+    </div>
 	</section>
 	<!-- Предыстория -->
 	<section class="border rounded-lg p-4 bg-white space-y-3">
@@ -148,7 +155,10 @@
 			</select>
 		</div>
 
-		<p class="text-sm text-gray-600">{selectedBackground.description}</p>
+		<div class="background-intro illustrated">
+      <BackgroundPortrait backgroundId={backgroundId} name={selectedBackground.name} />
+      <p class="text-sm text-gray-600">{selectedBackground.description}</p>
+    </div>
 
 		<div class="text-sm">
 			<span class="font-semibold">Бонусы к навыкам: </span>
@@ -218,3 +228,12 @@
 		</button>
 	</div>
 </main>
+<style>
+  .race-layout { display: grid; grid-template-columns: 150px minmax(0, 1fr); align-items: start; gap: 24px; }
+  .race-fields { min-width: 0; }
+  @media (max-width: 520px) { .race-layout { grid-template-columns: 86px minmax(0, 1fr); gap: 14px; } }
+
+  .background-intro.illustrated { display: grid; grid-template-columns: 150px minmax(0, 1fr); align-items: center; gap: 24px; }
+  @media (max-width: 520px) { .background-intro.illustrated { grid-template-columns: 100px minmax(0, 1fr); gap: 16px; } }
+
+</style>

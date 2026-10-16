@@ -1,4 +1,6 @@
 <script lang="ts">
+	import BestiaryPortrait from '$lib/components/BestiaryPortrait.svelte';
+	import { BESTIARY_ART } from '$lib/ui/bestiary-art';
 	import { page } from '$app/state';
 	import { BESTIARY, BESTIARY_SECTIONS, getMonsterSection } from '$lib/rules/bestiary';
 	import { BESTIARY_HABITATS, getMonsterHabitats, filterBestiary } from '$lib/rules/bestiary-habitats';
@@ -70,10 +72,11 @@
       <div class="monster-grid">
         {#each group.monsters as monster (monster.id)}
           <article class="monster-card" aria-labelledby={'monster-' + monster.id}>
+            {#if BESTIARY_ART[monster.id]}<button class="catalogue-portrait" aria-label={'Рассмотреть существо: ' + monster.name} onclick={() => chooseMonster(monster.id)}><BestiaryPortrait id={monster.id} /></button>{/if}
             <div class="card-type"><span>{getMonsterSection(monster.id)?.name}</span><span class="level-badge">Ур. {monster.dangerLabel}</span></div>
-            <h3 id={'monster-' + monster.id}>{monster.name}</h3>
-
-            <p class="card-description">{monster.description}</p>
+            <div class="monster-intro">
+              <div><h3 id={'monster-' + monster.id}>{monster.name}</h3><p class="card-description">{monster.description}</p></div>
+            </div>
             <dl class="card-stats"><div><dt>Здравие</dt><dd>{monster.hp}</dd></div><div><dt>Броня</dt><dd>{monster.armor}</dd></div><div><dt>Скорость</dt><dd>{monster.speed}<small> саж.</small></dd></div></dl>
             <div class="card-habitats">{#each getMonsterHabitats(monster.id) as habitat}<span>{habitat.name}</span>{/each}</div>
             <p class="card-attack"><Icon name="sword" size={16} />{monster.attacks[0]?.name ?? 'Особые действия'}</p>
@@ -90,9 +93,13 @@
   {#if scaled}
     <Dialog label={'Карточка противника: ' + scaled.base.name} onclose={closeMonster} wide>
       <div class="detail-toolbar"><div><p class="eyebrow">Карточка противника</p><h2>{scaled.base.name}</h2></div><button aria-label="Закрыть карточку" class="detail-close" onclick={closeMonster}>✕</button></div>
-      <p class="text-sm text-gray-600 mb-3">{scaled.base.description}</p>
-      <div class="card-habitats mb-4">{#each getMonsterHabitats(scaled.base.id) as habitat}<span>{habitat.name}</span>{/each}</div>
-      <div class="level-controls"><label for="monster-level">Целевой уровень<input id="monster-level" type="number" min={selectedMonster?.baseLevel ?? 1} max="20" bind:value={targetLevel} /></label><button class="button primary" onclick={generate}>Создать противника</button></div>
+      <div class="monster-intro detail-intro" class:illustrated={Boolean(BESTIARY_ART[scaled.base.id])}>
+        <div><p class="text-sm text-gray-600 mb-3">{scaled.base.description}</p><div class="card-habitats mb-4">{#each getMonsterHabitats(scaled.base.id) as habitat}<span>{habitat.name}</span>{/each}</div>
+          <div class="level-controls"><label for="monster-level">Целевой уровень<input id="monster-level" type="number" min={selectedMonster?.baseLevel ?? 1} max="20" bind:value={targetLevel} /></label><button class="button primary" onclick={generate}>Создать противника</button></div>
+        </div>
+        {#if BESTIARY_ART[scaled.base.id]}<a class="detail-portrait" href={BESTIARY_ART[scaled.base.id].src} target="_blank" rel="noreferrer" aria-label={'Открыть иллюстрацию: ' + scaled.base.name}><BestiaryPortrait id={scaled.base.id} eager /></a>{/if}
+      </div>
+
 
 		<section class="border-2 border-red-300 rounded-lg p-5 bg-red-50">
 			<div class="flex justify-between items-start mb-4 flex-wrap gap-2">
@@ -215,6 +222,13 @@
   {/if}
 </main>
 <style>
+  .monster-intro > div { min-width: 0; flex: 1; }
+  .detail-intro { margin: 12px 0 20px; }
+  .detail-intro.illustrated { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: center; }
+  .detail-portrait { display: block; overflow: hidden; border: 1px solid #a38b67; border-radius: 5px; cursor: zoom-in; }
+  .catalogue-portrait { display: block; width: calc(100% + 44px); margin: -22px -22px 16px; padding: 0; border: 0; border-radius: 7px 7px 0 0; overflow: hidden; background: #d9c8a6; cursor: pointer; flex-shrink: 0; }
+  .catalogue-portrait:focus-visible, .detail-portrait:focus-visible { outline: 3px solid #9c6337; outline-offset: 3px; }
+
 .eyebrow { color:#6d795e; font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; margin-bottom:5px; }
 .filters { display:grid; grid-template-columns:minmax(220px,2fr) 1fr 1fr; gap:16px; }
 .filters label { display:grid; gap:6px; font-size:13px; font-weight:600; }
@@ -254,6 +268,6 @@
 .level-controls label { display:grid; gap:5px; font-size:13px; font-weight:600; }
 .level-controls input { width:130px; padding:8px 10px; border:1px solid #bdc8b5; border-radius:6px; }
 @media(max-width:1000px) { .monster-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
-@media(max-width:600px) { .filters,.monster-grid { grid-template-columns:1fr; } .bestiary-page h1 { font-size:32px; } .monster-card { padding:18px; } .habitat-tabs button { font-size:12px; } }
+@media(max-width:600px) { .filters,.monster-grid,.detail-intro.illustrated { grid-template-columns:1fr; } .bestiary-page h1 { font-size:32px; } .monster-card { padding:18px; } .catalogue-portrait { width:calc(100% + 36px);margin:-18px -18px 14px; } .detail-portrait { grid-row:1; } .habitat-tabs button { font-size:12px; } }
 
 </style>

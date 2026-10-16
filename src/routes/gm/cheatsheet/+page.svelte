@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import ConditionIcon from '$lib/components/ConditionIcon.svelte';
 
 	let openSection = $state<string | null>('checks');
 
@@ -305,19 +306,19 @@
 							</tr>
 						</thead>
 						<tbody>
-							<tr class="border-b"><td class="px-2 py-1 font-semibold">Руда</td><td class="px-2 py-1">−1к4 ЗДР/ход, 3 раунда</td><td class="px-2 py-1 text-gray-500">Лечение, перевязка</td></tr>
-							<tr class="border-b"><td class="px-2 py-1 font-semibold">Отрава</td><td class="px-2 py-1">−10 к проверкам, 5 раундов</td><td class="px-2 py-1 text-gray-500">Противоядие</td></tr>
-							<tr class="border-b"><td class="px-2 py-1 font-semibold">Ошеломление</td><td class="px-2 py-1">Пропуск хода, −20 Броня, 1 раунд</td><td class="px-2 py-1 text-gray-500">Ожидание</td></tr>
-							<tr class="border-b"><td class="px-2 py-1 font-semibold">Тьма</td><td class="px-2 py-1">−30 к атакам, провал Скрытности, 2–5 раундов</td><td class="px-2 py-1 text-gray-500">Лечение, ожидание</td></tr>
-							<tr class="border-b"><td class="px-2 py-1 font-semibold">Жуть</td><td class="px-2 py-1">Бегство, −15 Броня, 1–3 раунда</td><td class="px-2 py-1 text-gray-500">Избавление Интеллекта</td></tr>
-							<tr class="border-b"><td class="px-2 py-1 font-semibold">Морок</td><td class="px-2 py-1">Видит врага как союзника, до конца боя</td><td class="px-2 py-1 text-gray-500">Урон от источника</td></tr>
-							<tr class="border-b"><td class="px-2 py-1 font-semibold">Оцепенение</td><td class="px-2 py-1">Не двигается, криты авт., 1–2 раунда</td><td class="px-2 py-1 text-gray-500">Избавление Силы/Инт</td></tr>
-							<tr class="border-b"><td class="px-2 py-1 font-semibold">Горение</td><td class="px-2 py-1">−1к6 ЗДР/ход, 2 раунда</td><td class="px-2 py-1 text-gray-500">Тушение (действие)</td></tr>
-							<tr class="border-b"><td class="px-2 py-1 font-semibold">Обморожение</td><td class="px-2 py-1">−10 скорость, −5 атаки, 3 раунда</td><td class="px-2 py-1 text-gray-500">Тепло, лечение</td></tr>
-							<tr class="border-b"><td class="px-2 py-1 font-semibold">Изнеможение</td><td class="px-2 py-1">−20 к макс. Бдр</td><td class="px-2 py-1 text-gray-500">Продолж. отдых</td></tr>
-							<tr class="border-b"><td class="px-2 py-1 font-semibold">Хворь</td><td class="px-2 py-1">−5 ко всем хар-кам</td><td class="px-2 py-1 text-gray-500">Зелье, заклинание, алхимия</td></tr>
-							<tr class="border-b"><td class="px-2 py-1 font-semibold">Сокрытие</td><td class="px-2 py-1">+30 Скрытность, −20 к атакам по цели</td><td class="px-2 py-1 text-gray-500">Рассеивание, атака</td></tr>
-							<tr><td class="px-2 py-1 font-semibold">Маг. сон</td><td class="px-2 py-1">Не действует, сложно разбудить</td><td class="px-2 py-1 text-gray-500">Избавление Инт/Рел</td></tr>
+							<tr class="border-b"><td class="px-2 py-1 font-semibold"><span class="inline-flex items-center gap-2"><ConditionIcon name="Руда" size={28} /><span>Руда</span></span></td><td class="px-2 py-1">−1к4 ЗДР/ход, 3 раунда</td><td class="px-2 py-1 text-gray-500">Лечение, перевязка</td></tr>
+							<tr class="border-b"><td class="px-2 py-1 font-semibold"><span class="inline-flex items-center gap-2"><ConditionIcon name="Отрава" size={28} /><span>Отрава</span></span></td><td class="px-2 py-1">−10 к проверкам, 5 раундов</td><td class="px-2 py-1 text-gray-500">Противоядие</td></tr>
+							<tr class="border-b"><td class="px-2 py-1 font-semibold"><span class="inline-flex items-center gap-2"><ConditionIcon name="Ошеломление" size={28} /><span>Ошеломление</span></span></td><td class="px-2 py-1">Пропуск хода, −20 Броня, 1 раунд</td><td class="px-2 py-1 text-gray-500">Ожидание</td></tr>
+							<tr class="border-b"><td class="px-2 py-1 font-semibold"><span class="inline-flex items-center gap-2"><ConditionIcon name="Тьма" size={28} /><span>Тьма</span></span></td><td class="px-2 py-1">−30 к атакам, провал Скрытности, 2–5 раундов</td><td class="px-2 py-1 text-gray-500">Лечение, ожидание</td></tr>
+							<tr class="border-b"><td class="px-2 py-1 font-semibold"><span class="inline-flex items-center gap-2"><ConditionIcon name="Жуть" size={28} /><span>Жуть</span></span></td><td class="px-2 py-1">Бегство, −15 Броня, 1–3 раунда</td><td class="px-2 py-1 text-gray-500">Избавление Интеллекта</td></tr>
+							<tr class="border-b"><td class="px-2 py-1 font-semibold"><span class="inline-flex items-center gap-2"><ConditionIcon name="Морок" size={28} /><span>Морок</span></span></td><td class="px-2 py-1">Видит врага как союзника, до конца боя</td><td class="px-2 py-1 text-gray-500">Урон от источника</td></tr>
+							<tr class="border-b"><td class="px-2 py-1 font-semibold"><span class="inline-flex items-center gap-2"><ConditionIcon name="Оцепенение" size={28} /><span>Оцепенение</span></span></td><td class="px-2 py-1">Не двигается, криты авт., 1–2 раунда</td><td class="px-2 py-1 text-gray-500">Избавление Силы/Инт</td></tr>
+							<tr class="border-b"><td class="px-2 py-1 font-semibold"><span class="inline-flex items-center gap-2"><ConditionIcon name="Горение" size={28} /><span>Горение</span></span></td><td class="px-2 py-1">−1к6 ЗДР/ход, 2 раунда</td><td class="px-2 py-1 text-gray-500">Тушение (действие)</td></tr>
+							<tr class="border-b"><td class="px-2 py-1 font-semibold"><span class="inline-flex items-center gap-2"><ConditionIcon name="Обморожение" size={28} /><span>Обморожение</span></span></td><td class="px-2 py-1">−10 скорость, −5 атаки, 3 раунда</td><td class="px-2 py-1 text-gray-500">Тепло, лечение</td></tr>
+							<tr class="border-b"><td class="px-2 py-1 font-semibold"><span class="inline-flex items-center gap-2"><ConditionIcon name="Изнеможение" size={28} /><span>Изнеможение</span></span></td><td class="px-2 py-1">−20 к макс. Бдр</td><td class="px-2 py-1 text-gray-500">Продолж. отдых</td></tr>
+							<tr class="border-b"><td class="px-2 py-1 font-semibold"><span class="inline-flex items-center gap-2"><ConditionIcon name="Хворь" size={28} /><span>Хворь</span></span></td><td class="px-2 py-1">−5 ко всем хар-кам</td><td class="px-2 py-1 text-gray-500">Зелье, заклинание, алхимия</td></tr>
+							<tr class="border-b"><td class="px-2 py-1 font-semibold"><span class="inline-flex items-center gap-2"><ConditionIcon name="Сокрытие" size={28} /><span>Сокрытие</span></span></td><td class="px-2 py-1">+30 Скрытность, −20 к атакам по цели</td><td class="px-2 py-1 text-gray-500">Рассеивание, атака</td></tr>
+							<tr><td class="px-2 py-1 font-semibold"><span class="inline-flex items-center gap-2"><ConditionIcon name="Маг. сон" size={28} /><span>Маг. сон</span></span></td><td class="px-2 py-1">Не действует, сложно разбудить</td><td class="px-2 py-1 text-gray-500">Избавление Инт/Рел</td></tr>
 						</tbody>
 					</table>
 				</div>

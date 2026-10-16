@@ -1,4 +1,5 @@
 <script lang="ts">
+	import StoryPanel from '$lib/components/StoryPanel.svelte';
 	import { onMount, type Snippet } from 'svelte';
 	import type { Adventure } from '$lib/rules/adventures';
 	import Icon from '$lib/components/Icon.svelte';
@@ -70,11 +71,14 @@
 
 <main class="adventure-page">
 	<a class="back" href="/adventures">← Все приключения</a>
-	<header class="adventure-heading">
+	<header class="adventure-heading illustrated-heading">
+    <StoryPanel scene="road" label="Дорога к приключению" width={132} />
+    <div class="adventure-heading-copy">
 		<span class="label">{adventure.label}</span>
 		<h1>{adventure.title}</h1>
 		<p>{adventure.summary}</p>
 		<div class="facts"><span>{adventure.region}</span><span>{adventure.players} игроков</span><span>{adventure.levels} уровни</span><span>{adventure.duration}</span></div>
+    </div>
 	</header>
  {@render extras?.()}
 	<section class="progress-section" aria-labelledby="progress-title">
@@ -203,12 +207,16 @@
 </main>
 
 <style>
+  .illustrated-heading { display: flex; gap: 28px; align-items: center; }
+  .adventure-heading-copy { min-width: 0; flex: 1; }
+  @media (max-width: 600px) { .illustrated-heading { flex-direction: column; gap: 18px; align-items: flex-start; } }
+
 	.adventure-page { max-width: 1180px; margin: auto; padding: 32px; }
 	.back { display: inline-block; color: #3e7657; font-size: 14px; margin-bottom: 24px; }
 	.adventure-heading { background: linear-gradient(115deg, #211e1b, #29382e); color: #f8f5de; border-radius: 12px; padding: 35px 40px; }
 	.label { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #d2dcc1; }
 	h1 { font-size: clamp(36px, 5vw, 52px); margin: 10px 0; line-height: 1.15; font-weight: 500; }
-	.adventure-heading > p { max-width: 720px; color: #e5ecd9; font-size: 15px; }
+	.adventure-heading-copy > p { max-width: 720px; color: #e5ecd9; font-size: 15px; }
 	.facts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
 	.facts span { border: 1px solid #759075; border-radius: 999px; padding: 4px 11px; font-size: 12px; }
 	.progress-section { margin-top: 22px; padding: 21px 24px; border: 1px solid #b8c8b5; border-radius: 10px; background: #f4f7ef; display: grid; gap: 12px; }

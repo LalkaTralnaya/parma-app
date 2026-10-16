@@ -1,6 +1,8 @@
 <script lang="ts">
   import { page } from '$app/state';
   import { playerText, playerTable } from '$lib/ui/player-copy';
+  import PantheonGallery from './PantheonGallery.svelte';
+  import ConditionIcon from './ConditionIcon.svelte';
   type Block = { kind: 'paragraph'; text: string; level?: number } | { kind: 'table'; rows: string[][] };
   type Entry = { id: string; title: string; category: string; blocks: Block[]; source?: string };
   let { title, description, entries }: { title: string; description: string; entries: Entry[] } = $props();
@@ -23,12 +25,16 @@
     <details id={entry.id} class="border rounded-lg bg-white" open={Boolean(query.trim()) || page.url.hash === `#${entry.id}`}>
       <summary class="p-4 cursor-pointer font-semibold"><span class="text-xs text-gray-500 mr-2">{entry.category}</span>{entry.title}</summary>
       <div class="px-4 pb-4 space-y-3">
+        {#if entry.title === 'Пантеон'}
+          <PantheonGallery blocks={entry.blocks} expanded={Boolean(query.trim())} />
+        {:else}
         {#each entry.blocks as block}
           {#if block.kind === 'table'}
-            <div class="overflow-x-auto"><table class="w-full text-sm border-collapse"><thead><tr>{#each block.rows[0] as cell}<th class="border p-2 text-left bg-gray-100" scope="col">{cell}</th>{/each}</tr></thead><tbody>{#each block.rows.slice(1) as row}<tr>{#each row as cell}<td class="border p-2 align-top">{cell}</td>{/each}</tr>{/each}</tbody></table></div>
-          {:else if block.level}<h3 class="font-semibold pt-3">{block.text}</h3>
+            <div class="overflow-x-auto"><table class="w-full text-sm border-collapse"><thead><tr>{#each block.rows[0] as cell}<th class="border p-2 text-left bg-gray-100" scope="col">{cell}</th>{/each}</tr></thead><tbody>{#each block.rows.slice(1) as row}<tr>{#each row as cell, column}<td class="border p-2 align-top">{#if entry.category === 'Состояния' && column === 0}<span class="inline-flex items-center gap-2"><ConditionIcon name={cell} size={28} /><span>{cell}</span></span>{:else}{cell}{/if}</td>{/each}</tr>{/each}</tbody></table></div>
+          {:else if block.level}<h3 class="font-semibold pt-3">{#if entry.category === 'Состояния'}<span class="inline-flex items-center gap-2"><ConditionIcon name={block.text} /><span>{block.text}</span></span>{:else}{block.text}{/if}</h3>
           {:else}<p class="whitespace-pre-line">{block.text}</p>{/if}
         {/each}
+        {/if}
       </div>
     </details>
   {:else}<p class="notice">Ничего не найдено. Измените запрос или категорию.</p>{/each}

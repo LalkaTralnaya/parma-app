@@ -1,4 +1,5 @@
 <script lang="ts">
+	import StoryPanel from '$lib/components/StoryPanel.svelte';
 	import { onMount } from 'svelte';
 	import { listCustomAdventures } from '$lib/db/customAdventures';
 	import type { CustomAdventure } from '$lib/engine/customAdventures';
@@ -59,8 +60,8 @@
 		</div>
 		<div class="adventure-grid">
 			{#each ADVENTURES as adventure (adventure.slug)}
-				<article class="adventure-card">
-					<div class="card-art" aria-hidden="true"><img src={adventure.map.src} alt="" loading="lazy" width="1672" height="941" /></div>
+				<article class="adventure-card story-card">
+          <div class="story-art"><StoryPanel scene="road" label="Путник на лесной дороге к святилищу" width={180} /></div>
 					<div class="card-body">
 						<span class="card-label">{adventure.label}</span>
 						<h3>{adventure.title}</h3>
@@ -79,6 +80,10 @@
 </main>
 
 <style>
+  .story-card { display: grid; grid-template-columns: 180px minmax(0, 1fr); max-width: 850px; }
+  .story-art { align-self: center; padding: 20px 0 20px 20px; }
+  @media (max-width: 570px) { .story-card { grid-template-columns: 1fr; } .story-art { display: flex; justify-content: center; padding: 20px 20px 0; } }
+
 	.adventures-page { max-width: 1250px; margin: auto; padding: 32px; }
 	.adventures-hero { position: relative; overflow: hidden; min-height: 280px; background: #173d30; color: #f8f5de; border-radius: 12px; }
 	.hero-copy { position: relative; z-index: 1; max-width: 620px; padding: 38px 42px; }

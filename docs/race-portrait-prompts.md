@@ -1,0 +1,23 @@
+# Race portrait art
+
+Generated with the built-in image generation tool. Source of appearance details: the race appearance paragraphs in `src/lib/rules/parma-library.ts`. Each portrait is a representative adventurer, not a restriction on player character appearance. Rules and racial bonuses are unchanged.
+
+Style reference: the previously approved three-panel illustration (`static/art/story-panels.jpg`). Original generated PNGs remain in the Codex generated images directory; project assets are JPEG exports without content changes.
+
+## Common prompt
+
+Use case: illustration-story. Original portrait illustration for Parma, Slavic fantasy tabletop RPG. Reference image is STYLE REFERENCE ONLY. Match its medieval folk manuscript aesthetic: flat desaturated moss, charcoal, warm stone grey, dusty burgundy, straw gold; fine dark ink outlines, visible paper grain, elongated stylized silhouette, winding vines integrated into an arched ornamental panel. Single character FULL BODY, feet visible, centered in vertical 2:3 composition, arched top, ornamental narrow frame, no text, no letters, no signature, no watermark. Clothing grounded in medieval Slavic fantasy, embroidered linen and wool, no modern objects except specified medieval scholarly spectacles. Avoid photorealism, 3D, glossy videogame art, armor sexualization. Show a dignified, approachable adult adventurer.
+
+## Subject appended to the common prompt
+
+- `human.jpg`: A human woman traveler, dark braided hair, linen shirt and burgundy wool kaftan, practical belt, small travel satchel. Human proportions, no magical features. Background: winding village road, distant timber homes, subdued thunder oak motif.
+- `lesovik.jpg`: A tall slender adult male forest person, pale skin with faint green tint, angular features, subtly pointed ears, ash white long hair, green eyes. Moss green embroidered cloak, bow lowered beside body, hand resting on tree bark. Not a tree monster, clearly humanoid. Background: birches and woodland birds.
+- `svarozhich.jpg`: A short stocky broad shouldered adult mountain smith, dense charcoal black beard and hair, attentive dark eyes, rough scarred skin with old spark burn marks, heavy burgundy tunic, leather apron, hammer and plain steel shield. Proportions short and strong. Background: layered mountain rock and a smith's forge.
+- `polevichka.jpg`: An adult tiny field folk woman, 1.1m tall, cheerful round face, large clear eyes, curly reddish hair, pale freckled skin. Embroidered ochre and moss dress, burgundy waistcoat, small bread basket. Adult proportions and demeanor, NOT a child. Tall wheat stalks and sunflowers convey her small stature.
+- `chudinets.jpg`: An adult small slender scholar of Chudinets people, around 1.4m tall, noticeably large head, sparse grey brown hair, perceptive grey eyes, small medieval round spectacles. Layered moss and burgundy scholarly travel clothes, examining a brass instrument while holding a leather notebook. No pointed ears, not a wizard stereotype. Background: fragments of old geometric mechanisms, quiet stars.
+- `teni_roda.jpg`: An adult tall humanoid exile of Teni Roda, slate grey skin with muted violet tint, SMALL curved horns, softly luminous amber eyes, cloven hoof feet visible. Reserved thoughtful expression, charcoal cloak over dusty burgundy tunic, open empty hand. Not a villain or monster, no wings. Background: dark curling branches at a misty threshold.
+- `dragonkin.jpg`: An adult very tall powerful dragon descendant, humanoid upright body covered in muted copper red scales, strong draconic head, swept horns, slit pupils, clawed hands and feet, subdued moss and charcoal Slavic woven cloak and belt, no wings. Background: stylized mountains, a small thread of ember breath, quiet dignified profile.
+- `aasimar.jpg`: An adult woman divine descendant, slightly taller than human, flowing softly luminous pale gold hair, harmonious beautiful human face, clear sky colored eyes, skin with a subtle warm glow. Cream linen and dusty burgundy Slavic robes, simple bronze circular pendant, calm welcoming gesture. No wings, no literal Christian halo, no angel costume. Background: stylized sun rays, meadow and gold tendrils.
+- `mechanism.jpg`: A conscious awakened mechanism built by vanished forebears, humanoid body of dark carved wood, stone joints and aged bronze plates, crystal eyes, subtle geometric glowing marks with NO legible lettering. A practical moss travel cloak, one articulated hand gently holding a leaf, thoughtful gentle posture. No modern robot, no cables, no sci-fi screen. Background: ruined stone arch and young birch.
+
+All nine files live in `static/art/races/`. The creation screen loads only the currently selected race's portrait.

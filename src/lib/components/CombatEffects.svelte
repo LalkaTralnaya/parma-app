@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Dialog from './Dialog.svelte';
+	import ConditionIcon from './ConditionIcon.svelte';
 	import type { Character } from '../type';
 	import type { CombatParticipant, CombatState } from '../sync/combat';
 	import { CONDITIONS } from '../rules/conditions';
@@ -62,7 +63,7 @@
 	{#each participant.attacks?.filter(a=>isTargetedSpecial(`${a.save??''} ${a.notes??''}`))??[] as attack}<button disabled={busy} onclick={()=>begin(`${attack.name}: ${attack.save??attack.notes}`)}>Эффект: {attack.name}</button>{/each}
 	<button disabled={busy} onclick={()=>begin()}>Наложить эффект на цель</button>
 	{#if participant.effects?.length}<div class="effects-list">{#each participant.effects as e(e.id)}
-		<div class="effect"><strong>{e.name}</strong> · {e.roundsLeft===null?'до избавления':`${e.roundsLeft} р.`}<small>Источник: {e.sourceName}</small><p>{e.description}</p>
+		<div class="effect"><div class="effect-heading"><ConditionIcon id={e.conditionId} name={e.name} size={32} /><span><strong>{e.name}</strong> · {e.roundsLeft===null?'до избавления':`${e.roundsLeft} р.`}</span></div><small>Источник: {e.sourceName}</small><p>{e.description}</p>
 		{#if e.save}<button disabled={busy} onclick={()=>escape(e)}>Избавление к100</button>{#if e.save.charB}<button disabled={busy} onclick={()=>escape(e,true)}>Альтернативное избавление</button>{/if}{/if}
 		{#if CONDITIONS.find(c=>c.id===e.conditionId)?.dotDamage}<button disabled={busy} onclick={()=>dot(e)}>Урон от эффекта</button>{/if}
 		<button disabled={busy} onclick={()=>onchange(removeCombatEffect(encounter,participant.id,e.id))}>Снять эффект</button>
@@ -77,7 +78,7 @@
 	<label>Название эффекта<input bind:value={name}/></label>
 	<label>Описание<textarea rows="3" bind:value={text}></textarea></label>
 	<label>Состояние<select bind:value={conditionId} onchange={()=>{const c=CONDITIONS.find(c=>c.id===conditionId);if(c){rounds=c.defaultRounds;stat=c.save?.charA??stat;skill=c.save?.skillA??'';}}}><option value="">Особый эффект из описания</option>{#each CONDITIONS as c}<option value={c.id}>{c.name}</option>{/each}</select></label>
-	{#if conditionId}<p class="text-sm">{CONDITIONS.find(c=>c.id===conditionId)?.effects}</p>{/if}
+	{#if conditionId}<p class="text-sm effect-heading"><ConditionIcon id={conditionId} size={36} /><span>{CONDITIONS.find(c=>c.id===conditionId)?.effects}</span></p>{/if}
 	{#if !conditionId}<label>Модификатор атаки<input type="number" bind:value={attackMod}/></label><label>Модификатор Брони<input type="number" bind:value={armorMod}/></label><label>Модификатор скорости<input type="number" bind:value={speedMod}/></label><label>Модификатор проверок избавления<input type="number" bind:value={saveMod}/></label><label><input type="checkbox" bind:checked={cannotAct}/> Цель не может действовать</label>{/if}
 	<label>Длительность в раундах (0 — до избавления)<input type="number" min="0" bind:value={rounds}/></label>
 	<label><input type="checkbox" bind:checked={needsSave}/> Цель проходит избавление перед наложением</label>
@@ -91,5 +92,6 @@
 	{#if message}<p role="status">{message}</p>{/if}
 </Dialog>{/if}
 <style>
+.effect-heading{display:flex;align-items:center;gap:8px}
 .combat-effects{margin-top:12px;padding-top:8px;border-top:1px solid #c9d6cc;font-size:12px}.actions{display:flex;flex-wrap:wrap;gap:6px}button{padding:6px 8px;border:1px solid #aab9ac;border-radius:6px;margin:3px;background:#edf2e8;color:#173d30}button:disabled{opacity:.5}.effect{border:1px solid #d99e8f;border-radius:6px;padding:8px;margin-top:8px;background:#fff5f0}.effect p{margin:4px 0}.effect small{display:block}label{display:block;margin:10px 0}label input:not([type=checkbox]),select,textarea{display:block;width:100%;padding:7px;border:1px solid #aab9ac;border-radius:6px}input[type=checkbox]{margin-right:6px}
 </style>

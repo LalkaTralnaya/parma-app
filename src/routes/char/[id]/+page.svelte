@@ -1,7 +1,5 @@
 <script lang="ts">
 	import { autosizeTextarea } from '$lib/ui/autosize-textarea';
- import SheetAppearanceControls from '$lib/components/SheetAppearance.svelte';
- import { sheetAppearance, type SheetAppearance } from '$lib/ui/sheet-appearance';
  import Dialog from '$lib/components/Dialog.svelte';
  import { applyItemTreatments, treatWithItem } from '$lib/engine/itemTreatment';
  import { playerText } from '$lib/ui/player-copy';
@@ -59,6 +57,7 @@
 
 	// Правила
 	import { CONDITIONS, findCondition } from '../../../lib/rules/conditions';
+	import ConditionIcon from '$lib/components/ConditionIcon.svelte';
 import { getConditionModifiers, getConditionSaveTarget as calculateConditionSaveTarget, rollConditionsDotDamage } from '../../../lib/engine/conditions';
 	import { adjustDecayPoints, canUseDecayPower, canUseGraceWithDecay, getAvailableDecayPowers, getDecayStage, markDecayPowerUsed, resetDecayPowers } from '../../../lib/engine/decay';
 	import { PERSONALITY_TRAITS, IDEALS, BONDS, FLAWS, findOption } from '../../../lib/rules/personality';
@@ -160,13 +159,6 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	// STATE
 	// ────────────────────────────────────────────
 	let char = $state<Character | null>(null);
- async function updateSheetAppearance(value: SheetAppearance) {
-  if (!char) return;
-  const character=char, previous=character.appearance;
-  character.appearance=value;
-  try { await saveCharacter($state.snapshot(character) as Character); }
-  catch(error) {character.appearance=previous;throw error;}
- }
 
 	type RollMode = 'online' | 'offline';
 	let rollMode = $state<RollMode>('online');
@@ -1683,7 +1675,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		}
 	}
 </style>
-<main class="character-sheet max-w-4xl mx-auto p-6 space-y-6" data-decay-stage={decayLevel} data-sheet-background={sheetAppearance(char?.appearance).background} data-sheet-frame={sheetAppearance(char?.appearance).frame}>
+<main class="character-sheet max-w-4xl mx-auto p-6 space-y-6" data-decay-stage={decayLevel} data-sheet-background="parchment" data-sheet-frame="carved">
 	{#if pendingDie}
 		<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 print-hide" role="presentation">
 			<div class="w-full max-w-sm rounded-xl border border-gray-500 bg-white p-6 shadow-2xl text-gray-900" role="dialog" aria-modal="true" aria-label="Ввод физического броска">
@@ -1794,7 +1786,6 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 					class="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-semibold">
 					+1 уровень
 				</a>
-				<SheetAppearanceControls value={char.appearance} onchange={updateSheetAppearance}/>
 				<button
 					class="px-3 py-2 bg-gray-700 text-white rounded hover:bg-gray-800 print-hide"
 					onclick={printCharacter}
@@ -2006,12 +1997,14 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 						{#if def}
 							<div class="border-2 rounded-lg p-3 {def.isPositive ? 'border-green-300 bg-green-50' : 'border-red-300 bg-red-50'}">
 								<div class="flex justify-between items-start mb-2 flex-wrap gap-2">
-									<div>
-										<div class="font-semibold {def.isPositive ? 'text-green-800' : 'text-red-800'}">
+									<div class="flex items-start gap-3">
+										<ConditionIcon id={def.id} size={44} />
+										<div><div class="font-semibold {def.isPositive ? 'text-green-800' : 'text-red-800'}">
 											{def.name}
 											{#if c.id === 'exhausted' && (c.stacks ?? 1) > 1}<span class="text-xs">· {c.stacks} ур.</span>{/if}
 										</div>
 								<div class="text-xs text-gray-600 mt-0.5">{c.id === 'exhausted' && (c.stacks ?? 1) > 1 ? `−${20 * (c.stacks ?? 1)} к максимуму Бодрости` : def.effects}</div>
+										</div>
 									</div>
 									<div class="flex items-center gap-1">
 										{#if c.roundsLeft !== null}
@@ -2117,6 +2110,10 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 								class="w-full px-2 py-1 border rounded text-sm" />
 						</div>
 					</div>
+					{#if newConditionId}
+						{@const selectedCondition = findCondition(newConditionId)}
+						{#if selectedCondition}<div class="flex items-center gap-3 mb-3"><ConditionIcon id={selectedCondition.id} size={44} /><p class="text-sm"><strong>{selectedCondition.name}</strong><br />{selectedCondition.description}</p></div>{/if}
+					{/if}
 					<div class="flex gap-2">
 						<button
 							class="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:bg-gray-300"
