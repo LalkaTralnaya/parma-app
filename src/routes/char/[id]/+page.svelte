@@ -58,6 +58,8 @@
 	// Правила
 	import { CONDITIONS, findCondition } from '../../../lib/rules/conditions';
 	import ConditionIcon from '$lib/components/ConditionIcon.svelte';
+	import GuidedTour from '$lib/components/GuidedTour.svelte';
+	import { SHEET_TOUR } from '$lib/ui/learning-tours';
 import { getConditionModifiers, getConditionSaveTarget as calculateConditionSaveTarget, rollConditionsDotDamage } from '../../../lib/engine/conditions';
 	import { adjustDecayPoints, canUseDecayPower, canUseGraceWithDecay, getAvailableDecayPowers, getDecayStage, markDecayPowerUsed, resetDecayPowers } from '../../../lib/engine/decay';
 	import { PERSONALITY_TRAITS, IDEALS, BONDS, FLAWS, findOption } from '../../../lib/rules/personality';
@@ -1781,6 +1783,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 			</div>
 			<div class="flex gap-2 flex-wrap">
 				<a href="/" class="px-3 py-2 border rounded hover:bg-gray-50">← К списку</a>
+				<GuidedTour steps={SHEET_TOUR} title="Лист персонажа" autoStart={page.url.searchParams.get('learn') === '1'} />
 				<a
 					href="/char/{char.id}/levelup"
 					class="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-semibold">

@@ -1,5 +1,7 @@
 <script lang="ts">
 	import RacePortrait from '$lib/components/RacePortrait.svelte';
+	import GuidedTour from '$lib/components/GuidedTour.svelte';
+	import { CREATION_TOUR } from '$lib/ui/learning-tours';
 	import BackgroundPortrait from '$lib/components/BackgroundPortrait.svelte';
 	import { page } from '$app/state';
 	import { getCustomAdventure, saveCustomAdventure } from '$lib/db/customAdventures';
@@ -65,10 +67,11 @@
 	}
 </script>
 
+<svelte:head><title>Создание персонажа — Парма</title></svelte:head>
 <main class="max-w-3xl mx-auto p-6 space-y-6">
 	<header class="flex justify-between items-center">
 		<h1 class="text-3xl font-bold">{page.url.searchParams.get("adventure") ? "Герой для приключения" : "Новый персонаж"}</h1>
-		<a href={page.url.searchParams.get("adventure") ? `/adventures/custom/${page.url.searchParams.get("adventure")}/edit` : "/"} class="px-3 py-2 border rounded hover:bg-gray-50">← Отмена</a>
+		<div class="flex flex-wrap items-center gap-2"><GuidedTour steps={CREATION_TOUR} title="Создание персонажа" autoStart={page.url.searchParams.get('learn') === '1'} /><a href={page.url.searchParams.get("adventure") ? `/adventures/custom/${page.url.searchParams.get("adventure")}/edit` : "/"} class="px-3 py-2 border rounded hover:bg-gray-50">← Отмена</a></div>
 	</header>
 	<p class="notice">Имя, происхождение и первые умения — начало вашей истории. Выберите расу и предысторию, затем распределите до 10 очков навыков.</p>
 
@@ -180,7 +183,7 @@
 		</div>
 	</section>
 	<!-- Навыки -->
-	<section class="border rounded-lg p-4 bg-white">
+	<section id="creation-skills" class="border rounded-lg p-4 bg-white">
 		<div class="flex justify-between items-center mb-3">
 			<h2 class="font-semibold text-lg">Очки навыков</h2>
 			<div class="text-sm">
@@ -221,7 +224,7 @@
 	<!-- Кнопка -->
 	{#if error}<p class="notice error" role="alert">{error}</p>{/if}
 	<div class="flex gap-3">
-		<button
+		<button id="create-character"
 			class="px-6 py-3 bg-blue-600 text-white rounded hover:bg-blue-700 font-semibold"
 			disabled={saving} onclick={save}>
 			{saving ? 'Сохраняем…' : 'Сохранить персонажа'}

@@ -154,7 +154,7 @@ test('Bog Walker uses the player book stats and attack formula', () => {
 });
 
 test('every bestiary attack uses an explicit characteristic and damage rule', () => {
-  assert.equal(BESTIARY.length, 51);
+  assert.equal(BESTIARY.length, 69);
   assert.equal(BESTIARY.filter((monster) => monster.source === 'custom').length, 2);
   assert.equal(BESTIARY.find((monster) => monster.id === 'headless_rider')?.hp, 45);
   assert.deepEqual(BESTIARY.find((monster) => monster.id === 'mechanism_guard')?.attacks[0].extraDamageDice, ['1к4']);

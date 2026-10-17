@@ -28,7 +28,13 @@ const MONSTER_HABITATS: Record<string, HabitatId[]> = {
   skeleton: ['grave', 'ruins'], ghost: ['grave', 'settlement', 'ruins'], banshee: ['grave', 'ruins'], grave_worm: ['grave', 'navi'],
   harpy: ['mountain'], voronojnik: ['mountain', 'forest'], giant_burrowing_worm: ['mountain'], royal_eagle: ['mountain'],
   thunderbird: ['mountain'], cave_troll: ['mountain'], giant_scorpion: ['desert'], ice_mammoth: ['ice'],
-  shadow: ['navi', 'ruins'], koshmar_wolf: ['navi', 'forest'], soul_devourer: ['navi'], necrophantom: ['navi', 'ruins'],
+  shadow: ['navi', 'ruins'], shadow_medium: ['navi', 'ruins'], shadow_senior: ['navi', 'ruins'], great_shadow: ['navi', 'ruins'],
+  cultist_scout: ['forest', 'road', 'settlement'], cultist_trapper: ['forest', 'road', 'ruins'], cultist_silent: ['settlement', 'ruins', 'forest'],
+  cultist_henchman: ['settlement', 'ruins'], cultist_champion: ['ruins', 'settlement'], cultist_executioner: ['ruins', 'settlement'],
+  cultist_recruiter: ['settlement', 'road'], cultist_agitator: ['settlement', 'road'], cultist_herald: ['settlement', 'ruins'],
+  cultist_apprentice: ['ruins', 'settlement'], cultist_warlock: ['ruins', 'settlement'], cultist_mentor: ['ruins', 'settlement'],
+  cultist_acolyte: ['ruins', 'forest', 'settlement'], cultist_ritualist: ['ruins', 'settlement'], cultist_high_priest: ['ruins', 'settlement'],
+  koshmar_wolf: ['navi', 'forest'], soul_devourer: ['navi'], necrophantom: ['navi', 'ruins'],
   abyss_ghost: ['navi', 'grave'], navi_dragon_worm: ['navi'], cerberus: ['navi']
 };
 

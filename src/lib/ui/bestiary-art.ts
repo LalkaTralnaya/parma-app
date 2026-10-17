@@ -55,6 +55,18 @@ export const BESTIARY_ART: Record<string, { src: string; alt: string }> = {
     "src": "/art/bestiary/banshee.jpg",
     "alt": "Баньши — иллюстрация из бестиария Пармы"
   },
+  "shadow_medium": {
+    "src": "/art/bestiary/shadow.jpg",
+    "alt": "Средняя Тень — иллюстрация из бестиария Пармы"
+  },
+  "shadow_senior": {
+    "src": "/art/bestiary/shadow.jpg",
+    "alt": "Старшая Тень — иллюстрация из бестиария Пармы"
+  },
+  "great_shadow": {
+    "src": "/art/bestiary/shadow.jpg",
+    "alt": "Великая Тень — иллюстрация из бестиария Пармы"
+  },
   "shadow": {
     "src": "/art/bestiary/shadow.jpg",
     "alt": "Малая тень — иллюстрация из бестиария Пармы"
@@ -202,5 +214,65 @@ export const BESTIARY_ART: Record<string, { src: string; alt: string }> = {
   "cerberus": {
     "src": "/art/bestiary/cerberus.jpg",
     "alt": "Цербер — иллюстрация из бестиария Пармы"
+  },
+  "cultist_scout": {
+    "src": "/art/bestiary/cultist_scout.jpg",
+    "alt": "Культист-лазутчик — иллюстрация из бестиария Пармы"
+  },
+  "cultist_trapper": {
+    "src": "/art/bestiary/cultist_trapper.jpg",
+    "alt": "Культист-ловец — иллюстрация из бестиария Пармы"
+  },
+  "cultist_silent": {
+    "src": "/art/bestiary/cultist_silent.jpg",
+    "alt": "Культист-безмолвник — иллюстрация из бестиария Пармы"
+  },
+  "cultist_henchman": {
+    "src": "/art/bestiary/cultist_henchman.jpg",
+    "alt": "Культист-приспешник — иллюстрация из бестиария Пармы"
+  },
+  "cultist_champion": {
+    "src": "/art/bestiary/cultist_champion.jpg",
+    "alt": "Культист-поборник — иллюстрация из бестиария Пармы"
+  },
+  "cultist_executioner": {
+    "src": "/art/bestiary/cultist_executioner.jpg",
+    "alt": "Культист-палач — иллюстрация из бестиария Пармы"
+  },
+  "cultist_recruiter": {
+    "src": "/art/bestiary/cultist_recruiter.jpg",
+    "alt": "Культист-зазывала — иллюстрация из бестиария Пармы"
+  },
+  "cultist_agitator": {
+    "src": "/art/bestiary/cultist_agitator.jpg",
+    "alt": "Культист-подстрекатель — иллюстрация из бестиария Пармы"
+  },
+  "cultist_herald": {
+    "src": "/art/bestiary/cultist_herald.jpg",
+    "alt": "Культист-глашатай — иллюстрация из бестиария Пармы"
+  },
+  "cultist_apprentice": {
+    "src": "/art/bestiary/cultist_apprentice.jpg",
+    "alt": "Ученик запретного круга — иллюстрация из бестиария Пармы"
+  },
+  "cultist_warlock": {
+    "src": "/art/bestiary/cultist_warlock.jpg",
+    "alt": "Культист-чернокнижник — иллюстрация из бестиария Пармы"
+  },
+  "cultist_mentor": {
+    "src": "/art/bestiary/cultist_mentor.jpg",
+    "alt": "Наставник запретного круга — иллюстрация из бестиария Пармы"
+  },
+  "cultist_acolyte": {
+    "src": "/art/bestiary/cultist_acolyte.jpg",
+    "alt": "Культист-послушник — иллюстрация из бестиария Пармы"
+  },
+  "cultist_ritualist": {
+    "src": "/art/bestiary/cultist_ritualist.jpg",
+    "alt": "Культист-обрядник — иллюстрация из бестиария Пармы"
+  },
+  "cultist_high_priest": {
+    "src": "/art/bestiary/cultist_high_priest.jpg",
+    "alt": "Старший жрец культа — иллюстрация из бестиария Пармы"
   }
 };

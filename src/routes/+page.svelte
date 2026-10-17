@@ -77,6 +77,7 @@
     </div>
     <img class="forest" src="/forest.svg" alt="" width="700" height="420" />
   </section>
+  <section class="learning-invitation" aria-label="Обучение"><Icon name="compass" size={25} /><div><strong>Первый раз в Парме?</strong><p>Создание героя, знакомство с листом и первые главы мира и правил.</p></div><a class="button" href="/learn">Начать обучение <Icon name="arrow" size={18} /></a></section>
   <section class="world ornament-frame" id="world" aria-labelledby="world-title">
     <div class="world-copy">
       <span class="world-note">Добро пожаловать в Парму</span>
@@ -159,6 +160,10 @@
 </main>
 
 <style>
+  .learning-invitation { display:flex;align-items:center;gap:16px;padding:18px 22px;border:1px solid #bca77f;border-radius:5px;background:#eee3cb;color:#2d4937;margin:24px 0; }
+  .learning-invitation > :global(svg) { flex-shrink:0;color:#947344; }
+  .learning-invitation > div { flex:1; } .learning-invitation strong { font:21px Georgia,serif; } .learning-invitation p { font-size:13px;line-height:1.6;color:#65705a;margin-top:5px; }
+  @media(max-width:600px) { .learning-invitation { flex-wrap:wrap;padding:16px; } .learning-invitation > div { flex-basis:75%; } }
   .home { max-width: 1250px; margin: auto; padding: 32px; }
   .journey { position: relative; overflow: hidden; background: #173d30; color: #f8f5de; border-radius: 5px; min-height: 263px; }
   .journey-copy { position: relative; z-index: 1; padding: 32px 36px; width: 62%; }

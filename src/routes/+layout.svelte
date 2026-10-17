@@ -57,5 +57,5 @@
 <div id="content" tabindex="-1">{@render children()}</div>
 <RollChat />
 <DiceOverlay />
-<footer class="app-footer"><span>Парма · Помощник игрока и сказителя</span><ReleaseNotes showFooter={page.url.pathname === '/'} /></footer>
+<footer class="app-footer"><span>Парма · Помощник игрока и сказителя</span><a href="/learn">Обучение</a><ReleaseNotes showFooter={page.url.pathname === '/'} /></footer>
 <style>.header-inner { flex-wrap: wrap; } .primary-nav { flex-wrap: wrap; }</style>

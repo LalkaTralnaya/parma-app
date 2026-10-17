@@ -29,7 +29,7 @@ export function effectPreset(text: string) {
 	const saveText = text.match(/(?:Избавление\s+)?(Стойкост[ьи]|Сил[аы]|Ловкост[ьи]|Интеллект[а]?|Религии|Красноречия)/i)?.[1]?.toLowerCase() ?? '';
 	const charA = /ловк/.test(saveText) ? 'dexterity' : /интел/.test(saveText) ? 'intelligence' : /религ/.test(saveText) ? 'religion' : /красн/.test(saveText) ? 'eloquence' : 'strength';
 	const skillA = /стойк/.test(saveText) ? 'fortitude' : '';
-	const penalty = -Number(text.match(/(?:штрафом|СЛ)\s*[−-](\d+)/i)?.[1] ?? 0) || 0;
+	const penalty = -Number(text.match(/(?:штрафом|сложност(?:ью|и|ь)?|СЛ)\s*[−-]?(\d+)/i)?.[1] ?? 0) || 0;
 	const rounds = text.match(/(?:на\s+)?(\d+)\s*раунд/i)?.[1];
 	return { conditionId: state?.id ?? '', charA, skillA, penalty, rounds: rounds ? Number(rounds) : state?.defaultRounds ?? null };
 }

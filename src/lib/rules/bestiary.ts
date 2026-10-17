@@ -686,9 +686,9 @@ export interface BestiarySection {
 const SECTION_IDS: { id: string; name: string; monsterIds: string[] }[] = [
 	{ id: 'forest', name: 'Лесные звери', monsterIds: ['wolf', 'bear', 'boar', 'giant_spider'] },
 	{ id: 'spirits', name: 'Духи и хранители', monsterIds: ['leshy', 'gniyushiy_leshy', 'vodyanoy', 'rusalka', 'bolotny_hodok', 'poludennitsa', 'poltergeist', 'ghost', 'nochnitsa', 'banshee'] },
-	{ id: 'navi', name: 'Порождения Нави', monsterIds: ['shadow', 'koshmar_wolf', 'black_dog', 'soul_devourer', 'abyss_ghost', 'necrophantom', 'grave_worm', 'navi_dragon_worm'] },
+	{ id: 'navi', name: 'Порождения Нави', monsterIds: ['shadow', 'shadow_medium', 'shadow_senior', 'great_shadow', 'koshmar_wolf', 'black_dog', 'soul_devourer', 'abyss_ghost', 'necrophantom', 'grave_worm', 'navi_dragon_worm'] },
 	{ id: 'undead', name: 'Нежить и проклятые', monsterIds: ['upyr', 'algul', 'gul', 'upyr_king', 'skeleton', 'utoplets', 'katanak', 'higher_vampire', 'bone_witch', 'headless_rider'] },
-	{ id: 'people', name: 'Люди и оборотни', monsterIds: ['druzhinnik', 'starschina', 'werewolf'] },
+	{ id: 'people', name: 'Люди и оборотни', monsterIds: ['druzhinnik', 'starschina', 'werewolf', 'cultist_scout', 'cultist_trapper', 'cultist_silent', 'cultist_henchman', 'cultist_champion', 'cultist_executioner', 'cultist_recruiter', 'cultist_agitator', 'cultist_herald', 'cultist_apprentice', 'cultist_warlock', 'cultist_mentor', 'cultist_acolyte', 'cultist_ritualist', 'cultist_high_priest'] },
 	{ id: 'constructs', name: 'Механизмы и големы', monsterIds: ['mechanism_guard', 'rune_spider_golem'] },
 	{ id: 'beasts', name: 'Чудовища суши', monsterIds: ['endriaga', 'voronojnik', 'giant_boa', 'giant_burrowing_worm', 'royal_eagle', 'basilisk', 'thunderbird', 'giant_scorpion', 'cave_troll', 'ice_mammoth', 'harpy'] },
 	{ id: 'water', name: 'Морские чудовища', monsterIds: ['sea_serpent'] },
