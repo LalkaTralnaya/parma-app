@@ -1,4 +1,5 @@
 <script lang="ts">
+ import SpellPattern from './SpellPattern.svelte';
  import { playerText } from '$lib/ui/player-copy';
   import type { Spell } from '$lib/rules/spells';
   type Cost = { reduced: number; reduction: number; resource: 'mana' | 'grace' | 'hp' };
@@ -10,7 +11,10 @@
   const repeatedEffect = $derived(spell.holdDamage ?? spell.holdEffect ?? 'Эффект продолжается');
 </script>
 
-<p class="spell-description text-gray-600">{playerText(spell.description)}</p>
+<div class="spell-overview">
+  <p class="spell-description text-gray-600">{playerText(spell.description)}</p>
+  <SpellPattern spellId={spell.id} name={spell.name} />
+</div>
 <div class="spell-facts">
   <span>{spell.rangeText ?? rangeLabels[spell.range]}</span>
   <span>{targetLabels[spell.target]}</span>
@@ -40,6 +44,7 @@
 {/if}
 
 <style>
+  .spell-overview { display:grid; grid-template-columns:minmax(0,1fr) 96px; gap:16px; align-items:center; margin-bottom:10px; }
   .spell-description { margin: 10px 0 14px; font-size: 14px; line-height: 1.65; }
   .spell-facts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
   .spell-facts span { padding: 4px 9px; border: 1px solid var(--decay-border, #c4cbbb); border-radius: 6px; font-size: 12px; }
