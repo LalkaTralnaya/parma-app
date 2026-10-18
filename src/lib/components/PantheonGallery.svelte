@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { LibraryBlock } from '$lib/rules/parma-library';
   import ReferenceBlocks from './ReferenceBlocks.svelte';
+  import DeitySymbol from './DeitySymbol.svelte';
 
   let { blocks, expanded = false }: { blocks: LibraryBlock[]; expanded?: boolean } = $props();
 
@@ -53,7 +54,7 @@
             <img class="deity-portrait" src={`/art/pantheon/${god.portrait.id}.jpg`} alt={god.portrait.alt} loading="lazy" decoding="async" width="1024" height="1536" />
           </a>
           <div class="deity-copy">
-            <h3 id={`deity-${god.portrait.id}`}>{god.portrait.name}</h3>
+            <div class="deity-title"><h3 id={`deity-${god.portrait.id}`}>{god.portrait.name}</h3><DeitySymbol id={god.portrait.id} /></div>
             <p class="deity-domain">{god.subtitle}</p>
             {#if god.blocks[0]?.kind === 'paragraph'}<blockquote>{god.blocks[0].text}</blockquote>{/if}
           </div>
@@ -77,6 +78,7 @@
   .deity-portrait { display: block; width: 100%; height: auto; aspect-ratio: 2 / 3; object-fit: cover; border: 1px solid #7f7059; border-radius: 90px 90px 3px 3px; background: #a79e8b; }
   .deity-art { display: block; cursor: zoom-in; border-radius: 90px 90px 3px 3px; }
   .deity-art:focus-visible { outline: 2px solid #856b47; outline-offset: 4px; }
+  .deity-title { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
   h3 { margin: .5rem 0 .4rem; font-family: Georgia, 'Times New Roman', serif; font-size: 1.8rem; font-weight: 500; line-height: 1.15; color: #294637; }
   .deity-domain { font-size: .78rem; line-height: 1.5; color: #855d3e; }
   blockquote { margin: .85rem 0 0; font-size: .85rem; line-height: 1.7; color: #4e5144; }
