@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tick } from 'svelte';
+  import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import { playerText, playerTable } from '$lib/ui/player-copy';
   import PantheonGallery from './PantheonGallery.svelte';
@@ -16,15 +18,30 @@
   const categories = $derived(['Все', ...(readingOrder ? chapters.map(chapter => chapter.title) : new Set(playerEntries.map(entry => entry.category)))]);
   const visible = $derived(playerEntries.filter(entry => (category === 'Все' || (readingOrder ? chapters.some(chapter => chapter.title === category && chapter.entries.some(member => member.id === entry.id)) : category === entry.category)) && JSON.stringify([entry.title, entry.category, entry.blocks]).toLocaleLowerCase('ru').includes(query.trim().toLocaleLowerCase('ru'))));
   const visibleChapters = $derived(chapters.map(chapter => ({ ...chapter, entries: chapter.entries.filter(entry => visible.some(member => member.id === entry.id)) })).filter(chapter => chapter.entries.length));
+  const shortcutIds = { lore: ['book16-masters', 'book16-rulers-and-circles'], mechanics: ['book16-skill-growth-story', 'book16-navi-shadows'] };
+  const shortcuts = $derived(readingOrder ? shortcutIds[readingOrder].flatMap(id => playerEntries.filter(entry => entry.id === id)) : []);
+  async function revealEntry(event: MouseEvent, id: string) {
+    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    query = ''; category = 'Все';
+    await tick();
+    const target = document.getElementById(id);
+    if (target instanceof HTMLDetailsElement) target.open = true;
+    await goto(`#${id}`, { keepFocus: true, noScroll: true });
+    target?.scrollIntoView({ block: 'start' });
+  }
 </script>
 
 <svelte:head><title>{title} — Парма</title></svelte:head>
 <main class="reference-page max-w-6xl mx-auto p-6 space-y-5">
   <header><h1 class="text-4xl font-bold">{title}</h1><p class="mt-2 text-gray-600">{description}</p><a class="reading-help" href="/learn?topic=reading">Первый раз здесь? Как пользоваться справочниками →</a></header>
+  {#if shortcuts.length}
+    <nav class="quick-reference" aria-label="Быстрый переход к новым разделам"><span>Новые разделы</span>{#each shortcuts as entry}<a href={`#${entry.id}`} onclick={event => revealEntry(event, entry.id)}>{entry.title}<Icon name="arrow" size={16} /></a>{/each}</nav>
+  {/if}
   {#if readingOrder && visibleChapters.length}
     <details class="reading-contents" open>
       <summary>Порядок чтения <span>От основ к подробностям</span></summary>
-      <nav aria-label="Оглавление"><ol>{#each visibleChapters as chapter}<li><a href={`#chapter-${chapter.id}`}><span class="chapter-number">{chapter.number.toString().padStart(2, '0')}</span><span><strong>{chapter.title}</strong><small>{chapter.description}</small></span></a></li>{/each}</ol></nav>
+      <nav aria-label="Оглавление"><ol>{#each visibleChapters as chapter}<li><a href={`#chapter-${chapter.id}`}><span class="chapter-number">{chapter.number.toString().padStart(2, '0')}</span><span><strong>{chapter.title}</strong><small>{chapter.description}</small></span></a><details class="chapter-entries"><summary>Разделы главы · {chapter.entries.length}</summary><ul>{#each chapter.entries as entry}<li><a href={`#${entry.id}`} onclick={event => revealEntry(event, entry.id)}>{entry.title}</a></li>{/each}</ul></details></li>{/each}</ol></nav>
     </details>
   {/if}
   <label class="block"><span class="text-sm">Поиск по разделам и тексту</span><input class="block w-full border rounded px-3 py-2 mt-1" type="search" bind:value={query} placeholder="Введите слово или название" /></label>
@@ -51,6 +68,13 @@
   {:else}<p class="notice">Ничего не найдено. Измените запрос или категорию.</p>{/each}
 </main>
 <style>
+  .quick-reference { display:flex; flex-wrap:wrap; align-items:center; gap:10px 16px; padding:14px 16px; border:1px solid #c0aa83; border-radius:4px; background:#f3ead7; }
+  .quick-reference > span { font-size:13px; color:#655439; }
+  .quick-reference a { display:inline-flex; align-items:center; gap:8px; color:#294637; text-decoration:underline; text-underline-offset:3px; font-size:14px; }
+  .chapter-entries { margin:8px 0 0 34px; }
+  .chapter-entries summary { cursor:pointer; font-size:12px; color:#655439; padding:5px 0; }
+  .chapter-entries ul { display:grid; gap:8px; margin:8px 0; padding:0; list-style:none; }
+  .chapter-entries li a { display:block; font-size:13px; color:#294637; text-decoration:underline; text-underline-offset:3px; overflow-wrap:anywhere; }
   summary:hover { background: #efefe6; }
   .reference-page, .book-chapter, .reference-entry, .entry-content { min-width:0; }
   .entry-summary { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:18px 20px; cursor:pointer; list-style:none; }
