@@ -2,7 +2,9 @@
   import { page } from '$app/state';
   import { playerText, playerTable } from '$lib/ui/player-copy';
   import PantheonGallery from './PantheonGallery.svelte';
-  import ConditionIcon from './ConditionIcon.svelte';
+  import ReferenceBlocks from './ReferenceBlocks.svelte';
+  import Icon from './Icon.svelte';
+  import { REFERENCE_SECTION_LEVELS } from '$lib/ui/reference-reading';
   import { arrangeReference, type ReadingOrder } from '$lib/ui/reference-order';
   type Block = { kind: 'paragraph'; text: string; level?: number } | { kind: 'table'; rows: string[][] };
   type Entry = { id: string; title: string; category: string; blocks: Block[]; source?: string };
@@ -34,18 +36,13 @@
     <section class="book-chapter">
       {#if readingOrder}<header class="chapter-heading" id={`chapter-${chapter.id}`}><span>{chapter.number.toString().padStart(2, '0')}</span><div><h2>{chapter.title}</h2><p>{chapter.description}</p></div></header>{/if}
       {#each chapter.entries as entry (entry.id)}
-    <details id={entry.id} class="border rounded-lg bg-white" open={Boolean(query.trim()) || page.url.hash === `#${entry.id}`}>
-      <summary class="p-4 cursor-pointer font-semibold"><span class="text-xs text-gray-500 mr-2">{entry.category}</span>{entry.title}</summary>
-      <div class="px-4 pb-4 space-y-3">
+    <details id={entry.id} class="reference-entry border rounded-lg bg-white" open={Boolean(query.trim()) || page.url.hash === `#${entry.id}`}>
+      <summary class="entry-summary"><span><small>{entry.category}</small><strong>{entry.title}</strong></span><Icon name="arrow" size={20} /></summary>
+      <div class="entry-content">
         {#if entry.title === 'Пантеон'}
           <PantheonGallery blocks={entry.blocks} expanded={Boolean(query.trim())} />
         {:else}
-        {#each entry.blocks as block}
-          {#if block.kind === 'table'}
-            <div class="overflow-x-auto"><table class="w-full text-sm border-collapse"><thead><tr>{#each block.rows[0] as cell}<th class="border p-2 text-left bg-gray-100" scope="col">{cell}</th>{/each}</tr></thead><tbody>{#each block.rows.slice(1) as row}<tr>{#each row as cell, column}<td class="border p-2 align-top">{#if entry.category === 'Состояния' && column === 0}<span class="inline-flex items-center gap-2"><ConditionIcon name={cell} size={28} /><span>{cell}</span></span>{:else}{cell}{/if}</td>{/each}</tr>{/each}</tbody></table></div>
-          {:else if block.level}<h3 class="font-semibold pt-3">{#if entry.category === 'Состояния'}<span class="inline-flex items-center gap-2"><ConditionIcon name={block.text} /><span>{block.text}</span></span>{:else}{block.text}{/if}</h3>
-          {:else}<p class="whitespace-pre-line">{block.text}</p>{/if}
-        {/each}
+        <ReferenceBlocks blocks={entry.blocks} category={entry.category} entryTitle={entry.title} sectionLevel={REFERENCE_SECTION_LEVELS[entry.id]} expanded={Boolean(query.trim())} />
         {/if}
       </div>
     </details>
@@ -54,7 +51,18 @@
   {:else}<p class="notice">Ничего не найдено. Измените запрос или категорию.</p>{/each}
 </main>
 <style>
-  summary:hover { background: #efefe6; } td { min-width: 100px; }
+  summary:hover { background: #efefe6; }
+  .reference-page, .book-chapter, .reference-entry, .entry-content { min-width:0; }
+  .entry-summary { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:18px 20px; cursor:pointer; list-style:none; }
+  .entry-summary::-webkit-details-marker { display:none; }
+  .entry-summary > span { min-width:0; }
+  .entry-summary small { display:block; font-size:12px; line-height:1.5; color:#756449; margin-bottom:4px; }
+  .entry-summary strong { display:block; font:22px/1.4 Georgia,serif; color:#294637; overflow-wrap:anywhere; }
+  .entry-summary :global(svg) { flex-shrink:0; transform:rotate(90deg); }
+  .reference-entry[open] > .entry-summary :global(svg) { transform:rotate(-90deg); }
+  .entry-summary:focus-visible { outline:2px solid #856b47; outline-offset:3px; }
+  .entry-content { padding:4px 20px 22px; }
+  @media(max-width:600px) { .entry-summary { padding:14px; gap:10px; } .entry-summary strong { font-size:20px; } .entry-content { padding:2px 12px 16px; } }
   .reading-help { display:inline-block;margin-top:12px;font-size:13px;color:#345c43;text-decoration:underline;text-underline-offset:3px; }
   .reading-contents { border:1px solid #c0aa83;border-radius:5px;background:#f3ead7;padding:16px 20px; }
   .reading-contents > summary { cursor:pointer;font-family:Georgia,serif;font-size:21px;color:#294333; }

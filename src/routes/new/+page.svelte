@@ -1,5 +1,6 @@
 <script lang="ts">
 	import RacePortrait from '$lib/components/RacePortrait.svelte';
+	import RaceSymbol from '$lib/components/RaceSymbol.svelte';
 	import GuidedTour from '$lib/components/GuidedTour.svelte';
 	import { CREATION_TOUR } from '$lib/ui/learning-tours';
 	import BackgroundPortrait from '$lib/components/BackgroundPortrait.svelte';
@@ -88,7 +89,7 @@
 	<!-- Раса -->
 	<section class="border rounded-lg p-4 bg-white">
     <div class="race-layout">
-      <RacePortrait raceId={raceId} name={selectedRace.name} />
+      <div class="race-art"><RacePortrait raceId={raceId} name={selectedRace.name} /><RaceSymbol id={raceId} /></div>
       <div class="race-fields space-y-3">
 		<div>
 			<label for="raceId" class="block mb-2 font-semibold">Раса</label>
@@ -234,6 +235,7 @@
 <style>
   .race-layout { display: grid; grid-template-columns: 150px minmax(0, 1fr); align-items: start; gap: 24px; }
   .race-fields { min-width: 0; }
+  .race-art { display:grid; gap:12px; justify-items:center; min-width:0; }
   @media (max-width: 520px) { .race-layout { grid-template-columns: 86px minmax(0, 1fr); gap: 14px; } }
 
   .background-intro.illustrated { display: grid; grid-template-columns: 150px minmax(0, 1fr); align-items: center; gap: 24px; }

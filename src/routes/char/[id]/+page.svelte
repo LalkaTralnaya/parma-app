@@ -1,4 +1,5 @@
 <script lang="ts">
+	import RaceSymbol from '$lib/components/RaceSymbol.svelte';
 	import { autosizeTextarea } from '$lib/ui/autosize-textarea';
  import Dialog from '$lib/components/Dialog.svelte';
  import { applyItemTreatments, treatWithItem } from '$lib/engine/itemTreatment';
@@ -1769,7 +1770,9 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 			</div>
 		{/if}
 		<header class="flex justify-between items-center gap-3 flex-wrap">
-			<div>
+			<div class="flex items-center gap-3">
+				<RaceSymbol id={char.raceId} />
+				<div class="min-w-0">
 				<h1 class="text-3xl font-bold">{char.name || '(без имени)'}</h1>
 				<p class="text-gray-600">
 					{RACES.find((r) => r.id === char?.raceId)?.name} · {char.level} уровень
@@ -1780,6 +1783,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 					{#if decayLevel > 0}
 						<p class="decay-stage-label" aria-live="polite">Тлен · {getDecayStage(char.decay?.points ?? 0).name} · {char.decay?.points ?? 0} ОТ</p>
 					{/if}
+				</div>
 			</div>
 			<div class="flex gap-2 flex-wrap">
 				<a href="/" class="px-3 py-2 border rounded hover:bg-gray-50">← К списку</a>

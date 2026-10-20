@@ -6,7 +6,7 @@ export const KOSCHEI_MASKS: LibraryEntry[] = [
     "id": "koschei-rules-1",
     "title": "Кощей и разделённая душа",
     "category": "Тринадцать масок Кощея",
-    "source": "Единая книга 16, стр. 517–525",
+    "source": "Единая книга 16, стр. 520–528",
     "blocks": [
       {
         "kind": "paragraph",
@@ -107,7 +107,7 @@ export const KOSCHEI_MASKS: LibraryEntry[] = [
     "id": "koschei-rules-2",
     "title": "Ношение масок",
     "category": "Тринадцать масок Кощея",
-    "source": "Единая книга 16, стр. 517–525",
+    "source": "Единая книга 16, стр. 520–528",
     "blocks": [
       {
         "kind": "paragraph",
@@ -216,7 +216,7 @@ export const KOSCHEI_MASKS: LibraryEntry[] = [
     "id": "koschei-rules-3",
     "title": "Чертог Кощея",
     "category": "Тринадцать масок Кощея",
-    "source": "Единая книга 16, стр. 517–525",
+    "source": "Единая книга 16, стр. 520–528",
     "blocks": [
       {
         "kind": "paragraph",
@@ -343,7 +343,7 @@ export const KOSCHEI_MASKS: LibraryEntry[] = [
     "id": "koschei-rules-4",
     "title": "Освобождение души",
     "category": "Тринадцать масок Кощея",
-    "source": "Единая книга 16, стр. 517–525",
+    "source": "Единая книга 16, стр. 520–528",
     "blocks": [
       {
         "kind": "paragraph",
@@ -551,7 +551,7 @@ export const KOSCHEI_MASKS: LibraryEntry[] = [
     "id": "koschei-mask-1",
     "title": "Аргот — Воин",
     "category": "Личности и силы масок",
-    "source": "Единая книга 16, стр. 526–538",
+    "source": "Единая книга 16, стр. 529–541",
     "blocks": [
       {
         "kind": "paragraph",
@@ -597,7 +597,7 @@ export const KOSCHEI_MASKS: LibraryEntry[] = [
     "id": "koschei-mask-2",
     "title": "Лориен — Мудрец",
     "category": "Личности и силы масок",
-    "source": "Единая книга 16, стр. 526–538",
+    "source": "Единая книга 16, стр. 529–541",
     "blocks": [
       {
         "kind": "paragraph",
@@ -652,7 +652,7 @@ export const KOSCHEI_MASKS: LibraryEntry[] = [
     "id": "koschei-mask-3",
     "title": "Велана",
     "category": "Личности и силы масок",
-    "source": "Единая книга 16, стр. 526–538",
+    "source": "Единая книга 16, стр. 529–541",
     "blocks": [
       {
         "kind": "paragraph",
@@ -699,7 +699,7 @@ export const KOSCHEI_MASKS: LibraryEntry[] = [
     "id": "koschei-mask-4",
     "title": "Скит — Шут",
     "category": "Личности и силы масок",
-    "source": "Единая книга 16, стр. 526–538",
+    "source": "Единая книга 16, стр. 529–541",
     "blocks": [
       {
         "kind": "paragraph",
@@ -742,7 +742,7 @@ export const KOSCHEI_MASKS: LibraryEntry[] = [
     "id": "koschei-mask-5",
     "title": "Малгор — Кудесник",
     "category": "Личности и силы масок",
-    "source": "Единая книга 16, стр. 526–538",
+    "source": "Единая книга 16, стр. 529–541",
     "blocks": [
       {
         "kind": "paragraph",
@@ -806,7 +806,7 @@ export const KOSCHEI_MASKS: LibraryEntry[] = [
     "id": "koschei-mask-6",
     "title": "Борас — Отшельник",
     "category": "Личности и силы масок",
-    "source": "Единая книга 16, стр. 526–538",
+    "source": "Единая книга 16, стр. 529–541",
     "blocks": [
       {
         "kind": "paragraph",
@@ -853,7 +853,7 @@ export const KOSCHEI_MASKS: LibraryEntry[] = [
     "id": "koschei-mask-7",
     "title": "Казимир — Правитель",
     "category": "Личности и силы масок",
-    "source": "Единая книга 16, стр. 526–538",
+    "source": "Единая книга 16, стр. 529–541",
     "blocks": [
       {
         "kind": "paragraph",
@@ -896,7 +896,7 @@ export const KOSCHEI_MASKS: LibraryEntry[] = [
     "id": "koschei-mask-8",
     "title": "Морвен",
     "category": "Личности и силы масок",
-    "source": "Единая книга 16, стр. 526–538",
+    "source": "Единая книга 16, стр. 529–541",
     "blocks": [
       {
         "kind": "paragraph",
@@ -943,7 +943,7 @@ export const KOSCHEI_MASKS: LibraryEntry[] = [
     "id": "koschei-mask-9",
     "title": "Торин — Творец",
     "category": "Личности и силы масок",
-    "source": "Единая книга 16, стр. 526–538",
+    "source": "Единая книга 16, стр. 529–541",
     "blocks": [
       {
         "kind": "paragraph",
@@ -998,7 +998,7 @@ export const KOSCHEI_MASKS: LibraryEntry[] = [
     "id": "koschei-mask-10",
     "title": "Элдан — Странник",
     "category": "Личности и силы масок",
-    "source": "Единая книга 16, стр. 526–538",
+    "source": "Единая книга 16, стр. 529–541",
     "blocks": [
       {
         "kind": "paragraph",
@@ -1041,7 +1041,7 @@ export const KOSCHEI_MASKS: LibraryEntry[] = [
     "id": "koschei-mask-11",
     "title": "Ульфгар — Зверь",
     "category": "Личности и силы масок",
-    "source": "Единая книга 16, стр. 526–538",
+    "source": "Единая книга 16, стр. 529–541",
     "blocks": [
       {
         "kind": "paragraph",
@@ -1084,7 +1084,7 @@ export const KOSCHEI_MASKS: LibraryEntry[] = [
     "id": "koschei-mask-12",
     "title": "Астра — Судья",
     "category": "Личности и силы масок",
-    "source": "Единая книга 16, стр. 526–538",
+    "source": "Единая книга 16, стр. 529–541",
     "blocks": [
       {
         "kind": "paragraph",
@@ -1127,7 +1127,7 @@ export const KOSCHEI_MASKS: LibraryEntry[] = [
     "id": "koschei-mask-13",
     "title": "Маска Тени",
     "category": "Личности и силы масок",
-    "source": "Единая книга 16, стр. 526–538",
+    "source": "Единая книга 16, стр. 529–541",
     "blocks": [
       {
         "kind": "paragraph",
@@ -1185,7 +1185,7 @@ export const PERSONAL_STORY: LibraryEntry = {
   "id": "personal-story",
   "title": "Личная история",
   "category": "Руководство Сказителя",
-  "source": "Единая книга 16, стр. 562–564",
+  "source": "Единая книга 16, стр. 565–567",
   "blocks": [
     {
       "kind": "paragraph",

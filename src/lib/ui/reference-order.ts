@@ -37,7 +37,7 @@ function chapterFor(entry: Pick<LibraryEntry, 'id' | 'category'>, order: Reading
     if (category === 'Народы') return 'peoples';
     if (category === 'Боги') return 'gods';
     if (['Жизнь и обычаи Пармы', 'Ремёсла, обычаи и повседневные дела'].includes(category)) return 'daily-life';
-    if (category === 'Лор' || category === 'Связи, отношения и поручения Пармы') return 'society';
+    if (['Лор', 'Лор и развитие персонажа', 'Связи, отношения и поручения Пармы'].includes(category)) return 'society';
     if (category === 'Письменности Пармы' || category.startsWith('Знаки,')) return 'languages';
     if (category === 'Иные миры и наследие Предтечи') return 'other-worlds';
     if (category === 'Тринадцать масок Кощея' || category === 'Личности и силы масок') return 'legends';
@@ -45,6 +45,7 @@ function chapterFor(entry: Pick<LibraryEntry, 'id' | 'category'>, order: Reading
     if (id === 'mechanics-introduction') return 'basics';
     if (['mechanics-42', 'mechanics-234', 'mechanics-47', 'book16-47', 'book16-48'].includes(id)) return 'journey';
     if (category === 'Основные правила') return 'basics';
+    if (category === 'Механики развития персонажа') return 'growth';
     if (['Предыстории Пармы', 'Аспекты личности Пармы'].includes(category)) return 'hero';
     if (category === 'Атаки и развитие') return Number(id.replace('book16-current-', '')) >= 41 ? 'combat' : 'growth';
     if (category === 'Ратная рукопашная' || category === 'Новая редакция') return 'combat';
