@@ -406,3 +406,12 @@ body:has(#content > main.character-sheet:is([data-decay-stage="2"], [data-decay-
 @media (prefers-reduced-motion: reduce) {
   .primary-nav a { transition: none; }
 }
+/* The printed sheet has its own compact layout, shared by preview and Ctrl+P. */
+#content > main.character-sheet.print-preview { background:#ddd8ce!important; border:0!important; border-image:none!important; box-shadow:none!important; max-width:240mm; }
+#content > main.character-sheet.print-preview::before { display:none!important; }
+#content > main.character-sheet.print-preview > :not(.print-sheet) { display:none!important; }
+#content > main.character-sheet .print-sheet { --decay-card:#fff; --decay-text:#111; --decay-muted:#333; --decay-control:#f4efdf; --decay-control-text:#213b2d; --decay-border:#777; color:#111!important; }
+@media print {
+  body:has(.print-sheet), #content:has(.print-sheet) { background:white!important; margin:0!important; padding:0!important; }
+  #content > main.character-sheet.print-preview { background:white!important; }
+}

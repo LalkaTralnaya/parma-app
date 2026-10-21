@@ -1,4 +1,6 @@
 <script lang="ts">
+	import CharacterPrint from '$lib/components/CharacterPrint.svelte';
+	let printPreview = $state(false);
 	import RaceSymbol from '$lib/components/RaceSymbol.svelte';
 	import { autosizeTextarea } from '$lib/ui/autosize-textarea';
  import Dialog from '$lib/components/Dialog.svelte';
@@ -515,7 +517,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		return new Promise((resolve) => { resolvePendingDie = resolve; });
 	}
 	function printCharacter() {
-		window.print();
+		printPreview = true;
 	}
 
 	const resultLabel: Record<RollResult, string> = {
@@ -1627,58 +1629,9 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		.roll-result-panel :global(.text-2xl) { font-size: 1.125rem; }
 	}
 
-	@media print {
-		button:not(.print-characteristic),
-		nav,
-		.sheet-nav,
-		header .flex.gap-2,
-		.no-print {
-			display: none !important;
-		}
-
-		:global(body), :global(main) {
-			background: #fff !important;
-			color: #000 !important;
-			padding: 0 !important;
-			margin: 0 !important;
-		}
-
-		@page {
-			size: A4;
-			margin: 12mm;
-		}
-
-		button.print-characteristic {
-			display: block !important;
-			width: 100% !important;
-			color: #000 !important;
-			cursor: default !important;
-		}
-
-		section {
-			break-inside: avoid;
-			page-break-inside: avoid;
-		}
-
-		h1, h2, h3 {
-			break-after: avoid;
-			page-break-after: avoid;
-		}
-
-		.border, .border-2 {
-			border-color: #999 !important;
-		}
-		.bg-gray-50, .bg-blue-50, .bg-red-50, .bg-green-50,
-		.bg-amber-50, .bg-purple-50 {
-			background: #fff !important;
-		}
-
-		.print-hide {
-			display: none !important;
-		}
-	}
 </style>
-<main class="character-sheet max-w-4xl mx-auto p-6 space-y-6" data-decay-stage={decayLevel} data-sheet-background="parchment" data-sheet-frame="carved">
+<main class="character-sheet max-w-4xl mx-auto p-6 space-y-6" class:print-preview={printPreview} data-decay-stage={decayLevel} data-sheet-background="parchment" data-sheet-frame="carved">
+	{#if char}<CharacterPrint character={char} modifiers={condMods} preview={printPreview} onclose={() => printPreview = false} />{/if}
 	{#if pendingDie}
 		<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 print-hide" role="presentation">
 			<div class="w-full max-w-sm rounded-xl border border-gray-500 bg-white p-6 shadow-2xl text-gray-900" role="dialog" aria-modal="true" aria-label="Ввод физического броска">
