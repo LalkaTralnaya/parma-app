@@ -242,6 +242,7 @@ export async function getRecentRolls(roomId: string, limit = 30): Promise<RoomRo
 		.from('room_rolls')
 		.select('*')
 		.eq('room_id', roomId)
+		.gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
 		.order('created_at', { ascending: false })
 		.limit(limit)
 		.abortSignal(signal));
