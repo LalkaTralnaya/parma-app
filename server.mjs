@@ -7,12 +7,27 @@ const upstream = process.env.PUBLIC_SUPABASE_URL;
 
 if (!upstream) throw new Error('PUBLIC_SUPABASE_URL is required for the Supabase proxy');
 
+const securityHeaders = {
+	'X-Content-Type-Options': 'nosniff',
+	'X-Frame-Options': 'DENY',
+	'Referrer-Policy': 'strict-origin-when-cross-origin',
+	'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=()',
+	'X-Permitted-Cross-Domain-Policies': 'none',
+	'Strict-Transport-Security': 'max-age=31536000'
+};
+
+function applySecurityHeaders(response) {
+	for (const [name, value] of Object.entries(securityHeaders)) response.setHeader(name, value);
+}
+
 const proxy = createProxyServer({
 	target: new URL(upstream).origin,
 	changeOrigin: true,
 	ws: true,
 	secure: true
 });
+
+proxy.on('proxyRes', (_proxyResponse, _request, response) => applySecurityHeaders(response));
 
 proxy.on('error', (error, _request, response) => {
 	console.error('Supabase proxy error:', error.code || error.name);
@@ -34,6 +49,7 @@ function stripPrefix(request) {
 }
 
 const server = createServer((request, response) => {
+	applySecurityHeaders(response);
 	if (isSupabaseRequest(request.url)) {
 		stripPrefix(request);
 		proxy.web(request, response);

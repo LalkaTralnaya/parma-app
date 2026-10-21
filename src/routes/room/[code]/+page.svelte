@@ -7,11 +7,11 @@
 	leaveRoom, updateCharacterSnapshot, subscribeToRoom,
 	setCurrentRoom, clearCurrentRoom, deleteRoom, listMyMasterRooms,
 	setPendingCharacter, clearPendingCharacter,
-	updateRoomGifted, setCharacterLock,
+	updateRoomGifted, setCharacterLock, rotateRoomInvite,
 	type Room, type RoomParticipant, type RoomRoll
 } from '../../../lib/engine/rooms';
 	import { listCharacters, getCharacter, saveCharacter } from '../../../lib/db/characters';
-	import { getDeviceId } from '../../../lib/supabase/client';
+	import { ensureRoomSession } from '../../../lib/supabase/client';
 	import { RACES } from '../../../lib/rules/races';
 	import type { Character } from '../../../lib/type';
 
@@ -95,7 +95,7 @@ async function acceptGift(p: RoomParticipant) {
 		await saveCharacter(plainCharacter);
 
 		// 2. Становимся «активным» участником с этим персонажем в комнате
-		await joinRoom(room.id, p.display_name ?? 'Игрок', plainCharacter);
+		await joinRoom(room.id, p.display_name ?? 'Игрок', plainCharacter, room.code);
 
 		// 3. Убираем «подарок» — он больше не pending
 		await clearPendingCharacter(p.id);
@@ -121,9 +121,9 @@ async function declineGift(p: RoomParticipant) {
 	}
 }
 
-	const deviceId = getDeviceId();
-	const isMaster = $derived(room?.master_device_id === deviceId);
-	const myParticipant = $derived(participants.find((p) => p.device_id === deviceId));
+	let authUserId = $state('');
+	const isMaster = $derived(room?.master_auth_id === authUserId);
+	const myParticipant = $derived(participants.find((p) => p.auth_user_id === authUserId));
 	
 
 	onMount(async () => {
@@ -134,6 +134,7 @@ async function declineGift(p: RoomParticipant) {
 		}
 
 		try {
+			authUserId = await ensureRoomSession();
 			const r = await findRoomByCode(code);
 			if (!r) {
 				error = 'Комната не найдена';
@@ -149,7 +150,7 @@ async function declineGift(p: RoomParticipant) {
 			// Присоединяемся (если уже в комнате — обновляем)
 			const displayName = localStorage.getItem('parma_player_name') || 'Гость';
 			const char = selectedCharacterId ? (await getCharacter(selectedCharacterId)) ?? null : null;
-			await joinRoom(r.id, displayName, char);
+		await joinRoom(r.id, displayName, char, r.code);
 
 			// Загружаем всех участников и броски
 			participants = await getRoomParticipants(r.id);
@@ -182,11 +183,11 @@ async function declineGift(p: RoomParticipant) {
 	if (!room) return;
 	const char = (await getCharacter(charId)) ?? null;
 	const displayName = localStorage.getItem('parma_player_name') || 'Гость';
-	await joinRoom(room.id, displayName, char);
+	await joinRoom(room.id, displayName, char, room.code);
 
 	// После выбора персонажа — блокируем смену (кроме сказителя)
 	if (!isMaster) {
-		const me = participants.find((p) => p.device_id === deviceId);
+		const me = participants.find((p) => p.auth_user_id === authUserId);
 		if (me) {
 			try {
 				await setCharacterLock(me.id, true);
@@ -214,6 +215,28 @@ async function declineGift(p: RoomParticipant) {
 		await leaveRoom(room.id);
 		clearCurrentRoom();
 		goto('/room');
+	}
+
+	async function copyInvite() {
+		if (!room) return;
+		try {
+			await navigator.clipboard.writeText(`${location.origin}/room/${room.code}`);
+			alert('Ссылка-приглашение скопирована. Делитесь ею только с участниками комнаты.');
+		} catch {
+			alert('Не удалось скопировать ссылку. Её можно скопировать из адресной строки.');
+		}
+	}
+
+	async function rotateInvite() {
+		if (!room || !confirm('Старая ссылка сразу перестанет работать. Игрокам понадобится новая ссылка. Перевыпустить приглашение?')) return;
+		try {
+			const code = await rotateRoomInvite(room.id);
+			room = { ...room, code };
+			setCurrentRoom(code);
+			await goto(`/room/${code}`);
+		} catch (e) {
+			alert((e as Error).message);
+		}
 	}
 
 	function timeAgo(iso: string): string {
@@ -315,13 +338,25 @@ async function declineGift(p: RoomParticipant) {
 				<div class="text-sm text-gray-500">{isMaster ? 'Вы — сказитель' : 'Вы — игрок'}</div>
 				<h1 class="text-3xl font-bold">{room.name || 'Комната'}</h1>
 				<div class="text-sm text-gray-600 mt-1">
-					Код для входа:
-					<span class="font-mono text-2xl font-bold tracking-widest text-blue-700 ml-2">
+					Секрет приглашения:
+					<span class="font-mono text-sm font-bold break-all text-blue-700 ml-2">
 						{room.code}
 					</span>
 				</div>
 			</div>
 			<div class="flex gap-2">
+				<button
+					class="px-3 py-2 border rounded hover:bg-gray-50 text-sm"
+					onclick={copyInvite}>
+					Скопировать ссылку
+				</button>
+				{#if isMaster}
+					<button
+						class="px-3 py-2 border border-amber-400 text-amber-800 rounded hover:bg-amber-50 text-sm"
+						onclick={rotateInvite}>
+						Отозвать и перевыпустить
+					</button>
+				{/if}
 					<button
 						class="px-3 py-2 border rounded hover:bg-gray-50 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
 						disabled={!isMaster && !!myParticipant?.character_locked}
@@ -388,12 +423,12 @@ async function declineGift(p: RoomParticipant) {
 									{#if p.role === 'master'}
 										<span class="text-xs text-amber-700 ml-2">сказитель</span>
 									{/if}
-									{#if p.device_id === deviceId}
+									{#if p.auth_user_id === authUserId}
 										<span class="text-xs text-blue-700 ml-2">вы</span>
 									{/if}
 								</div>
 								<!-- Кнопка сказителя: подарить персонажа игроку -->
-								{#if isMaster && p.device_id !== deviceId && p.role !== 'master'}
+								{#if isMaster && p.auth_user_id !== authUserId && p.role !== 'master'}
 									<div class="flex gap-2 mt-2 flex-wrap">
 										<button
 											class="px-2 py-1 text-xs bg-purple-600 text-white rounded hover:bg-purple-700"
@@ -411,7 +446,7 @@ async function declineGift(p: RoomParticipant) {
 								{/if}
 
 								<!-- Уведомление для игрока: сказитель передал персонажа -->
-								{#if p.device_id === deviceId && p.pending_character}
+								{#if p.auth_user_id === authUserId && p.pending_character}
 									<div class="mt-2 border-2 border-purple-400 bg-purple-50 rounded-lg p-2">
 										<div class="text-xs font-semibold text-purple-900 mb-1">
 											🎁 Сказитель передал вам персонажа

@@ -1,4 +1,4 @@
-import { supabase, getDeviceId, getPlayerName } from '../supabase/client';
+import { roomSupabase, getPlayerName, ensureRoomSession } from '../supabase/client';
 import type { Character } from '../type';
 
 const ROOM_REQUEST_TIMEOUT_MS = 15_000;
@@ -8,7 +8,12 @@ function isNetworkError(message: string): boolean {
 	return /failed to fetch|fetch failed|load failed|network|timeout|timed out|abort/i.test(message);
 }
 
+function isRoomMigrationMissing(message: string): boolean {
+	return /could not find the function public\.(create_secure_room|lookup_room_by_invite|join_secure_room)|PGRST202/i.test(message);
+}
+
 async function roomRequest<T>(query: (signal: AbortSignal) => PromiseLike<T>): Promise<T> {
+	await ensureRoomSession();
 	const controller = new AbortController();
 	let timeoutId: ReturnType<typeof setTimeout> | undefined;
 	const timeout = new Promise<never>((_, reject) => {
@@ -32,6 +37,7 @@ export interface Room {
 	code: string;
 	name: string | null;
 	master_device_id: string;
+	master_auth_id: string | null;
 	created_at: string;
 	updated_at: string;
 	gifted_character_ids?: string[];
@@ -41,6 +47,7 @@ export interface RoomParticipant {
 	id: string;
 	room_id: string;
 	device_id: string;
+	auth_user_id: string;
 	display_name: string | null;
 	character_snapshot: Character | null;
 	pending_character: Character | null;
@@ -60,47 +67,33 @@ export interface RoomRoll {
 	created_at: string;
 }
 
-/** Генерация кода из 6 символов без похожих букв (0/O, 1/I) */
+/** A 256-bit invitation secret encoded as 64 URL-safe hexadecimal characters. */
 function generateRoomCode(): string {
-	const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-	let code = '';
-	for (let i = 0; i < 6; i++) {
-		code += alphabet[Math.floor(Math.random() * alphabet.length)];
-	}
-	return code;
+	return Array.from(crypto.getRandomValues(new Uint8Array(32)), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 /** Создать комнату. Возвращает созданную комнату. */
 export async function createRoom(name: string): Promise<Room> {
-	const deviceId = getDeviceId();
+	await ensureRoomSession();
 
 	// Пробуем несколько раз, если код случайно занят
 	for (let attempt = 0; attempt < 5; attempt++) {
 		const code = generateRoomCode();
-		const { data, error } = await supabase
-			.from('rooms')
-			.insert({ code, name, master_device_id: deviceId })
-			.select()
-			.single();
+		const { data, error } = await roomSupabase.rpc('create_secure_room', {
+			p_code: code,
+			p_name: name,
+			p_display_name: getPlayerName() || 'Сказитель'
+		});
 
 		if (!error && data) {
-			// Сказитель автоматически становится участником
-			await supabase.from('room_participants').insert({
-				room_id: data.id,
-				device_id: deviceId,
-				display_name: getPlayerName() || 'Сказитель',
-				role: 'master'
-			});
-			// Создаём пустое состояние боя
-			await supabase.from('room_combat').insert({
-				room_id: data.id,
-				state: {}
-			});
 			return data as Room;
 		}
 
 		// Если ошибка не про дубликат кода — выходим
 		if (error && !error.message.includes('duplicate')) {
+			if (isRoomMigrationMissing(error.message)) {
+				throw new Error('База Supabase ещё не обновлена для защищённых комнат. Сначала опубликуйте эту версию приложения, затем примените SQL-миграцию безопасных приглашений.');
+			}
 			throw new Error(`Не удалось создать комнату: ${error.message}`);
 		}
 	}
@@ -110,88 +103,48 @@ export async function createRoom(name: string): Promise<Room> {
 
 /** Найти комнату по коду */
 export async function findRoomByCode(code: string): Promise<Room | null> {
-	const { data, error } = await roomRequest((signal) => supabase
-		.from('rooms')
-		.select('*')
-		.eq('code', code.toUpperCase())
-		.abortSignal(signal)
-		.maybeSingle());
+	await ensureRoomSession();
+	const { data, error } = await roomRequest((signal) => roomSupabase
+		.rpc('lookup_room_by_invite', { p_code: code.trim().toLowerCase() })
+		.abortSignal(signal));
 
-	if (error) throw new Error(isNetworkError(error.message) ? ROOM_CONNECTION_ERROR : `Ошибка поиска: ${error.message}`);
+	if (error) {
+		if (isRoomMigrationMissing(error.message)) {
+			throw new Error('База Supabase ещё не обновлена для защищённых комнат. Сначала опубликуйте эту версию приложения, затем примените SQL-миграцию безопасных приглашений.');
+		}
+		throw new Error(isNetworkError(error.message) ? ROOM_CONNECTION_ERROR : `Ошибка поиска: ${error.message}`);
+	}
 	return data as Room | null;
 }
 
 /** Присоединиться к комнате (создаёт запись участника или обновляет) */
-/** Присоединиться к комнате (создаёт запись участника или обновляет) */
 export async function joinRoom(
 	roomId: string,
 	displayName: string,
-	characterSnapshot: Character | null
+	characterSnapshot: Character | null,
+	inviteCode: string
 ): Promise<RoomParticipant> {
-	const deviceId = getDeviceId();
+	await ensureRoomSession();
+	const { data, error } = await roomRequest((signal) => roomSupabase.rpc('join_secure_room', {
+		p_room_id: roomId,
+		p_code: inviteCode.trim().toLowerCase(),
+		p_display_name: displayName,
+		p_character_snapshot: characterSnapshot
+	}).abortSignal(signal));
 
-	// Сначала узнаём, кто мы в этой комнате
-	const { data: room, error: roomError } = await roomRequest((signal) => supabase
-		.from('rooms')
-		.select('master_device_id')
-		.eq('id', roomId)
-		.abortSignal(signal)
-		.maybeSingle());
-	if (roomError) throw new Error(isNetworkError(roomError.message) ? ROOM_CONNECTION_ERROR : `Ошибка загрузки комнаты: ${roomError.message}`);
-	if (!room) throw new Error('Комната не найдена');
-
-	const role: 'master' | 'player' =
-		room?.master_device_id === deviceId ? 'master' : 'player';
-
-	// Проверяем, не участник ли уже
-	const { data: existing, error: existingError } = await roomRequest((signal) => supabase
-		.from('room_participants')
-		.select('*')
-		.eq('room_id', roomId)
-		.eq('device_id', deviceId)
-		.abortSignal(signal)
-		.maybeSingle());
-	if (existingError) throw new Error(isNetworkError(existingError.message) ? ROOM_CONNECTION_ERROR : `Ошибка проверки участника: ${existingError.message}`);
-
-	if (existing) {
-		const { data, error } = await roomRequest((signal) => supabase
-			.from('room_participants')
-			.update({
-				display_name: displayName,
-				character_snapshot: characterSnapshot,
-				role,
-				last_seen: new Date().toISOString()
-			})
-			.eq('id', existing.id)
-			.select()
-			.abortSignal(signal)
-			.single());
-
-		if (error) throw new Error(isNetworkError(error.message) ? ROOM_CONNECTION_ERROR : `Ошибка обновления: ${error.message}`);
-		return data as RoomParticipant;
+	if (error) {
+		if (isRoomMigrationMissing(error.message)) {
+			throw new Error('База Supabase ещё не обновлена для защищённых комнат. Сначала опубликуйте эту версию приложения, затем примените SQL-миграцию безопасных приглашений.');
+		}
+		throw new Error(isNetworkError(error.message) ? ROOM_CONNECTION_ERROR : `Ошибка входа: ${error.message}`);
 	}
-
-	// Новый участник
-	const { data, error } = await roomRequest((signal) => supabase
-		.from('room_participants')
-		.insert({
-			room_id: roomId,
-			device_id: deviceId,
-			display_name: displayName,
-			character_snapshot: characterSnapshot,
-			role
-		})
-		.select()
-		.abortSignal(signal)
-		.single());
-
-	if (error) throw new Error(isNetworkError(error.message) ? ROOM_CONNECTION_ERROR : `Ошибка входа: ${error.message}`);
 	return data as RoomParticipant;
 }
 
 /** Список участников комнаты */
 export async function getRoomParticipants(roomId: string): Promise<RoomParticipant[]> {
-	const { data, error } = await roomRequest((signal) => supabase
+	await ensureRoomSession();
+	const { data, error } = await roomRequest((signal) => roomSupabase
 		.from('room_participants')
 		.select('*')
 		.eq('room_id', roomId)
@@ -207,15 +160,15 @@ export async function updateCharacterSnapshot(
 	roomId: string,
 	character: Character
 ): Promise<void> {
-	const deviceId = getDeviceId();
-	await supabase
+	const authId = await ensureRoomSession();
+	await roomSupabase
 		.from('room_participants')
 		.update({
 			character_snapshot: character,
 			last_seen: new Date().toISOString()
 		})
 		.eq('room_id', roomId)
-		.eq('device_id', deviceId);
+		.eq('auth_user_id', authId);
 }
 
 /** Отправить бросок в комнату (все увидят) */
@@ -225,10 +178,10 @@ export async function publishRoll(
 	rollType: string,
 	rollData: Record<string, unknown>
 ): Promise<void> {
-	const deviceId = getDeviceId();
-	const { error } = await supabase.from('room_rolls').insert({
+	const authId = await ensureRoomSession();
+	const { error } = await roomSupabase.from('room_rolls').insert({
 		room_id: roomId,
-		device_id: deviceId,
+		device_id: authId,
 		character_name: characterName,
 		roll_type: rollType,
 		roll_data: rollData
@@ -238,7 +191,7 @@ export async function publishRoll(
 
 /** Последние N бросков комнаты */
 export async function getRecentRolls(roomId: string, limit = 30): Promise<RoomRoll[]> {
-	const { data, error } = await roomRequest((signal) => supabase
+	const { data, error } = await roomRequest((signal) => roomSupabase
 		.from('room_rolls')
 		.select('*')
 		.eq('room_id', roomId)
@@ -253,15 +206,14 @@ export async function getRecentRolls(roomId: string, limit = 30): Promise<RoomRo
 
 /** Покинуть комнату */
 export async function leaveRoom(roomId: string): Promise<void> {
-	const deviceId = getDeviceId();
-	await supabase
+	const authId = await ensureRoomSession();
+	await roomSupabase
 		.from('room_participants')
 		.delete()
 		.eq('room_id', roomId)
-		.eq('device_id', deviceId);
+		.eq('auth_user_id', authId);
 }
 
-/** Подписка на изменения в комнате — участники + броски */
 /** Подписка на изменения в комнате — участники + броски */
 export function subscribeToRoom(
 	roomId: string,
@@ -271,7 +223,7 @@ export function subscribeToRoom(
 	// Уникальный суффикс, чтобы Supabase не возвращал старый канал
 	const uniqueName = `room:${roomId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
 
-	const channel = supabase
+	const channel = roomSupabase
 		.channel(uniqueName)
 		.on(
 			'postgres_changes',
@@ -300,7 +252,7 @@ export function subscribeToRoom(
 		.subscribe();
 
 	return () => {
-		supabase.removeChannel(channel);
+		roomSupabase.removeChannel(channel);
 	};
 }
 /** Запомнить, что игрок сейчас в комнате (для автопубликации бросков) */
@@ -341,11 +293,11 @@ export async function publishToActiveRoom(
 }
 /** Список комнат, где текущий пользователь — сказитель */
 export async function listMyMasterRooms(): Promise<Room[]> {
-	const deviceId = getDeviceId();
-	const { data, error } = await supabase
+	const authId = await ensureRoomSession();
+	const { data, error } = await roomSupabase
 		.from('rooms')
 		.select('*')
-		.eq('master_device_id', deviceId)
+		.eq('master_auth_id', authId)
 		.order('updated_at', { ascending: false });
 	if (error) throw new Error(`Ошибка загрузки комнат: ${error.message}`);
 	return (data ?? []) as Room[];
@@ -353,29 +305,23 @@ export async function listMyMasterRooms(): Promise<Room[]> {
 
 /** Удалить комнату целиком (только для сказителя) */
 export async function deleteRoom(roomId: string): Promise<void> {
-	const deviceId = getDeviceId();
+	await ensureRoomSession();
+	const { error } = await roomSupabase.rpc('delete_secure_room', { p_room_id: roomId });
+	if (error) throw new Error(`Не удалось удалить комнату: ${error.message}`);
+}
 
-	// Проверяем владельца
-	const { data: room } = await supabase
-		.from('rooms')
-		.select('master_device_id')
-		.eq('id', roomId)
-		.maybeSingle();
-
-	if (!room || room.master_device_id !== deviceId) {
-		throw new Error('Это не ваша комната');
-	}
-
-	// Удаляем связанные данные
-	await supabase.from('room_participants').delete().eq('room_id', roomId);
-	await supabase.from('room_rolls').delete().eq('room_id', roomId);
-	await supabase.from('room_combat').delete().eq('room_id', roomId);
-	await supabase.from('rooms').delete().eq('id', roomId);
+/** Revoke the current invitation and issue a fresh unguessable link. */
+export async function rotateRoomInvite(roomId: string): Promise<string> {
+	await ensureRoomSession();
+	const { data, error } = await roomSupabase.rpc('rotate_room_invite', { p_room_id: roomId });
+	if (error) throw new Error(`Не удалось перевыпустить приглашение: ${error.message}`);
+	return data as string;
 }
 
 /** Обновить время активности комнаты (чтобы сортировка «свежие сверху» работала) */
 export async function touchRoom(roomId: string): Promise<void> {
-	await supabase
+	await ensureRoomSession();
+	await roomSupabase
 		.from('rooms')
 		.update({ updated_at: new Date().toISOString() })
 		.eq('id', roomId);
@@ -385,7 +331,8 @@ export async function setPendingCharacter(
 	participantId: string,
 	character: Character
 ): Promise<void> {
-	const { error } = await supabase
+	await ensureRoomSession();
+	const { error } = await roomSupabase
 		.from('room_participants')
 		.update({ pending_character: character })
 		.eq('id', participantId);
@@ -394,7 +341,8 @@ export async function setPendingCharacter(
 
 /** Игрок принял или отклонил — очищаем поле */
 export async function clearPendingCharacter(participantId: string): Promise<void> {
-	const { error } = await supabase
+	await ensureRoomSession();
+	const { error } = await roomSupabase
 		.from('room_participants')
 		.update({ pending_character: null })
 		.eq('id', participantId);
@@ -436,7 +384,8 @@ const EMPTY_COMBAT: RoomCombatState = {
 
 /** Прочитать состояние боя из комнаты */
 export async function getRoomCombat(roomId: string): Promise<RoomCombatState> {
-	const { data, error } = await supabase
+	await ensureRoomSession();
+	const { data, error } = await roomSupabase
 		.from('room_combat')
 		.select('state')
 		.eq('room_id', roomId)
@@ -460,8 +409,9 @@ export async function updateRoomCombat(
 	roomId: string,
 	state: RoomCombatState
 ): Promise<void> {
+	await ensureRoomSession();
 	const payload = { ...state, updatedAt: new Date().toISOString() };
-	const { error } = await supabase
+	const { error } = await roomSupabase
 		.from('room_combat')
 		.update({ state: payload })
 		.eq('room_id', roomId);
@@ -476,7 +426,7 @@ export function subscribeToCombat(
 ): () => void {
 	const uniqueName = `combat:${roomId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
 
-	const channel = supabase
+	const channel = roomSupabase
 		.channel(uniqueName)
 		.on(
 			'postgres_changes',
@@ -501,14 +451,15 @@ export function subscribeToCombat(
 		.subscribe();
 
 	return () => {
-		supabase.removeChannel(channel);
+		roomSupabase.removeChannel(channel);
 	};
 }
 import type { CombatState } from '$lib/sync/combat';
 
 /** Прочитать состояние боя из комнаты (или null, если пусто) */
 export async function getRoomCombatState(roomId: string): Promise<CombatState | null> {
-	const { data, error } = await supabase
+	await ensureRoomSession();
+	const { data, error } = await roomSupabase
 		.from('room_combat')
 		.select('state')
 		.eq('room_id', roomId)
@@ -525,8 +476,9 @@ export async function saveRoomCombatState(
 	roomId: string,
 	state: CombatState
 ): Promise<void> {
+	await ensureRoomSession();
 	console.log('[combat] сохраняем состояние в комнату', roomId, state);
-	const { data, error, count } = await supabase
+	const { data, error, count } = await roomSupabase
 		.from('room_combat')
 		.update({ state })
 		.eq('room_id', roomId)
@@ -549,7 +501,7 @@ export function subscribeToRoomCombat(
 ): () => void {
 	const uniqueName = `combat:${roomId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
 
-	const channel = supabase
+	const channel = roomSupabase
 		.channel(uniqueName)
 		.on(
 			'postgres_changes',
@@ -568,7 +520,7 @@ export function subscribeToRoomCombat(
 			console.log('[combat] статус подписки:', status);
 		});
 	return () => {
-		supabase.removeChannel(channel);
+		roomSupabase.removeChannel(channel);
 	};
 }
 /** Обновить список подаренных персонажей в комнате */
@@ -576,7 +528,8 @@ export async function updateRoomGifted(
 	roomId: string,
 	giftedIds: string[]
 ): Promise<void> {
-	const { error } = await supabase
+	await ensureRoomSession();
+	const { error } = await roomSupabase
 		.from('rooms')
 		.update({ gifted_character_ids: giftedIds })
 		.eq('id', roomId);
@@ -587,7 +540,8 @@ export async function setCharacterLock(
 	participantId: string,
 	locked: boolean
 ): Promise<void> {
-	const { error } = await supabase
+	await ensureRoomSession();
+	const { error } = await roomSupabase
 		.from('room_participants')
 		.update({ character_locked: locked })
 		.eq('id', participantId);
@@ -621,7 +575,8 @@ export async function createRoomRequest(
 	requestType: string,
 	label: string
 ): Promise<RoomRequest> {
-	const { data, error } = await supabase
+	await ensureRoomSession();
+	const { data, error } = await roomSupabase
 		.from('room_requests')
 		.insert({ room_id: roomId, request_type: requestType, label })
 		.select()
@@ -632,7 +587,8 @@ export async function createRoomRequest(
 
 /** Получить активный (не закрытый) запрос в комнате */
 export async function getActiveRoomRequest(roomId: string): Promise<RoomRequest | null> {
-	const { data, error } = await supabase
+	await ensureRoomSession();
+	const { data, error } = await roomSupabase
 		.from('room_requests')
 		.select('*')
 		.eq('room_id', roomId)
@@ -650,7 +606,8 @@ export async function submitRoomRequestResult(
 	characterId: string,
 	result: RoomRequestResult
 ): Promise<void> {
-	const { error } = await supabase.rpc('submit_room_request_result', {
+	await ensureRoomSession();
+	const { error } = await roomSupabase.rpc('submit_room_request_result', {
 		p_request_id: requestId,
 		p_character_id: characterId,
 		p_result: result
@@ -660,7 +617,8 @@ export async function submitRoomRequestResult(
 
 /** Сказитель закрывает запрос */
 export async function closeRoomRequest(requestId: string): Promise<void> {
-	const { error } = await supabase
+	await ensureRoomSession();
+	const { error } = await roomSupabase
 		.from('room_requests')
 		.update({ closed: true })
 		.eq('id', requestId);
@@ -674,7 +632,7 @@ export function subscribeToRoomRequests(
 ): () => void {
 	const uniqueName = `requests:${roomId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
 
-	const channel = supabase
+	const channel = roomSupabase
 		.channel(uniqueName)
 		.on(
 			'postgres_changes',
@@ -694,6 +652,6 @@ export function subscribeToRoomRequests(
 		});
 
 	return () => {
-		supabase.removeChannel(channel);
+		roomSupabase.removeChannel(channel);
 	};
 }

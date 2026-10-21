@@ -16,21 +16,6 @@ export const supabase = createClient(supabaseUrl, PUBLIC_SUPABASE_ANON_KEY, {
 	auth: {
 		storageKey: `sb-${new URL(PUBLIC_SUPABASE_URL).hostname.split('.')[0]}-auth-token`
 	},
-	global: {
-		fetch: (input, init = {}) => {
-			const headers = new Headers(typeof Request !== 'undefined' && input instanceof Request ? input.headers : undefined);
-			new Headers(init.headers).forEach((value, key) => headers.set(key, value));
-			if (typeof window !== 'undefined') {
-				let deviceId = window.localStorage.getItem('parma_device_id');
-				if (!deviceId) {
-					deviceId = crypto.randomUUID();
-					window.localStorage.setItem('parma_device_id', deviceId);
-				}
-				headers.set('x-device-id', deviceId);
-			}
-			return fetch(input, { ...init, headers });
-		}
-	},
 	realtime: {
 		params: {
 			eventsPerSecond: 10
@@ -38,19 +23,45 @@ export const supabase = createClient(supabaseUrl, PUBLIC_SUPABASE_ANON_KEY, {
 	}
 });
 
-/**
- * Уникальный идентификатор устройства.
- * Хранится в localStorage. Используется вместо логина в MVP.
- * Если пользователь заходит с телефона — у него один id, с компа — другой.
- */
-export function getDeviceId(): string {
-	if (typeof window === 'undefined') return '';
-	let id = localStorage.getItem('parma_device_id');
-	if (!id) {
-		id = crypto.randomUUID();
-		localStorage.setItem('parma_device_id', id);
+// Room guests keep an isolated anonymous Auth session so logging in or out of an
+// ordinary Parma account cannot silently change room ownership.
+export const roomSupabase = createClient(supabaseUrl, PUBLIC_SUPABASE_ANON_KEY, {
+	auth: {
+		storageKey: `sb-${new URL(PUBLIC_SUPABASE_URL).hostname.split('.')[0]}-room-auth-v2`
+	},
+	realtime: {
+		params: { eventsPerSecond: 10 }
 	}
-	return id;
+});
+
+let roomSessionPromise: Promise<string> | null = null;
+roomSupabase.auth.onAuthStateChange((event) => {
+	if (event === 'SIGNED_OUT') roomSessionPromise = null;
+});
+
+/** Make guest-room requests with a Supabase Auth identity instead of trusting a client-supplied device ID. */
+export function ensureRoomSession(): Promise<string> {
+	if (typeof window === 'undefined') return Promise.reject(new Error('Гостевая сессия доступна только в браузере'));
+	if (roomSessionPromise) return roomSessionPromise;
+	roomSessionPromise = (async () => {
+		const { data: current, error: sessionError } = await roomSupabase.auth.getSession();
+		if (sessionError) throw new Error(`Не удалось проверить гостевую сессию: ${sessionError.message}`);
+		if (current.session?.user) return current.session.user.id;
+
+		const { data, error } = await roomSupabase.auth.signInAnonymously();
+		if (error) {
+			if (error.code === 'anonymous_provider_disabled') {
+				throw new Error('В Supabase ещё не включён анонимный вход. Включите Anonymous Sign-Ins в настройках Auth и повторите попытку.');
+			}
+			throw new Error(`Не удалось создать защищённую гостевую сессию: ${error.message}`);
+		}
+		if (!data.user) throw new Error('Supabase не вернул гостевую сессию');
+		return data.user.id;
+	})().catch((error) => {
+		roomSessionPromise = null;
+		throw error;
+	});
+	return roomSessionPromise;
 }
 
 /**

@@ -10,7 +10,7 @@
 	touchRoom,
 	type Room
 } from '$lib/engine/rooms';
-	import { getDeviceId, getPlayerName, setPlayerName } from '../../lib/supabase/client';
+	import { getPlayerName, setPlayerName } from '../../lib/supabase/client';
 
 	let mode = $state<'choose' | 'create' | 'join'>('choose');
 	let roomName = $state('');
@@ -70,7 +70,15 @@
 		joinStage = 'lookup';
 		try {
 			setPlayerName(name.trim());
-			const room = await findRoomByCode(code.trim());
+			let inviteCode = code.trim();
+			try {
+				const inviteUrl = new URL(inviteCode);
+				const match = inviteUrl.pathname.match(/^\/room\/([0-9a-f]{64})$/i);
+				if (match) inviteCode = match[1];
+			} catch {
+				// The player may paste either the invitation token or the full link.
+			}
+			const room = await findRoomByCode(inviteCode);
 			if (!room) {
 				error = 'Комната с таким кодом не найдена';
 				return;
@@ -94,9 +102,18 @@ async function loadMyRooms() {
 }
 
 async function openMyRoom(room: Room) {
-	await joinRoom(room.id, localStorage.getItem('parma_player_name') || 'Сказитель', null);
+	await joinRoom(room.id, localStorage.getItem('parma_player_name') || 'Сказитель', null, room.code);
 	await touchRoom(room.id);
 	goto(`/room/${room.code}`);
+}
+
+async function copyInvite(room: Room) {
+	try {
+		await navigator.clipboard.writeText(`${location.origin}/room/${room.code}`);
+		alert('Ссылка-приглашение скопирована. Отправьте её участникам, которым доверяете.');
+	} catch {
+		alert('Не удалось скопировать ссылку. Скопируйте её из адресной строки комнаты.');
+	}
 }
 
 async function removeMyRoom(room: Room) {
@@ -129,10 +146,15 @@ onMount(() => {
 					<div class="flex-1 min-w-0">
 						<div class="font-semibold truncate">{r.name || 'Без названия'}</div>
 						<div class="text-xs text-gray-500">
-							Код: <span class="font-mono font-bold">{r.code}</span>
+							Приглашение: <span class="font-mono font-bold">{r.code.slice(0, 12)}…</span>
 							· создана {new Date(r.created_at).toLocaleDateString('ru-RU')}
 						</div>
 					</div>
+					<button
+						class="px-3 py-1 text-sm border rounded hover:bg-white"
+						onclick={() => copyInvite(r)}>
+						Скопировать ссылку
+					</button>
 					<button
 						class="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700"
 						onclick={() => openMyRoom(r)}>
@@ -225,14 +247,15 @@ onMount(() => {
 			</div>
 
 			<div>
-				<label for="room-code" class="block text-sm text-gray-600 mb-1">Код комнаты</label>
+				<label for="room-code" class="block text-sm text-gray-600 mb-1">Секрет приглашения</label>
 				<input
 					id="room-code"
 					type="text"
 					bind:value={code}
-					placeholder="ABC123"
-					maxlength="6"
-					class="w-full px-3 py-2 border rounded text-center text-2xl font-mono tracking-widest uppercase" />
+					placeholder="Вставьте секрет из ссылки сказителя"
+					maxlength="64"
+					autocomplete="off"
+					class="w-full px-3 py-2 border rounded font-mono" />
 			</div>
 
 			{#if error}
