@@ -8,8 +8,10 @@
 	import { getAdventureProgress, saveAdventureProgress, type AdventureProgress } from '$lib/sync/adventureProgress';
 	let { adventure, extras }: { adventure: Adventure; extras?: Snippet } = $props();
 	let showSecretMarkers = $state(false);
+  let mapView = $state<'overview' | 'local'>('overview');
+  const activeMap = $derived(mapView === 'overview' && adventure.overviewMap ? adventure.overviewMap : adventure.map);
 	const allScenes = $derived(adventure.scenes);
-	const visibleMarkers = $derived(adventure.map.markers.filter((marker) => showSecretMarkers || !marker.gmOnly));
+	const visibleMarkers = $derived(activeMap.markers.filter((marker) => showSecretMarkers || !marker.gmOnly));
 	let userId = $state<string | null>(null);
 	let progress = $state<AdventureProgress | null>(null);
 	let notes = $state('');
@@ -56,6 +58,13 @@
 		}
 	}
 
+	function revealChapter(id: string) {
+    const target = document.getElementById(id);
+    for (let ancestor = target?.parentElement; ancestor; ancestor = ancestor.parentElement) {
+      if (ancestor instanceof HTMLDetailsElement) ancestor.open = true;
+    }
+  }
+
 	function toggleScene(sceneId: string) {
 		if (!progress) return;
 		const sceneIds = progress.sceneIds.includes(sceneId)
@@ -88,6 +97,11 @@
   </nav>
  {/if}
  {@render extras?.()}
+ {#if adventure.chapters?.length}
+  <nav class="scene-chapters" aria-label="Главы приключения">
+    {#each adventure.chapters as chapter}<a href={`#${chapter.id}`} onclick={() => revealChapter(chapter.id)}><strong>{chapter.title}</strong><span>{chapter.sceneIds.length} сцен</span></a>{/each}
+  </nav>
+ {/if}
 	<section class="progress-section" aria-labelledby="progress-title">
 		<div>
 			<h2 id="progress-title">Ваше прохождение</h2>
@@ -120,21 +134,27 @@
 
 	<section class="map-section" aria-labelledby="map-title">
 		<div class="map-heading">
-			<div><span class="map-eyebrow">Место действия</span><h2 id="map-title">{adventure.region || "Карта приключения"}</h2></div>
+			<div><span class="map-eyebrow">Место действия</span><h2 id="map-title">{activeMap.title ?? (adventure.region || "Карта приключения")}</h2></div>
 			<button type="button" class="map-toggle" aria-pressed={showSecretMarkers} onclick={() => showSecretMarkers = !showSecretMarkers}>
 				{showSecretMarkers ? 'Скрыть тайные места' : 'Показать точки сказителя'}
 			</button>
 		</div>
+    {#if adventure.overviewMap}
+      <div class="map-views" role="group" aria-label="Масштаб карты">
+        <button type="button" aria-pressed={mapView === 'overview'} onclick={() => mapView = 'overview'}>Общая карта</button>
+        <button type="button" aria-pressed={mapView === 'local'} onclick={() => mapView = 'local'}>Кривцы и топи</button>
+      </div>
+    {/if}
 		<figure>
 			<div class="map-canvas">
-				<img src={adventure.map.src} alt={adventure.map.alt} width="1672" height="941" />
+				<img src={activeMap.src} alt={activeMap.alt} width="1672" height="941" />
 				{#each visibleMarkers as marker, index (marker.id)}
 					<span class:secret-marker={marker.gmOnly} class="map-marker" style:left={`${marker.x}%`} style:top={`${marker.y}%`} aria-hidden="true">
 						<span class="marker-number">{index + 1}</span><span class="marker-label">{marker.label}</span>
 					</span>
 				{/each}
 			</div>
-			<figcaption>{adventure.map.caption} <a href={adventure.map.src} target="_blank" rel="noreferrer" download={adventure.map.src.startsWith('data:') ? 'adventure-map.png' : undefined}>{adventure.map.src.startsWith('data:') ? 'Скачать карту' : 'Открыть карту отдельно'}</a></figcaption>
+			<figcaption>{activeMap.caption} <a href={activeMap.src} target="_blank" rel="noreferrer" download={activeMap.src.startsWith('data:') ? 'adventure-map.png' : undefined}>{activeMap.src.startsWith('data:') ? 'Скачать карту' : 'Открыть карту отдельно'}</a></figcaption>
 		</figure>
 		<ol class="map-key">
 			{#each visibleMarkers as marker (marker.id)}<li><strong>{marker.label}</strong><span>{marker.note}</span></li>{/each}
@@ -174,6 +194,8 @@
 					<section aria-labelledby="scenes-title" class="scenes">
 						<h2 id="scenes-title">Сцены</h2>
 						{#each adventure.scenes as scene (scene.id)}
+              {@const chapter = adventure.chapters?.find(chapter => chapter.sceneIds[0] === scene.id)}
+              {#if chapter}<header class="scene-chapter-heading" id={chapter.id}><h2>{chapter.title}</h2></header>{/if}
 							<article class="panel scene" id={scene.id}>
 								<h3>{scene.title}</h3>
 								<p class="read-aloud">{scene.readAloud}</p>
@@ -214,6 +236,18 @@
 </main>
 
 <style>
+  .map-views { display:flex; flex-wrap:wrap; gap:8px; padding:0 24px 16px; }
+  .map-views button { padding:9px 16px; border:1px solid #9c8967; border-radius:5px; background:#fff9e9; color:#3b3025; font-size:14px; cursor:pointer; }
+  .map-views button[aria-pressed="true"] { background:#294b39; border-color:#294b39; color:#fff9e9; }
+  .map-views button:focus-visible { outline:2px solid #765d37; outline-offset:3px; }
+
+  .scene-chapters { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; margin-top:20px; }
+  .scene-chapters a { display:flex; justify-content:space-between; align-items:center; gap:12px; border:1px solid #b49a70; border-radius:8px; padding:16px 20px; background:#f0e7d1; color:#294b39; }
+  .scene-chapters strong { text-decoration:underline; text-underline-offset:4px; }
+  .scene-chapters span { font-size:12px; white-space:nowrap; }
+  .scene-chapter-heading { margin-top:12px; padding:18px 22px; border-left:4px solid #8b7450; background:#e9e1ce; border-radius:4px; }
+  .scene-chapter-heading h2 { margin:0; font:26px Georgia,serif; }
+
   .chapter-nav { display:flex; flex-wrap:wrap; gap:10px 24px; padding:18px 22px; margin-top:22px; background:#eee5cf; border:1px solid #b49a70; border-radius:8px; }
   .chapter-nav a { color:#294b39; text-decoration:underline; text-underline-offset:4px; font-size:14px; }
   .illustrated-heading { display: flex; gap: 28px; align-items: center; }
