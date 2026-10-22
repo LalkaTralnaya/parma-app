@@ -8,6 +8,7 @@
 	import { getAdventureProgress, saveAdventureProgress, type AdventureProgress } from '$lib/sync/adventureProgress';
 	let { adventure, extras }: { adventure: Adventure; extras?: Snippet } = $props();
 	let showSecretMarkers = $state(false);
+	const allScenes = $derived(adventure.scenes);
 	const visibleMarkers = $derived(adventure.map.markers.filter((marker) => showSecretMarkers || !marker.gmOnly));
 	let userId = $state<string | null>(null);
 	let progress = $state<AdventureProgress | null>(null);
@@ -80,6 +81,12 @@
 		<div class="facts"><span>{adventure.region}</span><span>{adventure.players} игроков</span><span>{adventure.levels} уровни</span><span>{adventure.duration}</span></div>
     </div>
 	</header>
+ {#if adventure.previousAdventure || adventure.nextAdventure}
+  <nav class="chapter-nav" aria-label="Приключения серии">
+    {#if adventure.previousAdventure}<a href={`/adventures/${adventure.previousAdventure.slug}`}>Предыдущее: {adventure.previousAdventure.title}</a>{/if}
+    {#if adventure.nextAdventure}<a href={`/adventures/${adventure.nextAdventure.slug}`}>Продолжение: {adventure.nextAdventure.title}</a>{/if}
+  </nav>
+ {/if}
  {@render extras?.()}
 	<section class="progress-section" aria-labelledby="progress-title">
 		<div>
@@ -87,8 +94,8 @@
 			{#if progressLoading}<p>Загружаем прогресс…</p>
 			{:else if !userId}<p>Войдите в аккаунт, чтобы сохранять сцены, заметки и завершённые приключения.</p>
 			{:else if !progress}<p>Начните приключение, чтобы отслеживать его ход на любом устройстве.</p>
-			{:else if progress.completedAt}<p>Пройдено {new Date(progress.completedAt).toLocaleDateString('ru-RU')} · отмечено сцен: {progress.sceneIds.length} из {adventure.scenes.length}</p>
-			{:else}<p>В процессе · отмечено сцен: {progress.sceneIds.length} из {adventure.scenes.length}</p>{/if}
+			{:else if progress.completedAt}<p>Пройдено {new Date(progress.completedAt).toLocaleDateString('ru-RU')} · отмечено сцен: {progress.sceneIds.length} из {allScenes.length}</p>
+			{:else}<p>В процессе · отмечено сцен: {progress.sceneIds.length} из {allScenes.length}</p>{/if}
 		</div>
 		{#if !progressLoading && !userId}<a class="button" href="/account">Войти или зарегистрироваться</a>{/if}
 		{#if !progressLoading && userId && !progress}<button type="button" class="button primary" disabled={progressBusy} onclick={() => updateProgress({ adventureSlug: adventure.slug, sceneIds: [], notes: '', completedAt: null })}>Начать приключение</button>{/if}
@@ -96,7 +103,7 @@
 			<div class="progress-editor">
 				<fieldset disabled={progressBusy}>
 					<legend>Пройденные сцены</legend>
-					{#each adventure.scenes as scene (scene.id)}
+					{#each allScenes as scene (scene.id)}
 						<label><input type="checkbox" checked={progress.sceneIds.includes(scene.id)} onchange={() => toggleScene(scene.id)} /> {scene.title}</label>
 					{/each}
 				</fieldset>
@@ -191,7 +198,7 @@
 						<h3>Награда</h3><ul>{#each adventure.rewards as reward}<li>{reward}</li>{/each}</ul>
 					</section>
 					{#if adventure.guide?.length}
-					<section class="panel" aria-labelledby="book-guide-title"><h2 id="book-guide-title">Полный текст приключения</h2><p>Подробности обряда, раздаточные тексты, прощание и возможное продолжение для Сказителя.</p>{#each adventure.guide as entry (entry.id)}<details class="panel"><summary>{entry.title}</summary><ReferenceBlocks blocks={entry.blocks} /></details>{/each}</section>
+					<section class="panel" aria-labelledby="book-guide-title"><h2 id="book-guide-title">Полный текст приключения</h2><p>Дополнительные материалы и связи с другими приключениями для Сказителя.</p>{#each adventure.guide as entry (entry.id)}<details class="panel"><summary>{entry.title}</summary><ReferenceBlocks blocks={entry.blocks} /></details>{/each}</section>
 					{/if}
 				</div>
 			</details>
@@ -207,6 +214,8 @@
 </main>
 
 <style>
+  .chapter-nav { display:flex; flex-wrap:wrap; gap:10px 24px; padding:18px 22px; margin-top:22px; background:#eee5cf; border:1px solid #b49a70; border-radius:8px; }
+  .chapter-nav a { color:#294b39; text-decoration:underline; text-underline-offset:4px; font-size:14px; }
   .illustrated-heading { display: flex; gap: 28px; align-items: center; }
   .adventure-heading-copy { min-width: 0; flex: 1; }
   @media (max-width: 600px) { .illustrated-heading { flex-direction: column; gap: 18px; align-items: flex-start; } }

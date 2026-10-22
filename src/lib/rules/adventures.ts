@@ -1,5 +1,6 @@
 import type { LibraryEntry } from './parma-library';
 import { WELL_ADVENTURE } from './well-adventure';
+import { BLACK_ILLNESS_ADVENTURE } from './siver-adventure';
 
 export interface AdventureScene {
 	id: string;
@@ -20,7 +21,13 @@ export interface AdventureMapMarker {
 	note: string;
 }
 
+export type AdventureContinuation = Pick<Adventure,
+  'title' | 'summary' | 'opening' | 'secret' | 'pacing' | 'clues' | 'npcs' | 'scenes' | 'handouts' | 'endings' | 'rewards'
+> & { duration: string; bridge: string[] };
+
 export interface Adventure {
+  previousAdventure?: { slug: string; title: string };
+  nextAdventure?: { slug: string; title: string };
 	/** Полный текст для Сказителя; отсутствует у пользовательских приключений. */
 	guide?: LibraryEntry[];
 	slug: string;
@@ -48,7 +55,7 @@ export interface Adventure {
 }
 
 /** Сценарий: местные события и обряд не устанавливают новый канон мира. */
-export const ADVENTURES: Adventure[] = [WELL_ADVENTURE];
+export const ADVENTURES: Adventure[] = [WELL_ADVENTURE, BLACK_ILLNESS_ADVENTURE];
 
 export function getAdventure(slug: string): Adventure | undefined {
 	return ADVENTURES.find((adventure) => adventure.slug === slug);
