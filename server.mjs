@@ -29,13 +29,25 @@ const proxy = createProxyServer({
 
 proxy.on('proxyRes', (_proxyResponse, _request, response) => applySecurityHeaders(response));
 
-proxy.on('error', (error, _request, response) => {
-	console.error('Supabase proxy error:', error.code || error.name);
-	if ('writeHead' in response) {
+function supabaseEndpointGroup(url = '') {
+	const requestPath = url.split('?')[0];
+	const path = requestPath.startsWith(prefix) ? requestPath.slice(prefix.length) : requestPath;
+	const [area = 'unknown', version = ''] = path.split('/').filter(Boolean);
+	return version ? `${area}/${version}` : area;
+}
+
+proxy.on('error', (error, request, response) => {
+	console.error('Supabase proxy error:', JSON.stringify({
+		code: error.code || error.name,
+		method: request?.method || 'UNKNOWN',
+		endpoint: supabaseEndpointGroup(request?.url || ''),
+		clientDisconnected: Boolean(request?.destroyed || response?.destroyed)
+	}));
+	if (response && typeof response.writeHead === 'function') {
 		if (!response.headersSent) response.writeHead(502, { 'content-type': 'text/plain; charset=utf-8' });
 		response.end('Supabase is temporarily unavailable');
 	} else {
-		response.destroy();
+		response?.destroy?.();
 	}
 });
 
@@ -50,6 +62,11 @@ function stripPrefix(request) {
 
 const server = createServer((request, response) => {
 	applySecurityHeaders(response);
+	if ((request.method === 'GET' || request.method === 'HEAD') && request.url?.split('?')[0] === '/favicon.ico') {
+		response.writeHead(308, { Location: '/favicon.svg', 'Cache-Control': 'public, max-age=86400' });
+		response.end();
+		return;
+	}
 	if (isSupabaseRequest(request.url)) {
 		stripPrefix(request);
 		proxy.web(request, response);
