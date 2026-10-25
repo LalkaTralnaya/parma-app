@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '$lib/components/Icon.svelte';
 	import { getCheckDifficulty, normalizeCheckDifficulty } from '$lib/engine/checkDifficulty';
 	import { notifyCharacterUpdate, subscribeCharacterUpdates } from '$lib/sync/combat';
 	import { getArmorValue } from '../../lib/engine/combat';
@@ -21,10 +22,15 @@
 		createRoomRequest,
 		getActiveRoomRequest,
 		subscribeToRoomRequests,
+		getRoomCombatState,
+		updateRoomTavernSettings,
+		subscribeToRoomCombat,
 		closeRoomRequest,
 		type RoomRequest,
 	} from '../../lib/engine/rooms';
 	import type { Character } from '$lib/type';
+	import { PARMA_SEASONS, type ParmaSeason } from '$lib/rules/tavern-menu';
+	import { DEFAULT_TAVERN_SETTINGS, normalizeTavernSettings, readLocalTavernSettings, writeLocalTavernSettings } from '$lib/engine/tavern-settings';
 
 	const NOTES_KEY = 'parma_storyteller_notes';
 	let storytellerNotes = $state('');
@@ -65,6 +71,28 @@
 	let activeRoomId = $state<string | null>(null);
 	let activeRequest = $state<RoomRequest | null>(null);
 	let unsubRequests: (() => void) | null = null;
+	let unsubRoomTavern: (() => void) | null = null;
+	let tavernSeason = $state<ParmaSeason>(DEFAULT_TAVERN_SETTINGS.season);
+	let tavernSettingsStatus = $state('');
+	let savingTavernSeason = $state(false);
+
+	async function setTavernSeason(season: ParmaSeason) {
+		if (savingTavernSeason) return;
+		savingTavernSeason = true;
+		tavernSettingsStatus = '';
+		const settings = { season };
+		try {
+			if (activeRoomId) {
+				await updateRoomTavernSettings(activeRoomId, settings);
+			}
+			tavernSeason = season;
+			writeLocalTavernSettings(settings);
+			tavernSettingsStatus = activeRoomId ? 'Сезон сохранён и передан участникам комнаты.' : 'Сезон сохранён в этом браузере. Для передачи игрокам подключите Сказителя к комнате.';
+		} catch (error) {
+			tavernSettingsStatus = error instanceof Error ? `Не удалось сохранить сезон: ${error.message}` : 'Не удалось сохранить сезон.';
+		}
+		finally { savingTavernSeason = false; }
+	}
 
 	// Производные — какой тип запроса и какие результаты показываем
 	const activeType = $derived<SessionRequestType | null>(
@@ -200,6 +228,7 @@
 	}
 
 	onMount(() => {
+		tavernSeason = readLocalTavernSettings().season;
 		try {
 			storytellerNotes = localStorage.getItem(NOTES_KEY) ?? '';
 			notesStatus = 'Заметки сохраняются автоматически в этом браузере.';
@@ -221,6 +250,19 @@
 			const room = await findRoomByCode(code);
 			if (room) {
 				activeRoomId = room.id;
+				const combatState = await getRoomCombatState(room.id);
+				const sharedTavernSettings = normalizeTavernSettings(combatState?.tavernSettings);
+				if (sharedTavernSettings) {
+					tavernSeason = sharedTavernSettings.season;
+					writeLocalTavernSettings(sharedTavernSettings);
+				}
+				unsubRoomTavern = subscribeToRoomCombat(room.id, (state) => {
+					const settings = normalizeTavernSettings(state?.tavernSettings);
+					if (settings) {
+						tavernSeason = settings.season;
+						writeLocalTavernSettings(settings);
+					}
+				});
 				activeRequest = await getActiveRoomRequest(room.id);
 				unsubRequests = subscribeToRoomRequests(room.id, (req) => {
 					activeRequest = req;
@@ -233,6 +275,7 @@
 		unsubscribe?.();
 		unsubscribeCharacters?.();
 		unsubRequests?.();
+		unsubRoomTavern?.();
 	});
 </script>
 
@@ -246,6 +289,8 @@
 			</p>
 		</div>
 		<div class="flex gap-2 flex-wrap">
+			<a href="/lavka" class="px-4 py-2 border rounded hover:bg-gray-50 inline-flex items-center gap-2"><Icon name="bag" size={18} />Лавка</a>
+			<a href="/tavern" class="px-4 py-2 border rounded hover:bg-gray-50 inline-flex items-center gap-2"><Icon name="mug" size={18} />Таверна</a>
 			<a
 				href="/gm/cheatsheet"
 				class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
@@ -317,6 +362,21 @@
 		<label for="storyteller-notes" class="sr-only">Заметки сказителя</label>
 		<textarea id="storyteller-notes" class="w-full min-h-48 resize-y border rounded p-3 text-sm" rows="8" placeholder="Сюжетные планы, события сессии, персонажи и другие записи…" bind:value={storytellerNotes} oninput={saveNotes} disabled={!notesStorageReady} aria-describedby="storyteller-notes-status"></textarea>
 		<p id="storyteller-notes-status" class="text-xs text-gray-500 mt-2" role="status">{notesStatus}</p>
+	</section>
+
+	<section class="border rounded-lg bg-white p-4 mb-6" aria-labelledby="tavern-season-title">
+		<div class="flex flex-wrap items-center justify-between gap-3">
+			<div>
+				<h2 id="tavern-season-title" class="font-semibold">Время года в Таверне</h2>
+				<p class="text-sm text-gray-600">Сезон меняет доступность блюд из свежих сезонных продуктов.</p>
+			</div>
+			<div class="flex flex-wrap gap-2" role="group" aria-label="Выбрать время года">
+				{#each PARMA_SEASONS as season}
+					<button type="button" class="px-3 py-2 border rounded {tavernSeason === season.id ? 'bg-green-800 text-white' : 'hover:bg-gray-50'}" disabled={savingTavernSeason} aria-pressed={tavernSeason === season.id} onclick={() => setTavernSeason(season.id)}>{season.label}</button>
+				{/each}
+			</div>
+		</div>
+		{#if tavernSettingsStatus}<p class="text-sm mt-3" role="status">{tavernSettingsStatus}</p>{/if}
 	</section>
 
 	<p class="notice mb-6">Пульт видит персонажей этого браузера. Для общих проверок откройте их листы в соседних вкладках. Между разными устройствами данные не передаются.</p>

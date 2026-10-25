@@ -2,6 +2,7 @@
 	import CharacterPrint from '$lib/components/CharacterPrint.svelte';
 	let printPreview = $state(false);
 	import RaceSymbol from '$lib/components/RaceSymbol.svelte';
+	import Icon from '$lib/components/Icon.svelte';
 	import { autosizeTextarea } from '$lib/ui/autosize-textarea';
  import Dialog from '$lib/components/Dialog.svelte';
  import { applyItemTreatments, treatWithItem } from '$lib/engine/itemTreatment';
@@ -234,6 +235,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		spell: string; roll: number; target: number; outcome: SpellOutcome;
 		cost?: number; resource?: 'mana' | 'grace' | 'hp';
 		effect?: SpellEffectRoll | null; damageApplied?: number; decayGained?: number;
+		combination?: { firstSpell: string; roll: number; target: number; success: boolean };
 	} | null>(null);
 
 	// Инвентарь
@@ -1066,6 +1068,11 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		const spell = originalSpell ? {...originalSpell,school} : undefined;
 		if(!char.spells.includes(spellId)) {spellNotice='Сначала изучите заклинание.';return;}
 		if (!spell) return;
+		const firstHeldSpell = char.heldSpell ? getHeldSpell(char) : undefined;
+		if (firstHeldSpell && hold) {
+			spellNotice = 'Сначала прекратите текущее удержание: одновременно удерживается только одно заклинание. Второе можно сотворить без удержания.';
+			return;
+		}
 		const graceAllowed = canUseGraceWithDecay(char.decay?.points ?? 0);
 		if (!graceAllowed && spell.costGrace !== undefined) return;
 		const useGrace = graceAllowed && char.useGraceForSpells;
@@ -1078,6 +1085,13 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		const roll = await requestDie(100, `${spell.name}: сотворение`, target);
 		if (roll === null) return;
 		const outcome = classifySpellRoll(roll, target);
+		let combination: { firstSpell: string; roll: number; target: number; success: boolean } | undefined;
+		if (firstHeldSpell) {
+			const combinationTarget = getSpellCastTarget(char, school);
+			const combinationRoll = await requestDie(100, `${spell.name}: совмещение с ${firstHeldSpell.name}`, combinationTarget);
+			if (combinationRoll === null) return;
+			combination = { firstSpell: firstHeldSpell.name, roll: combinationRoll, target: combinationTarget, success: combinationRoll <= combinationTarget };
+		}
 		const criticalCostDie = outcome === 'critical_failure' ? await requestDie(4, `${spell.name}: цена критического провала`) : 0;
 		if (criticalCostDie === null) return;
 		let effectResult: SpellEffectRoll | null = null;
@@ -1145,9 +1159,10 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 			effect: effectResult,
 			damageApplied,
 			decayGained,
+			combination,
 		};
 
-		if ((hold || spell.application === 'hold') && canHoldSpell(spell)) {
+		if (hold && canHoldSpell(spell)) {
 			char = startSpellHolding(char, spell, outcome, { useTwoHands, useGrace, targetId: targetEnemyId, targetName: combat?.participants.find((p) => p.id === targetEnemyId)?.name ?? 'Цель не выбрана' });
 			if (outcome === 'success' || outcome === 'critical_success') holdNotice = 'Удержание начато.';
 		}
@@ -1609,6 +1624,19 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	// ────────────────────────────────────────────
 </script>
 <style>
+	.spell-resource-switch { position:relative; display:inline-flex; align-items:center; gap:10px; min-height:44px; cursor:pointer; color:inherit; font-size:14px; }
+	.spell-resource-switch > span:not(.resource-track) { opacity:.7; }
+	.spell-resource-switch > span.active { opacity:1; font-weight:700; }
+	.spell-resource-switch input { position:absolute; width:1px; height:1px; opacity:0; }
+	.spell-resource-switch .resource-track { display:block; width:44px; height:26px; padding:3px; border:1px solid currentColor; border-radius:20px; background:#28533e; flex-shrink:0; }
+	.spell-resource-switch .resource-thumb { display:block; width:18px; height:18px; border-radius:50%; background:#fff8e8; box-shadow:0 1px 3px #0005; transition:transform .15s ease; }
+	.spell-resource-switch input:checked + .resource-track { background:#694775; }
+	.spell-resource-switch input:checked + .resource-track .resource-thumb { transform:translateX(18px); }
+	.spell-resource-switch input:focus-visible + .resource-track { outline:2px solid currentColor; outline-offset:4px; }
+	.spell-resource-switch.unavailable { cursor:not-allowed; }
+	.spell-resource-switch.unavailable .resource-track { background:#626b62; }
+	@media (prefers-reduced-motion:reduce) { .spell-resource-switch .resource-thumb { transition:none; } }
+
 	.roll-result-panel {
 		position: fixed;
 		left: max(16px, env(safe-area-inset-left));
@@ -1740,6 +1768,8 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 			</div>
 			<div class="flex gap-2 flex-wrap">
 				<a href="/" class="px-3 py-2 border rounded hover:bg-gray-50">← К списку</a>
+				<a href="/lavka?character={char.id}" class="px-3 py-2 border rounded hover:bg-gray-50 inline-flex items-center gap-2"><Icon name="bag" size={17} />Лавка</a>
+				<a href="/tavern?character={char.id}" class="px-3 py-2 border rounded hover:bg-gray-50 inline-flex items-center gap-2"><Icon name="mug" size={17} />Таверна</a>
 				<GuidedTour steps={SHEET_TOUR} title="Лист персонажа" autoStart={page.url.searchParams.get('learn') === '1'} />
 				<a
 					href="/char/{char.id}/levelup"
@@ -2698,22 +2728,21 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 			<div class="flex justify-between items-center mb-3 flex-wrap gap-2">
 				<h2 id="spells" class="text-xl font-semibold">Заклинания</h2>
 				{#if !hideReligion}
-				<label class="flex items-center gap-2 text-sm px-3 py-1.5 border rounded hover:bg-gray-50 cursor-pointer">
+				<label class="spell-resource-switch" class:unavailable={!canUseGraceWithDecay(char.decay?.points ?? 0)}>
+					<span class:active={!(canUseGraceWithDecay(char.decay?.points ?? 0) && char.useGraceForSpells)}>Жива</span>
 					<input
 						type="checkbox"
+						role="switch"
+						aria-label="Творить Благодатью"
 						checked={canUseGraceWithDecay(char.decay?.points ?? 0) && char.useGraceForSpells}
 						disabled={!canUseGraceWithDecay(char.decay?.points ?? 0)}
-						onchange={async (e) => {
+						onchange={async () => {
 							if (!canUseGraceWithDecay(char!.decay?.points ?? 0)) return;
-							char!.useGraceForSpells = (e.currentTarget as HTMLInputElement).checked;
 							await toggleGraceMode(char!);
 							char = { ...char! };
 						}} />
-					<span>
-						Творить <span class="font-semibold {char.useGraceForSpells && canUseGraceWithDecay(char.decay?.points ?? 0) ? 'text-purple-700' : 'text-blue-700'}">
-							{char.useGraceForSpells && canUseGraceWithDecay(char.decay?.points ?? 0) ? 'Благодатью' : 'Живой'}
-						</span>
-					</span>
+					<span class="resource-track" aria-hidden="true"><span class="resource-thumb"></span></span>
+					<span class:active={canUseGraceWithDecay(char.decay?.points ?? 0) && char.useGraceForSpells}>Благодать</span>
 				</label>
 				{/if}
 			</div>
@@ -2752,7 +2781,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 					<p class="text-sm">Цель: {char.heldSpell.targetName}. Длительность: {heldSpell.duration}.</p>
 					<p class="text-sm mt-2">{playerText(heldSpell.description)}</p>
 					{#if heldSpell.effect}<p class="text-sm">Эффект: {heldSpell.effect}</p>{/if}
-					<p class="text-xs text-gray-500 mt-2">Продлевай один раз в свой ход. Состояния, избавления и эффекты области отмечает Сказитель. Новое удерживаемое заклинание заменит текущее при успешном сотворении.</p>
+					<p class="text-xs text-gray-500 mt-2">Продлевай один раз в свой ход. Состояния, избавления и эффекты области отмечает Сказитель. Второе заклинание можно сотворить отдельно; чтобы начать другое удержание, сначала прекрати текущее.</p>
 					<div class="flex flex-wrap gap-2 mt-3">
 						<button type="button" class="px-3 py-2 rounded bg-blue-600 text-white" disabled={spellBusy} onclick={sustainSpell}>Удержать ещё {heldSpell.holdInterval==='hour'?'час':'раунд'}</button>
 						<button type="button" class="px-3 py-2 rounded border" disabled={spellBusy} onclick={stopHolding}>Прекратить</button>
@@ -2799,6 +2828,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 										{@const useTwo = twoHands[spell.id] ?? false}
 										{@const casting = getSpellCastingAvailability(char, selectedSpell, useTwo || spell.costOneHand === undefined, char.useGraceForSpells && canUseGraceWithDecay(char.decay?.points ?? 0))}
 										{@const castBlockReason = spell.costGrace !== undefined && !canUseGraceWithDecay(char.decay?.points ?? 0) ? 'Благодать недоступна из-за Тлена' : casting.reason}
+						{@const holdBlockReason = heldSpell ? 'Сначала прекратите текущее удержание.' : ''}
 										{@const costOneHand = getSpellCost(char, selectedSpell, false)}
 										{@const costTwoHands = getSpellCost(char, selectedSpell, true)}
 										{@const threshold = getSpellLevelThreshold(spell.school, spell.skillLevel)}
@@ -2842,10 +2872,10 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 												disabled={spellBusy || Boolean(castBlockReason)}
 												title={castBlockReason || undefined}
 														onclick={() => castSpell(spell.id, selectedSchool, useTwo || spell.costOneHand === undefined)}>
-														{spell.application === 'hold' ? 'Сотворить и удерживать (к100)' : 'Магическая атака (к100)'}
+												{canHoldSpell(spell) ? 'Сотворить без удержания (к100)' : 'Магическая атака (к100)'}
 													</button>
-													{#if canHoldSpell(spell) && spell.application !== 'hold'}
-														<button type="button" class="px-2 py-1 text-xs border rounded" disabled={spellBusy || Boolean(castBlockReason)} title={castBlockReason || undefined} onclick={() => castSpell(spell.id, selectedSchool, useTwo || spell.costOneHand === undefined, true)}>Сотворить и удерживать</button>
+											{#if canHoldSpell(spell)}
+												<button type="button" class="px-2 py-1 text-xs border rounded" disabled={spellBusy || Boolean(castBlockReason) || Boolean(holdBlockReason)} title={holdBlockReason || castBlockReason || undefined} onclick={() => castSpell(spell.id, selectedSchool, useTwo || spell.costOneHand === undefined, true)}>Сотворить и удерживать</button>
 													{/if}
 												</div>
 												{#if castBlockReason}<p class="text-xs text-red-700 mt-1" role="status">{castBlockReason}</p>{/if}
@@ -3054,6 +3084,15 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 						{spellOutcomeLabel[lastCast.outcome]}
 					</span>
 				</div>
+				{#if lastCast.combination}
+					<div class="border-t pt-2 text-sm">
+						<div class="font-semibold">Совмещение с «{lastCast.combination.firstSpell}»</div>
+						<div>Дополнительная проверка: выпало <strong>{lastCast.combination.roll}</strong>, цель ≤ {lastCast.combination.target} —
+							<strong class={lastCast.combination.success ? 'text-green-700' : 'text-[#8B1E3F]'}>{lastCast.combination.success ? 'совмещение удалось' : 'заклинания действуют отдельно'}</strong>.
+						</div>
+						<div>Первое заклинание продолжает действовать. При успехе объединение эффектов определяет Сказитель.</div>
+					</div>
+				{/if}
 				{#if lastCast.effect}
 					<div class="border-t pt-2">
 						<div class="text-sm text-gray-500">

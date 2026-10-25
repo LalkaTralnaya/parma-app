@@ -1,5 +1,6 @@
 import { roomSupabase, getPlayerName, ensureRoomSession } from '../supabase/client';
 import type { Character } from '../type';
+import type { TavernSettings } from './tavern-settings';
 
 const ROOM_REQUEST_TIMEOUT_MS = 15_000;
 const ROOM_CONNECTION_ERROR = 'Нет связи с сервером комнат. Проверьте мобильную сеть, Wi-Fi или VPN и повторите попытку.';
@@ -492,6 +493,28 @@ export async function saveRoomCombatState(
 	if (!data || data.length === 0) {
 		console.warn('[combat] ⚠️ НИ ОДНОЙ строки не обновлено! Проверь room_id или наличие строки.');
 	}
+}
+
+/** Update tavern season without replacing the room's combat state. Storyteller-only RLS still applies. */
+export async function updateRoomTavernSettings(roomId: string, settings: TavernSettings): Promise<void> {
+	await ensureRoomSession();
+	const { data: current, error: readError } = await roomSupabase
+		.from('room_combat')
+		.select('state')
+		.eq('room_id', roomId)
+		.maybeSingle();
+	if (readError) throw new Error(`Не удалось прочитать настройки комнаты: ${readError.message}`);
+	if (!current) throw new Error('Не найдено состояние игровой комнаты. Обновите страницу комнаты.');
+	const previousState = current.state && typeof current.state === 'object' && !Array.isArray(current.state)
+		? current.state as Record<string, unknown>
+		: {};
+	const { data: updated, error: writeError } = await roomSupabase
+		.from('room_combat')
+		.update({ state: { ...previousState, tavernSettings: settings } })
+		.eq('room_id', roomId)
+		.select('room_id');
+	if (writeError) throw new Error(`Не удалось сохранить сезон. Проверьте, что вы вошли в комнату как Сказитель: ${writeError.message}`);
+	if (!updated?.length) throw new Error('Сезон комнаты могут менять только вошедшие в неё Сказители.');
 }
 
 /** Подписка на изменения боя в комнате */

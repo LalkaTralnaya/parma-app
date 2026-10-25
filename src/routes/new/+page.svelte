@@ -74,7 +74,7 @@
 		<h1 class="text-3xl font-bold">{page.url.searchParams.get("adventure") ? "Герой для приключения" : "Новый персонаж"}</h1>
 		<div class="flex flex-wrap items-center gap-2"><GuidedTour steps={CREATION_TOUR} title="Создание персонажа" autoStart={page.url.searchParams.get('learn') === '1'} /><a href={page.url.searchParams.get("adventure") ? `/adventures/custom/${page.url.searchParams.get("adventure")}/edit` : "/"} class="px-3 py-2 border rounded hover:bg-gray-50">← Отмена</a></div>
 	</header>
-	<p class="notice">Имя, происхождение и первые умения — начало вашей истории. Выберите расу и предысторию, затем распределите до 10 очков навыков.</p>
+	<p class="notice">Имя, происхождение и первые умения — начало вашей истории. Выберите расу и предысторию, затем распределите до 10 очков навыков. При создании персонаж также получает 4 очка умений для дерева развития.</p>
 
 	<!-- Имя -->
 	<section class="border rounded-lg p-4 bg-white">
@@ -193,6 +193,7 @@
 		</div>
 		<progress class="resource-meter" max="10" value={spentPoints} aria-label="Распределено очков навыков">{spentPoints} из 10</progress>
 		<p class="text-sm text-gray-500 mb-3">Максимум 2 очка в один навык.</p>
+		<p class="text-sm text-blue-800 bg-blue-50 border border-blue-200 rounded p-3 mb-4">При создании персонаж получает отдельно <strong>4 очка умений</strong>. Они сохранятся на листе и будут доступны в разделе «Умения» после создания героя; неизрасходованные очки можно оставить на будущее.</p>
 
 		<div class="space-y-4">
 			{#each CHARACTERISTICS as c}

@@ -120,7 +120,7 @@ export function createEmptyCharacter(): Character {
 		resourceRolls: { hp: [], mana: [], stamina: [], influence: [], grace: [] },
 		currentResources: { hp: 0, mana: 0, stamina: 0, influence: 0, grace: 0 },
 		abilities: [],
-		abilityPoints: 0,
+		abilityPoints: 4,
 		spells: [],
 		useGraceForSpells: false,
 		equipment: { weaponId: 'dagger', armorId: 'none', shieldId: 'none' },

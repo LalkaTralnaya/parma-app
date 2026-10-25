@@ -416,8 +416,9 @@ async function addSelectedPlayers() {
 	/** Полностью очистить (убрать всех участников) */
 	async function clearAll() {
 	if (!confirm('Убрать всех участников из боя?')) return;
+	const tavernSettings = combatState.tavernSettings;
 	clearCombat();
-	await persist(createEmptyCombat());
+	await persist({ ...createEmptyCombat(), tavernSettings });
 }
 
 	async function next() {

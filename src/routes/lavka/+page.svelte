@@ -16,7 +16,7 @@
  let category = $state<ItemCategory | 'all' | 'road'>('all');
  let bundles = $state(1);
  const selected = $derived(characters.find(c => c.id === selectedId));
- const filtered = $derived(ITEMS.filter(i => (category === 'all' || (category === 'road' ? Boolean(i.equipmentGroup) : i.category === category)) && `${i.name} ${i.description ?? ''}`.toLocaleLowerCase('ru').includes(query.trim().toLocaleLowerCase('ru'))));
+ const filtered = $derived(ITEMS.filter(i => !i.tavernOnly && (category === 'all' || (category === 'road' ? Boolean(i.equipmentGroup) : i.category === category)) && `${i.name} ${i.description ?? ''}`.toLocaleLowerCase('ru').includes(query.trim().toLocaleLowerCase('ru'))));
  function priceLabel(price: number) { const copper = Math.round(price * 100); const silver = Math.floor(copper / 100); const remainder = copper % 100; return silver ? `${silver} с.${remainder ? ` ${remainder} м.` : ''}` : `${copper} м.`; }
  async function load() {
   try {

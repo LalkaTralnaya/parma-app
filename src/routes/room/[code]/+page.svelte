@@ -5,6 +5,7 @@
 	import {
 	findRoomByCode, joinRoom, getRoomParticipants, getRecentRolls,
 	leaveRoom, updateCharacterSnapshot, subscribeToRoom,
+		getRoomCombatState, subscribeToRoomCombat, updateRoomTavernSettings,
 	setCurrentRoom, clearCurrentRoom, deleteRoom, listMyMasterRooms,
 	setPendingCharacter, clearPendingCharacter,
 	updateRoomGifted, setCharacterLock, rotateRoomInvite,
@@ -12,6 +13,8 @@
 } from '../../../lib/engine/rooms';
 	import { listCharacters, getCharacter, saveCharacter } from '../../../lib/db/characters';
 	import { ensureRoomSession } from '../../../lib/supabase/client';
+	import { DEFAULT_TAVERN_SETTINGS, normalizeTavernSettings, readLocalTavernSettings, writeLocalTavernSettings } from '$lib/engine/tavern-settings';
+	import { PARMA_SEASONS, type ParmaSeason } from '$lib/rules/tavern-menu';
 	import { RACES } from '../../../lib/rules/races';
 	import type { Character } from '../../../lib/type';
 
@@ -24,6 +27,10 @@
 	let showCharPicker = $state(false);
 	let selectedCharacterId = $state<string>('');
 	let unsubscribe: (() => void) | null = null;
+	let unsubscribeTavern: (() => void) | null = null;
+	let tavernSeason = $state<ParmaSeason>(DEFAULT_TAVERN_SETTINGS.season);
+	let tavernSeasonStatus = $state('');
+	let savingTavernSeason = $state(false);
 	// ─── Передача персонажа ───
 // ─── Передача персонажа ───
 let showGiftForm = $state(false);
@@ -124,6 +131,25 @@ async function declineGift(p: RoomParticipant) {
 	let authUserId = $state('');
 	const isMaster = $derived(room?.master_auth_id === authUserId);
 	const myParticipant = $derived(participants.find((p) => p.auth_user_id === authUserId));
+
+	function applyTavernSettings(value: unknown) {
+		const settings = normalizeTavernSettings(value);
+		if (settings) tavernSeason = settings.season;
+	}
+
+	async function chooseTavernSeason(season: ParmaSeason) {
+		if (!room || !isMaster || savingTavernSeason) return;
+		savingTavernSeason = true;
+		tavernSeasonStatus = '';
+		try {
+			await updateRoomTavernSettings(room.id, { season });
+			tavernSeason = season;
+			writeLocalTavernSettings({ season });
+			tavernSeasonStatus = 'Сезон сохранён и передан участникам комнаты.';
+		} catch (cause) {
+			tavernSeasonStatus = cause instanceof Error ? cause.message : 'Не удалось сохранить сезон.';
+		} finally { savingTavernSeason = false; }
+	}
 	
 
 	onMount(async () => {
@@ -134,6 +160,7 @@ async function declineGift(p: RoomParticipant) {
 		}
 
 		try {
+			tavernSeason = readLocalTavernSettings().season;
 			authUserId = await ensureRoomSession();
 			const r = await findRoomByCode(code);
 			if (!r) {
@@ -143,6 +170,17 @@ async function declineGift(p: RoomParticipant) {
 			}
 			room = r;
 			setCurrentRoom(r.code);
+			try {
+				const roomCombat = await getRoomCombatState(r.id);
+				applyTavernSettings(roomCombat?.tavernSettings);
+			} catch { /* Сезон останется локальным, если сервер временно недоступен. */ }
+			unsubscribeTavern = subscribeToRoomCombat(r.id, (state) => {
+				const settings = normalizeTavernSettings(state?.tavernSettings);
+				if (settings) {
+					applyTavernSettings(settings);
+					writeLocalTavernSettings(settings);
+				}
+			});
 
 			// Загружаем список локальных персонажей
 			myCharacters = await listCharacters();
@@ -176,6 +214,7 @@ async function declineGift(p: RoomParticipant) {
 
 	onDestroy(() => {
 		unsubscribe?.();
+		unsubscribeTavern?.();
 	});
 
 	async function pickCharacter(charId: string) {
@@ -389,6 +428,23 @@ async function declineGift(p: RoomParticipant) {
 				{/if}
 			</div>
 		</header>
+
+		{#if isMaster}
+			<section class="border rounded-lg bg-white p-4 mb-6" aria-labelledby="room-tavern-season-title">
+				<div class="flex flex-wrap items-center justify-between gap-3">
+					<div>
+						<h2 id="room-tavern-season-title" class="font-semibold">Сезон в Таверне</h2>
+						<p class="text-sm text-gray-600">Недоступные по сезону блюда будут скрыты из меню у участников комнаты.</p>
+					</div>
+					<div class="flex flex-wrap gap-2" role="group" aria-label="Выбрать сезон для таверны">
+						{#each PARMA_SEASONS as option}
+							<button type="button" class="px-3 py-2 border rounded {tavernSeason === option.id ? 'bg-green-800 text-white' : 'hover:bg-gray-50'}" disabled={savingTavernSeason} aria-pressed={tavernSeason === option.id} onclick={() => chooseTavernSeason(option.id)}>{option.label}</button>
+						{/each}
+					</div>
+				</div>
+				{#if tavernSeasonStatus}<p class="text-sm mt-3" role="status">{tavernSeasonStatus}</p>{/if}
+			</section>
+		{/if}
 
 		{#if showCharPicker}
 			<div class="border rounded-lg bg-blue-50 p-4 mb-4">

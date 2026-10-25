@@ -1,5 +1,6 @@
 import type { Character } from '../type';
 import type { CombatEffect } from '../engine/combatEffects';
+import type { TavernSettings } from '../engine/tavern-settings';
 export interface MonsterAttackData {
 	name: string;
 	hitBonus: number;
@@ -44,6 +45,8 @@ export interface CombatState {
 	round: number;
 	active: boolean;
 	timestamp: number;
+	/** Shared storyteller setting reused from the room's JSON state. */
+	tavernSettings?: TavernSettings;
 }
 
 const STORAGE_KEY = 'parma_combat';
