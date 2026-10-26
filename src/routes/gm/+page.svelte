@@ -1,5 +1,7 @@
 <script lang="ts">
 	import Icon from '$lib/components/Icon.svelte';
+	import RelationshipWebView from '$lib/components/RelationshipWeb.svelte';
+	import StoryPlotWebView from '$lib/components/StoryPlotWeb.svelte';
 	import { getCheckDifficulty, normalizeCheckDifficulty } from '$lib/engine/checkDifficulty';
 	import { notifyCharacterUpdate, subscribeCharacterUpdates } from '$lib/sync/combat';
 	import { getArmorValue } from '../../lib/engine/combat';
@@ -24,11 +26,19 @@
 		subscribeToRoomRequests,
 		getRoomCombatState,
 		updateRoomTavernSettings,
+		getRoomParticipants,
 		subscribeToRoomCombat,
 		closeRoomRequest,
 		type RoomRequest,
 	} from '../../lib/engine/rooms';
 	import type { Character } from '$lib/type';
+	import { readRelationshipNpcs, readLocalRelationshipWeb, writeLocalRelationshipWeb, type RelationshipLink, type RelationshipNpc } from '$lib/engine/relationship-web';
+	import { ensureRoomSession } from '$lib/supabase/client';
+	import { createRelationshipTemplate, normalizeRelationshipSnapshot, type RelationshipSnapshot } from '$lib/engine/relationship-snapshot';
+	import { loadRelationshipTemplate, saveRelationshipTemplate, loadRoomRelationships, saveRoomRelationships, attachRelationshipsToRoom, subscribeRoomRelationships, exportRoomArchive } from '$lib/engine/relationship-store';
+	import { downloadJson } from '$lib/utils/export';
+	import { EMPTY_STORY_PLOT_WEB, clearLocalStoryPlotWeb, normalizeStoryPlotWeb, readLocalStoryPlotWeb, writeLocalStoryPlotWeb, type StoryPlotWeb } from '$lib/engine/story-plot-web';
+	import { loadStoryPlotWeb, saveStoryPlotWeb as persistStoryPlotWeb } from '$lib/engine/story-plot-store';
 	import { PARMA_SEASONS, type ParmaSeason } from '$lib/rules/tavern-menu';
 	import { DEFAULT_TAVERN_SETTINGS, normalizeTavernSettings, readLocalTavernSettings, writeLocalTavernSettings } from '$lib/engine/tavern-settings';
 
@@ -75,6 +85,92 @@
 	let tavernSeason = $state<ParmaSeason>(DEFAULT_TAVERN_SETTINGS.season);
 	let tavernSettingsStatus = $state('');
 	let savingTavernSeason = $state(false);
+	let templateSnapshot=$state<RelationshipSnapshot>(createRelationshipTemplate());
+	let roomSnapshot=$state<RelationshipSnapshot|null>(null);
+	let relationshipView=$state<'main'|'room'>('main');
+	let templateReady=$state(false);
+	let roomIsMaster=$state(false);
+	let unsubscribeRoomWeb:(()=>void)|undefined;
+	const activeRelationshipSnapshot=$derived(relationshipView==='room'&&roomSnapshot?roomSnapshot:templateSnapshot);
+	const relationshipWeb=$derived(activeRelationshipSnapshot.links);
+	const graphEditable=$derived(relationshipView==='main'?templateReady:!!roomSnapshot&&roomIsMaster);
+	async function loadMainGraph(){
+		const initial=createRelationshipTemplate(readLocalRelationshipWeb(),readRelationshipNpcs());
+		templateSnapshot=initial;
+		try{templateSnapshot=await loadRelationshipTemplate(initial);templateReady=true;}
+		catch(error){relationshipStatus=error instanceof Error?error.message:'Основная паутина пока недоступна.';}
+	}
+	async function attachMainGraph(){
+		if(!activeRoomId||!roomIsMaster||!templateReady||savingRelationshipWeb)return;
+		savingRelationshipWeb=true;
+		try{roomSnapshot=await attachRelationshipsToRoom(activeRoomId);relationshipView='room';relationshipStatus='Независимая копия паутины добавлена в комнату.';}
+		catch(error){relationshipStatus=error instanceof Error?error.message:'Не удалось добавить паутину.';}
+		finally{savingRelationshipWeb=false;}
+	}
+	async function exportActiveRoom(){
+		if(!activeRoomId||!roomIsMaster)return;
+		try{downloadJson(await exportRoomArchive(activeRoomId),`parma-room-${Date.now()}.json`);relationshipStatus='Комната выгружена вместе с её паутиной, НИПами и историей. Комната остаётся в базе.';}
+		catch(error){relationshipStatus=error instanceof Error?error.message:'Не удалось выгрузить комнату.';}
+	}
+	let relationshipCharacters = $state<Array<{ id: string; name: string }>>([]);
+	let relationshipStatus = $state('');
+	let savingRelationshipWeb = $state(false);
+	let storyPlotWeb = $state<StoryPlotWeb>(EMPTY_STORY_PLOT_WEB);
+	let loadingStoryPlot = $state(true);
+	let savingStoryPlot = $state(false);
+	let storyPlotStatus = $state('');
+	const canOpenStoryPlot = $derived(!activeRoomId || roomIsMaster);
+
+	async function loadPrivateStoryPlot() {
+		const local = readLocalStoryPlotWeb();
+		try {
+			const remote = await loadStoryPlotWeb();
+			if (!remote.nodes.length && !remote.edges.length && (local.nodes.length || local.edges.length)) {
+				await persistStoryPlotWeb(local);
+				storyPlotWeb = local;
+				storyPlotStatus = 'Локальная паутина перенесена в приватное хранилище аккаунта Сказителя.';
+			} else {
+				storyPlotWeb = remote;
+				storyPlotStatus = 'Сюжетная паутина доступна только вашему аккаунту Сказителя.';
+			}
+			clearLocalStoryPlotWeb();
+		} catch (error) {
+			storyPlotWeb = local;
+			storyPlotStatus = `Сейчас доступна локальная копия в этом браузере. ${error instanceof Error ? error.message : ''}`.trim();
+		}
+		loadingStoryPlot = false;
+	}
+
+	async function savePrivateStoryPlot(next: StoryPlotWeb) {
+		if (savingStoryPlot) return;
+		savingStoryPlot = true;
+		storyPlotStatus = '';
+		const normalized = normalizeStoryPlotWeb(next);
+		try {
+			await persistStoryPlotWeb(normalized);
+			storyPlotWeb = normalized;
+			clearLocalStoryPlotWeb();
+			storyPlotStatus = 'Сюжетная паутина сохранена в приватном хранилище Сказителя.';
+		} catch (error) {
+			storyPlotWeb = normalized;
+			writeLocalStoryPlotWeb(normalized);
+			storyPlotStatus = `Изменения сохранены только в этом браузере. ${error instanceof Error ? error.message : ''}`.trim();
+		} finally { savingStoryPlot = false; }
+	}
+
+	async function saveRelationshipWeb(next:RelationshipLink[],npcs:RelationshipNpc[]=activeRelationshipSnapshot.npcs){
+		if(savingRelationshipWeb)throw new Error('Дождитесь сохранения предыдущей связи.');
+		if(!graphEditable)throw new Error('Паутина пока недоступна для изменения.');
+		const scope=relationshipView,roomId=activeRoomId;
+		const snapshot=normalizeRelationshipSnapshot({links:next,npcs});
+		savingRelationshipWeb=true;relationshipStatus='';
+		try{
+			if(scope==='room'&&roomId){await saveRoomRelationships(roomId,snapshot);roomSnapshot=snapshot;}
+			else{await saveRelationshipTemplate(snapshot);templateSnapshot=snapshot;writeLocalRelationshipWeb(snapshot.links);}
+			relationshipStatus=scope==='room'?'Паутина комнаты сохранена.':'Основная паутина сохранена. Копии в комнатах не изменены.';
+		}catch(error){relationshipStatus=error instanceof Error?error.message:'Не удалось сохранить паутину.';throw error;}
+		finally{savingRelationshipWeb=false;}
+	}
 
 	async function setTavernSeason(season: ParmaSeason) {
 		if (savingTavernSeason) return;
@@ -229,6 +325,8 @@
 
 	onMount(() => {
 		tavernSeason = readLocalTavernSettings().season;
+		void loadMainGraph();
+		void loadPrivateStoryPlot();
 		try {
 			storytellerNotes = localStorage.getItem(NOTES_KEY) ?? '';
 			notesStatus = 'Заметки сохраняются автоматически в этом браузере.';
@@ -250,6 +348,18 @@
 			const room = await findRoomByCode(code);
 			if (room) {
 				activeRoomId = room.id;
+				roomIsMaster=room.master_auth_id===await ensureRoomSession();
+				relationshipView='room';
+				try{roomSnapshot=await loadRoomRelationships(room.id);unsubscribeRoomWeb=subscribeRoomRelationships(room.id,snapshot=>roomSnapshot=snapshot);}
+				catch(error){relationshipStatus=error instanceof Error?error.message:'Не удалось загрузить паутину комнаты.';}
+				const roomParticipants = await getRoomParticipants(room.id).catch(() => []);
+				relationshipCharacters = [...new Map([
+					...characters.map((character) => ({ id: character.id, name: character.name })),
+					...roomParticipants.flatMap((participant) => {
+						const character = participant.character_snapshot ?? participant.pending_character;
+						return character ? [{ id: character.id, name: character.name }] : [];
+					})
+				].map((character) => [character.id, character])).values()];
 				const combatState = await getRoomCombatState(room.id);
 				const sharedTavernSettings = normalizeTavernSettings(combatState?.tavernSettings);
 				if (sharedTavernSettings) {
@@ -257,6 +367,7 @@
 					writeLocalTavernSettings(sharedTavernSettings);
 				}
 				unsubRoomTavern = subscribeToRoomCombat(room.id, (state) => {
+
 					const settings = normalizeTavernSettings(state?.tavernSettings);
 					if (settings) {
 						tavernSeason = settings.season;
@@ -275,6 +386,7 @@
 		unsubscribe?.();
 		unsubscribeCharacters?.();
 		unsubRequests?.();
+		unsubscribeRoomWeb?.();
 		unsubRoomTavern?.();
 	});
 </script>
@@ -378,6 +490,8 @@
 		</div>
 		{#if tavernSettingsStatus}<p class="text-sm mt-3" role="status">{tavernSettingsStatus}</p>{/if}
 	</section>
+
+
 
 	<p class="notice mb-6">Пульт видит персонажей этого браузера. Для общих проверок откройте их листы в соседних вкладках. Между разными устройствами данные не передаются.</p>
 	<!-- Панель запросов -->
@@ -559,5 +673,28 @@
 				</div>
 			{/each}
 		</div>
+	{/if}
+	<section class="border rounded-lg bg-white p-4 mb-6" aria-labelledby="relationship-web-title">
+		<div class="mb-4">
+			<h2 id="relationship-web-title" class="text-xl font-semibold">Паутина связей</h2>
+			<p class="text-sm text-gray-600">Связывайте персонажей с общинами, кругами, цехами, поручениями и друг с другом. Игроки увидят свои связи и тех, кто связан с ними общим делом.</p>
+			<div class="flex flex-wrap gap-2 mt-3" role="group" aria-label="Паутина для просмотра">
+			<button type="button" class="px-3 py-2 border rounded" class:bg-green-800={relationshipView==='main'} class:text-white={relationshipView==='main'} aria-pressed={relationshipView==='main'} disabled={savingRelationshipWeb} onclick={()=>relationshipView='main'}>Основная паутина</button>
+			{#if activeRoomId}<button type="button" class="px-3 py-2 border rounded" class:bg-green-800={relationshipView==='room'} class:text-white={relationshipView==='room'} aria-pressed={relationshipView==='room'} disabled={savingRelationshipWeb} onclick={()=>relationshipView='room'}>Паутина комнаты</button>{/if}
+			{#if activeRoomId&&roomIsMaster}<button type="button" class="px-3 py-2 border rounded" onclick={exportActiveRoom}>Выгрузить комнату JSON</button>{/if}
+		</div>
+		<p class="mt-2 text-sm">{relationshipView==='room'&&roomSnapshot?'Копия этой комнаты хранится в базе независимо от основной паутины.':templateReady?'Основная паутина сохранена в базе. В комнату добавляется её независимая копия.':'Основная паутина — шаблон для новых комнат.'}</p>
+		{#if relationshipView==='room'&&!roomSnapshot}<p class="mt-2 text-sm">В комнату ещё не добавлена паутина. Ниже показана основная.</p>{#if roomIsMaster}<button type="button" class="mt-2 px-3 py-2 border rounded" disabled={!templateReady||savingRelationshipWeb} onclick={attachMainGraph}>Создать копию основной паутины в комнате</button>{/if}{/if}
+		</div>
+		<RelationshipWebView links={relationshipWeb} characters={relationshipCharacters.length ? relationshipCharacters : characters.map((character) => ({ id: character.id, name: character.name }))} npcs={activeRelationshipSnapshot.npcs} editable={graphEditable} onChange={saveRelationshipWeb} />
+		{#if relationshipStatus}<p class="mt-3 text-sm" role="status">{relationshipStatus}</p>{/if}
+	</section>
+
+	{#if canOpenStoryPlot}
+		<section class="border rounded-lg bg-white p-4 mb-6" aria-labelledby="story-plot-title">
+			<div class="mb-4"><h2 id="story-plot-title" class="text-xl font-semibold">Паутина сюжета</h2><p class="text-sm text-gray-600">Карта причин, персонажей, мест, зацепок и последствий. Она хранится отдельно и игрокам не показывается.</p></div>
+			{#if loadingStoryPlot}<p role="status">Загружаю приватную паутину сюжета…</p>{:else}<StoryPlotWebView graph={storyPlotWeb} disabled={savingStoryPlot} onChange={savePrivateStoryPlot} />{/if}
+			{#if storyPlotStatus}<p class="mt-3 text-sm" role="status">{storyPlotStatus}</p>{/if}
+		</section>
 	{/if}
 </main>

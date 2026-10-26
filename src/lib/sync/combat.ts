@@ -1,6 +1,7 @@
 import type { Character } from '../type';
 import type { CombatEffect } from '../engine/combatEffects';
 import type { TavernSettings } from '../engine/tavern-settings';
+import type { RelationshipWeb } from '../engine/relationship-web';
 export interface MonsterAttackData {
 	name: string;
 	hitBonus: number;
@@ -47,10 +48,33 @@ export interface CombatState {
 	timestamp: number;
 	/** Shared storyteller setting reused from the room's JSON state. */
 	tavernSettings?: TavernSettings;
+	/** Shared storyteller-managed character, organization and quest links. */
+	relationshipWeb?: RelationshipWeb;
 }
 
 const STORAGE_KEY = 'parma_combat';
 const CHANNEL_NAME = 'parma_combat_channel';
+
+/** Normalize old, partial, or room-settings-only snapshots before combat code reads them. */
+export function normalizeCombatState(value: unknown): CombatState | null {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+	const state = value as Partial<CombatState> & { currentParticipantId?: string };
+	const participants = Array.isArray(state.participants)
+		? state.participants.filter((participant): participant is CombatParticipant => Boolean(participant && typeof participant === 'object' && typeof participant.id === 'string'))
+		: [];
+	const currentTurnIndex = Number.isInteger(state.currentTurnIndex) && (state.currentTurnIndex ?? -1) >= 0
+		? state.currentTurnIndex!
+		: 0;
+	return {
+		participants,
+		currentTurnIndex,
+		round: Number.isFinite(state.round) && (state.round ?? 0) > 0 ? state.round! : 1,
+		active: state.active === true,
+		timestamp: Number.isFinite(state.timestamp) ? state.timestamp! : 0,
+		...(state.tavernSettings ? { tavernSettings: state.tavernSettings } : {}),
+		...(Array.isArray(state.relationshipWeb) ? { relationshipWeb: state.relationshipWeb } : {})
+	};
+}
 
 let channel: BroadcastChannel | null = null;
 
@@ -65,12 +89,7 @@ export function getCombat(): CombatState | null {
 	const raw = localStorage.getItem(STORAGE_KEY);
 	if (!raw) return null;
 	try {
-		const s = JSON.parse(raw) as CombatState & { currentParticipantId?: string };
-		// миграция со старого формата (было currentParticipantId, стало currentTurnIndex)
-		if (s.currentTurnIndex === undefined) {
-			s.currentTurnIndex = 0;
-		}
-		return s;
+		return normalizeCombatState(JSON.parse(raw));
 	} catch {
 		return null;
 	}
@@ -105,7 +124,7 @@ export function createEmptyCombat(): CombatState {
 
 /** Отсортированный список (по убыванию прыти) */
 export function sortedParticipants(state: CombatState): CombatParticipant[] {
-	return [...state.participants].sort((a, b) => b.initiative - a.initiative);
+	return [...(Array.isArray(state.participants) ? state.participants : [])].sort((a, b) => b.initiative - a.initiative);
 }
 
 /** Текущий участник — берём из отсортированного списка по индексу */
@@ -128,14 +147,14 @@ export function findParticipantBySource(
 	state: CombatState,
 	sourceId: string
 ): CombatParticipant | null {
-	return state.participants.find((p) => p.sourceId === sourceId) ?? null;
+	return (Array.isArray(state?.participants) ? state.participants : []).find((p) => p?.sourceId === sourceId) ?? null;
 }
 
 /** Найти id участника в боевом трекере по id персонажа-игрока */
 export function findParticipantIdBySource(sourceId: string): string | null {
 	const state = getCombat();
 	if (!state) return null;
-	return state.participants.find((p) => p.sourceId === sourceId)?.id ?? null;
+	return (Array.isArray(state.participants) ? state.participants : []).find((p) => p?.sourceId === sourceId)?.id ?? null;
 }
 
 /** Обновить состояние участника */
@@ -215,7 +234,7 @@ export function subscribeCombat(callback: (state: CombatState | null) => void): 
 	if (typeof window === 'undefined') return () => {};
 	const ch = getChannel();
 	const handler = (e: MessageEvent) => {
-		if (e.data?.type === 'update') callback(e.data.state);
+		if (e.data?.type === 'update') callback(e.data.state === null ? null : normalizeCombatState(e.data.state));
 	};
 	ch?.addEventListener('message', handler);
 	const storageHandler = (e: StorageEvent) => {

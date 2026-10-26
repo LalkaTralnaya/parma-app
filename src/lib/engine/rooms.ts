@@ -1,6 +1,9 @@
 import { roomSupabase, getPlayerName, ensureRoomSession } from '../supabase/client';
 import type { Character } from '../type';
 import type { TavernSettings } from './tavern-settings';
+import type { RelationshipWeb } from './relationship-web';
+import { loadRoomRelationships, saveRoomRelationships } from './relationship-store';
+import { normalizeRelationshipSnapshot } from './relationship-snapshot';
 
 const ROOM_REQUEST_TIMEOUT_MS = 15_000;
 const ROOM_CONNECTION_ERROR = 'Нет связи с сервером комнат. Проверьте мобильную сеть, Wi-Fi или VPN и повторите попытку.';
@@ -517,6 +520,12 @@ export async function updateRoomTavernSettings(roomId: string, settings: TavernS
 	if (!updated?.length) throw new Error('Сезон комнаты могут менять только вошедшие в неё Сказители.');
 }
 
+/** Save the storyteller-managed relationship web without replacing combat and tavern state. */
+export async function updateRoomRelationshipWeb(roomId: string, relationshipWeb: RelationshipWeb): Promise<void> {
+ const snapshot=await loadRoomRelationships(roomId);
+ if(!snapshot)throw new Error('Сначала добавьте копию основной паутины в комнату.');
+ await saveRoomRelationships(roomId,normalizeRelationshipSnapshot({...snapshot,links:relationshipWeb}));
+}
 /** Подписка на изменения боя в комнате */
 export function subscribeToRoomCombat(
 	roomId: string,

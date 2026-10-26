@@ -8,6 +8,7 @@
  import { applyItemTreatments, treatWithItem } from '$lib/engine/itemTreatment';
  import { playerText } from '$lib/ui/player-copy';
   import SpellInfo from '$lib/components/SpellInfo.svelte';
+	import RelationshipWebView from '$lib/components/RelationshipWeb.svelte';
   import SpellRules from '$lib/components/SpellRules.svelte';
 	import { applyCheckDifficulty, getCheckDifficulty } from '$lib/engine/checkDifficulty';
 	import CombatEffects from '$lib/components/CombatEffects.svelte';
@@ -53,6 +54,7 @@
 		getCombat,
 		saveCombat,
 		findParticipantBySource,
+		normalizeCombatState,
 		setParticipantInitiative,
 		subscribeCharacterUpdates,
 		notifyCharacterUpdate,
@@ -160,11 +162,32 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	} from '../../../lib/engine/combat';
 
 	import type { Character } from '$lib/type';
+	import { loadRoomRelationships, subscribeRoomRelationships, loadRelationshipTemplate } from '$lib/engine/relationship-store';
+	import { createRelationshipTemplate } from '$lib/engine/relationship-snapshot';
+	import { normalizeRelationshipWeb, readLocalRelationshipWeb, type RelationshipLink } from '$lib/engine/relationship-web';
 
 	// ────────────────────────────────────────────
 	// STATE
 	// ────────────────────────────────────────────
 	let char = $state<Character | null>(null);
+	let nameSaveError = $state('');
+	let nameSaveStatus = $state('');
+	async function updateCharacterName(input: HTMLInputElement) {
+		if (!char) return;
+		const name = input.value.trim();
+		input.value = name;
+		if (name === char.name) return;
+		nameSaveError = '';
+		try {
+			await saveCharacter({ ...($state.snapshot(char) as Character), name });
+			char = { ...char, name };
+			nameSaveStatus = 'Имя сохранено';
+		} catch {
+			nameSaveStatus = '';
+			nameSaveError = 'Не удалось сохранить имя. Попробуйте ещё раз.';
+		}
+	}
+
 
 	type RollMode = 'online' | 'offline';
 	let rollMode = $state<RollMode>('online');
@@ -176,6 +199,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	let loading = $state(true);
 	let session = $state<SessionRequest | null>(null);
 	let activeRoomCode = $state<string | null>(null);
+	let relationshipWeb = $state<RelationshipLink[]>([]);
 	let activeRequest = $state<RoomRequest | null>(null);
 	let unsubRequests: (() => void) | null = null;
 	let combat = $state<CombatState | null>(null);
@@ -208,6 +232,8 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	let unsubRoomCombat: (() => void) | null = null;
 	let unsubLocalCombat: (() => void) | null = null;
 	let unsubCharUpdates: (() => void) | null = null;
+	let unsubscribeRoomWeb:(()=>void)|undefined;
+	let unsubRelationshipStorage: (() => void) | null = null;
 
 	// Бой
 	let activeAbilityText = $state('');
@@ -267,6 +293,19 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		char = found;
 		loading = false;
 		activeRoomCode = getCurrentRoom();
+		relationshipWeb = activeRoomCode ? [] : readLocalRelationshipWeb();
+		if(!activeRoomCode)try{relationshipWeb=(await loadRelationshipTemplate(createRelationshipTemplate(relationshipWeb))).links;}catch{/* Keep the previous local view while storage is unavailable. */}
+		const updateLocalRelationshipWeb = (event: Event) => {
+			if (activeRoomCode) return;
+			const detail = event instanceof CustomEvent ? event.detail : readLocalRelationshipWeb();
+			relationshipWeb = normalizeRelationshipWeb(detail);
+		};
+		window.addEventListener('parma-relationship-web', updateLocalRelationshipWeb);
+		window.addEventListener('storage', updateLocalRelationshipWeb);
+		unsubRelationshipStorage = () => {
+			window.removeEventListener('parma-relationship-web', updateLocalRelationshipWeb);
+			window.removeEventListener('storage', updateLocalRelationshipWeb);
+		};
 
 		// Подписка на запросы сказителя (BroadcastChannel — между вкладками одного браузера)
 		session = getSession();
@@ -284,9 +323,13 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 			try {
 				const room = await findRoomByCode(activeRoomCode);
 				if (room) {
+					try{const graph=await loadRoomRelationships(room.id);if(graph)relationshipWeb=graph.links;unsubscribeRoomWeb=subscribeRoomRelationships(room.id,graph=>relationshipWeb=graph?.links??[]);}catch{/* Older databases still expose their previous room links. */}
 					// Первичная загрузка состояния
 					const remote = await getRoomCombatState(room.id);
-					if (remote) await handleRoomCombatUpdate(remote);
+					if (remote) {
+						if(!relationshipWeb.length)relationshipWeb = normalizeRelationshipWeb(remote.relationshipWeb);
+						await handleRoomCombatUpdate(remote);
+					}
 					activeRequest = await getActiveRoomRequest(room.id);
 					unsubRequests = subscribeToRoomRequests(room.id, (req) => {
 						activeRequest = req;
@@ -314,14 +357,18 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		unsubLocalCombat?.();
 		unsubCharUpdates?.();
 		unsubRequests?.();
+		unsubRelationshipStorage?.();
+		unsubscribeRoomWeb?.();
 	});
 
 	// ────────────────────────────────────────────
 	// СИНХРОНИЗАЦИЯ БОЯ
 	// ────────────────────────────────────────────
 	async function handleRoomCombatUpdate(newState: CombatState | null, persistLocal = true) {
+		newState = normalizeCombatState(newState);
 		if (!newState) return;
 		combat = newState;
+
 		if (persistLocal) saveCombat(newState);
 
 		const s = newState;
@@ -427,7 +474,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	// ────────────────────────────────────────────
 	let condMods = $derived(
 		char
-			? combatModifiers(char, combat?.participants.find(p => p.isPlayer && p.sourceId === char?.id))
+			? combatModifiers(char, combat?.participants?.find(p => p.isPlayer && p.sourceId === char?.id))
 			: { characteristics: 0, attacks: 0, skills: 0, saves: 0, armor: 0, speed: 0, maxStamina: 0, skipTurn: false, canAct: true }
 	);
 
@@ -1624,6 +1671,10 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	// ────────────────────────────────────────────
 </script>
 <style>
+	.character-name-input { display:block; width:100%; min-width:0; max-width:28rem; padding:4px 8px; border:1px solid currentColor; border-radius:6px; background:transparent; color:inherit; font:inherit; }
+	.character-name-input::placeholder { color:inherit; opacity:.6; }
+	.character-name-input:focus-visible { outline:2px solid currentColor; outline-offset:3px; }
+
 	.spell-resource-switch { position:relative; display:inline-flex; align-items:center; gap:10px; min-height:44px; cursor:pointer; color:inherit; font-size:14px; }
 	.spell-resource-switch > span:not(.resource-track) { opacity:.7; }
 	.spell-resource-switch > span.active { opacity:1; font-weight:700; }
@@ -1751,10 +1802,16 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 			</div>
 		{/if}
 		<header class="flex justify-between items-center gap-3 flex-wrap">
-			<div class="flex items-center gap-3">
+			<div class="flex items-center gap-3 min-w-0 max-w-full">
 				<RaceSymbol id={char.raceId} />
 				<div class="min-w-0">
-				<h1 class="text-3xl font-bold">{char.name || '(без имени)'}</h1>
+				<h1 class="text-3xl font-bold">
+					<label for="character-name" class="sr-only">Имя персонажа</label>
+					<input id="character-name" class="character-name-input" type="text" value={char.name} placeholder="Имя персонажа"
+						onblur={(event) => updateCharacterName(event.currentTarget)}
+						onkeydown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); }} />
+				</h1>
+				{#if nameSaveError}<p class="text-sm" role="alert">{nameSaveError}</p>{:else if nameSaveStatus}<p class="text-sm" role="status">{nameSaveStatus}</p>{/if}
 				<p class="text-gray-600">
 					{RACES.find((r) => r.id === char?.raceId)?.name} · {char.level} уровень
 					{#if char.backgroundId}
@@ -1796,9 +1853,16 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 			<button type="button" aria-pressed={rollMode === 'offline'} class:font-bold={rollMode === 'offline'} class="rounded border px-3 py-1" onclick={() => setRollMode('offline')}>Офлайн · физические кубики</button>
 		</div>
         <nav class="sheet-nav" aria-label="Разделы листа персонажа">
-          <a href="#characteristics">Характеристики</a><a href="#resources">Ресурсы</a><a href="#battle">Бой</a><a href="#skills">Навыки</a><a href="#abilities">Умения</a><a href="#spells">Магия</a><a href="#inventory">Инвентарь</a><a href="#personality">Личность</a><a href="#conditions">Состояния</a><a href="#decay">Тлен</a><a href="#rest">Отдых</a>
+          <a href="#characteristics">Характеристики</a><a href="#resources">Ресурсы</a><a href="#battle">Бой</a><a href="#skills">Навыки</a><a href="#abilities">Умения</a><a href="#spells">Магия</a><a href="#inventory">Инвентарь</a><a href="#personality">Личность</a><a href="#relationships">Связи</a><a href="#conditions">Состояния</a><a href="#decay">Тлен</a><a href="#rest">Отдых</a>
         </nav>
 
+		<section class="rounded-lg border bg-stone-50 p-4" aria-labelledby="relationships">
+			<div class="mb-4">
+				<h2 id="relationships" class="text-xl font-semibold">Мои связи</h2>
+				<p class="mt-1 text-sm text-gray-600">Здесь видны ваши отношения с организациями и поручениями, а также спутники, связанные с вами общим делом.</p>
+			</div>
+			<RelationshipWebView links={relationshipWeb} ownerCharacterId={char.id} />
+		</section>
 
 		{#if getCheckDifficulty(char) !== 0}<p class="text-sm border rounded p-2">Сложность к100 от сказителя: <strong>{getCheckDifficulty(char) > 0 ? '+' : ''}{getCheckDifficulty(char)}</strong></p>{/if}
 

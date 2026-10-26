@@ -62,20 +62,20 @@ test('road retains caravan facts, unknown watcher, personal clue and alternative
   for(const clue of ['кровь','бинтов','клеймо'])assert.ok(scene('road-bandit-camp').includes(clue));
   assert.ok(scene('road-bandit-camp').includes('Кузнец по предыстории'));
   assert.ok(scene('road-patrol').includes('Не проводите обе версии подряд'));
-  assert.ok(scene('road-gardariki').includes('два до места нападения и четыре после него'));
+  assert.ok(scene('road-gardariki').includes('три до места нападения и четыре после него'));
   const source=readFileSync('docs/adventures/siver-source.md','utf8');
-  for(const heading of ['## Дорога в Гардарики','### Обоз Гаврилы Златоборода','### Ночная проверка дружины','### Последние дни пути'])assert.ok(source.includes(heading));
+  for(const heading of ['## Дорога в Гардарики','### Встреча с Гаврилой Златобородом','### Дружина','### Четыре дня до Гардарики','### Ведение интриги'])assert.ok(source.includes(heading));
 });
 
-test('overview preserves the six-day road and a separate local map',()=>{
+test('overview preserves the seven-day road and a separate local map',()=>{
   const overview=road.map;
-  assert.equal(overview.travelDays,6);
+  assert.equal(overview.travelDays,7);
   assert.notEqual(overview.src,adventure.map.src);
   assert.ok(existsSync(resolve('static',overview.src.slice(1))));
   assert.ok(existsSync(resolve('static',adventure.map.src.slice(1))));
-  assert.deepEqual([...new Set(overview.markers.filter(m=>m.day).map(m=>m.day))].sort(),[1,2,3,4,5,6]);
-  assert.equal(overview.markers.find(m=>m.id==='overview-ambush').day,2);
-  assert.equal(overview.markers.find(m=>m.id==='overview-city').day,6);
+  assert.deepEqual([...new Set(overview.markers.filter(m=>m.day).map(m=>m.day))].sort(),[1,2,3,4,5,6,7]);
+  assert.equal(overview.markers.find(m=>m.id==='overview-ambush').day,3);
+  assert.equal(overview.markers.find(m=>m.id==='overview-city').day,7);
   const village=overview.markers.find(m=>m.id==='overview-krivtsy'), marsh=overview.markers.find(m=>m.id==='overview-marsh');
   assert.ok(marsh.x>village.x&&marsh.y>village.y);
   assert.ok(overview.caption.includes('затем ещё четыре'));
@@ -84,4 +84,18 @@ test('overview preserves the six-day road and a separate local map',()=>{
   assert.ok(!overview.markers.some(m=>m.id==='overview-siver'));
   assert.equal(new Set(overview.markers.map(m=>m.id)).size,overview.markers.length);
   for(const marker of overview.markers){assert.ok(marker.x>=0&&marker.x<=100);assert.ok(marker.y>=0&&marker.y<=100);}
+});
+
+test('updated road preserves the source intrigue without declaring a culprit',()=>{
+  const camp=JSON.stringify(road.scenes.find(s=>s.id==='road-bandit-camp'));
+  assert.ok(camp.includes('не показывают, был ли раненый'));
+  assert.ok(!camp.includes('Разбойники провели здесь'));
+  assert.equal(road.locations.at(-1).name,'Стоянка в лесу');
+  assert.equal(road.map.markers.find(m=>m.id==='overview-gavrila').day,2);
+  assert.ok(road.secret.includes('третья сторона'));
+  const intrigue=road.guide.find(e=>e.title==='Ведение интриги');
+  assert.ok(intrigue);
+  assert.ok(JSON.stringify(intrigue).includes('Не лгите игрокам в авторском описании'));
+  assert.ok(JSON.stringify(intrigue).includes('Это не три ответа'));
+  assert.ok(!JSON.stringify(road).includes('шесть дней'));
 });

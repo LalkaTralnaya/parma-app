@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { exportRoomArchive } from '$lib/engine/relationship-store';
+	import { downloadJson } from '$lib/utils/export';
 	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -420,6 +422,7 @@ async function declineGift(p: RoomParticipant) {
 					Выйти
 				</button>
 				{#if isMaster}
+					<button type="button" class="px-3 py-2 border rounded text-sm" onclick={async()=>{if(!room)return;try{downloadJson(await exportRoomArchive(room.id),`parma-room-${Date.now()}.json`);}catch(e){error=(e as Error).message;}}}>Выгрузить комнату JSON</button>
 					<button
 						class="px-3 py-2 text-red-700 border border-red-400 rounded hover:bg-red-50 text-sm"
 						onclick={deleteThisRoom}>
