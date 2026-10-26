@@ -4,7 +4,7 @@
   import Icon from '$lib/components/Icon.svelte';
   import DiceOverlay from '$lib/components/DiceOverlay.svelte';
   import RollChat from '$lib/components/RollChat.svelte';
-  import ReleaseNotes from '$lib/components/ReleaseNotes.svelte';
+  import SiteFooter from '$lib/components/SiteFooter.svelte';
   import favicon from '$lib/assets/favicon.svg';
   import { onMount } from 'svelte';
   let { children } = $props();
@@ -56,5 +56,5 @@
 <div id="content" tabindex="-1">{@render children()}</div>
 <RollChat />
 <DiceOverlay />
-<footer class="app-footer"><span>Парма · Помощник игрока и сказителя</span><a href="/learn">Обучение</a><ReleaseNotes showFooter={page.url.pathname === '/'} /></footer>
+<SiteFooter showRelease={page.url.pathname === '/'} />
 <style>.header-inner { flex-wrap: wrap; } .primary-nav { flex-wrap: wrap; }</style>
