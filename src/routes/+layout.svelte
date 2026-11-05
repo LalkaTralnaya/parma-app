@@ -5,6 +5,7 @@
   import DiceOverlay from '$lib/components/DiceOverlay.svelte';
   import RollChat from '$lib/components/RollChat.svelte';
   import SiteFooter from '$lib/components/SiteFooter.svelte';
+  import NoviceHelp from '$lib/components/NoviceHelp.svelte';
   import favicon from '$lib/assets/favicon.svg';
   import { onMount } from 'svelte';
   let { children } = $props();
@@ -53,6 +54,7 @@
     </nav>
   </div>
 </header>
+<NoviceHelp />
 <div id="content" tabindex="-1">{@render children()}</div>
 <RollChat />
 <DiceOverlay />
