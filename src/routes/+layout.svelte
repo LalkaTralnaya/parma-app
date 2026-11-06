@@ -9,6 +9,8 @@
   import { PUBLIC_PAGES, SHARE_IMAGE, SITE_NAME, SITE_URL } from '$lib/site-seo';
   import { onMount } from 'svelte';
   let { children } = $props();
+  let scrollPosition = $state(0);
+  function backToTop() { window.scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' }); }
   onMount(() => {
     try { sessionStorage.removeItem('parma.stale-build-reload'); } catch { /* Storage may be blocked. */ }
   });
@@ -72,6 +74,8 @@
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" sizes="any" />
 </svelte:head>
 
+<svelte:window bind:scrollY={scrollPosition} />
+{#if scrollPosition > 500}<button class="back-to-top" onclick={backToTop} aria-label="Наверх страницы" title="Наверх страницы">↑ <span>Наверх</span></button>{/if}
 <a href="#content" class="skip-link">К содержимому</a>
 <header class="app-header">
   <div class="header-inner">
@@ -88,4 +92,4 @@
 <RollChat />
 <DiceOverlay />
 <SiteFooter showRelease={page.url.pathname === '/'} />
-<style>.header-inner { flex-wrap: wrap; } .primary-nav { flex-wrap: wrap; }</style>
+<style>.back-to-top { position:fixed; right:24px; bottom:96px; z-index:40; border:1px solid #b69b72; border-radius:6px; background:#173d30; color:#fff9e9; padding:10px 14px; font-size:15px; box-shadow:0 3px 12px #0003; cursor:pointer; } .back-to-top:hover { background:#28543f; } .back-to-top:focus-visible { outline:3px solid #c18d48; outline-offset:3px; } @media print { .back-to-top { display:none; } } .header-inner { flex-wrap: wrap; } .primary-nav { flex-wrap: wrap; }</style>

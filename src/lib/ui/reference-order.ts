@@ -9,6 +9,7 @@ export const READING_CHAPTERS: Record<ReadingOrder, ReadingChapter[]> = {
     { id: 'peoples', title: 'Народы Пармы', description: 'Происхождение, облик и обычаи народов.' },
     { id: 'gods', title: 'Боги и почитание', description: 'Пантеон, дары и слабости богов.' },
     { id: 'daily-life', title: 'Жизнь и обычаи', description: 'Поселения, семья, праздники, дороги и повседневные дела.' },
+    { id: 'lands', title: 'Земли Пармы', description: 'Земли, города, общины и их соседи.' },
     { id: 'society', title: 'Власть и отношения', description: 'Правители, окружение, связи и общие дела.' },
     { id: 'languages', title: 'Знаки и письменности', description: 'Родовые знаки, языки и способы хранить знание.' },
     { id: 'other-worlds', title: 'Иные миры и Предтечи', description: 'Что лежит за привычными границами Яви.' },
@@ -32,6 +33,7 @@ export const READING_CHAPTERS: Record<ReadingOrder, ReadingChapter[]> = {
 function chapterFor(entry: Pick<LibraryEntry, 'id' | 'category'>, order: ReadingOrder): string {
   const { id, category } = entry;
   if (order === 'lore') {
+    if (category === 'Земли Пармы') return 'lands';
     if (category === 'Мир Пармы') return 'welcome';
     if (['Жива', 'Кон'].includes(category)) return 'world-laws';
     if (category === 'Народы') return 'peoples';

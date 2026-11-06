@@ -20,6 +20,16 @@
   const visibleChapters = $derived(chapters.map(chapter => ({ ...chapter, entries: chapter.entries.filter(entry => visible.some(member => member.id === entry.id)) })).filter(chapter => chapter.entries.length));
   const shortcutIds = { lore: ['book16-masters', 'book16-rulers-and-circles'], mechanics: ['book16-skill-growth-story', 'book16-navi-shadows'] };
   const shortcuts = $derived(readingOrder ? shortcutIds[readingOrder].flatMap(id => playerEntries.filter(entry => entry.id === id)) : []);
+  function closeEntry(event: MouseEvent) {
+    const button = event.currentTarget;
+    if (!(button instanceof HTMLButtonElement)) return;
+    const details = button.closest('details.reference-entry');
+    if (!(details instanceof HTMLDetailsElement)) return;
+    details.open = false;
+    const summary = details.querySelector('summary');
+    summary?.focus({ preventScroll: true });
+    details.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
+  }
   async function revealEntry(event: MouseEvent, id: string) {
     if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
@@ -33,7 +43,7 @@
 </script>
 
 <main class="reference-page max-w-6xl mx-auto p-6 space-y-5">
-  <header><h1 class="text-4xl font-bold">{title}</h1><p class="mt-2 text-gray-600">{description}</p><a class="reading-help" href="/learn?topic=reading">Первый раз здесь? Как пользоваться справочниками →</a></header>
+  <header><h1 class="text-4xl font-bold">{title}</h1><p class="mt-2 text-gray-600">{description}</p><a class="reading-help" href="/learn?topic=reading">Первый раз здесь? Как пользоваться справочниками →</a>{#if readingOrder === 'lore'}<a class="map-link" href="/lore/map">Карта и стяги земель →</a>{/if}</header>
   {#if shortcuts.length}
     <nav class="quick-reference" aria-label="Быстрый переход к новым разделам"><span>Новые разделы</span>{#each shortcuts as entry}<a href={`#${entry.id}`} onclick={event => revealEntry(event, entry.id)}>{entry.title}<Icon name="arrow" size={16} /></a>{/each}</nav>
   {/if}
@@ -60,6 +70,7 @@
         {:else}
         <ReferenceBlocks blocks={entry.blocks} category={entry.category} entryTitle={entry.title} sectionLevel={REFERENCE_SECTION_LEVELS[entry.id]} expanded={Boolean(query.trim())} />
         {/if}
+        <button type="button" class="close-entry" onclick={closeEntry}>Свернуть раздел ↑</button>
       </div>
     </details>
       {/each}
@@ -67,6 +78,9 @@
   {:else}<p class="notice">Ничего не найдено. Измените запрос или категорию.</p>{/each}
 </main>
 <style>
+  .map-link { display:inline-block;margin:12px 0 0 16px;padding:8px 12px;border:1px solid #ad9c7d;border-radius:4px;color:#294938;background:#f7efdf;text-decoration:none; }
+  .close-entry { display:block; margin-top:20px; padding:8px 12px; border:1px solid #b7a587; border-radius:4px; background:#f7efdf; color:#294938; cursor:pointer; }
+  .close-entry:focus-visible { outline:3px solid #af793b; outline-offset:2px; }
   .quick-reference { display:flex; flex-wrap:wrap; align-items:center; gap:10px 16px; padding:14px 16px; border:1px solid #c0aa83; border-radius:4px; background:#f3ead7; }
   .quick-reference > span { font-size:13px; color:#655439; }
   .quick-reference a { display:inline-flex; align-items:center; gap:8px; color:#294637; text-decoration:underline; text-underline-offset:3px; font-size:14px; }
