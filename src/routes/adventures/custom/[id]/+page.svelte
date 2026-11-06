@@ -5,6 +5,7 @@
  async function takeHero(index:number){if(busy)return;busy=true;message='';try{const copy=freshReadyCharacter(record.readyCharacters[index]);await saveCharacter(copy);await goto(`/char/${copy.id}`);}catch(cause){message=(cause as Error).message;}finally{busy=false;}}
  function download(){const url=URL.createObjectURL(new Blob([JSON.stringify(record,null,2)],{type:'application/json'}));const link=document.createElement('a');link.href=url;link.download=`adventure-${record.id}.json`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 </script>
+<svelte:head><title>{record.adventure.title} — Приключения Пармы</title><meta name="description" content={record.adventure.summary} /></svelte:head>
 {#snippet extras()}
 <div class="extras"><div class="actions"><a href={`/adventures/custom/${record.id}/edit`}>Редактировать приключение</a><button onclick={download}>Скачать копию JSON</button></div><p>Ваше приключение сохранено на этом устройстве в текущем аккаунте.</p>
  {#if record.maps.length>1}<details><summary>Карты приключения · {record.maps.length}</summary>{#each record.maps as map}<figure><img src={map.src} alt={map.name}/><figcaption>{map.caption}</figcaption></figure>{/each}</details>{/if}

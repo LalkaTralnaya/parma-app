@@ -6,12 +6,20 @@
   import RollChat from '$lib/components/RollChat.svelte';
   import SiteFooter from '$lib/components/SiteFooter.svelte';
   import NoviceHelp from '$lib/components/NoviceHelp.svelte';
-  import favicon from '$lib/assets/favicon.svg';
+  import { PUBLIC_PAGES, SHARE_IMAGE, SITE_NAME, SITE_URL } from '$lib/site-seo';
   import { onMount } from 'svelte';
   let { children } = $props();
   onMount(() => {
     try { sessionStorage.removeItem('parma.stale-build-reload'); } catch { /* Storage may be blocked. */ }
   });
+  const adventure = $derived(page.route.id === '/adventures/[slug]' ? page.data.adventure : undefined);
+  const seo = $derived(page.status === 200
+    ? adventure
+      ? { title: `${adventure.title} — Приключения Пармы`, description: adventure.summary }
+      : PUBLIC_PAGES[page.route.id ?? '']
+    : undefined);
+  const canonical = $derived(new URL(page.url.pathname.replace(/\/$/, '') || '/', SITE_URL).href);
+
   const links = [
     { href: '/', label: 'Персонажи', icon: 'people' },
     { href: '/adventures', label: 'Приключения', icon: 'compass' },
@@ -37,10 +45,31 @@
 </script>
 
 <svelte:head>
-  <title>Парма — спутник приключений</title>
-  <meta name="description" content="Персонажи, игровые броски, заклинания и инструменты сказителя для настольной ролевой игры Парма." />
+  <title>{seo?.title ?? 'Парма — спутник приключений'}</title>
+  {#if seo}
+    <meta name="description" content={seo.description} />
+    <link rel="canonical" href={canonical} />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content={SITE_NAME} />
+    <meta property="og:locale" content="ru_RU" />
+    <meta property="og:title" content={seo.title} />
+    <meta property="og:description" content={seo.description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={SHARE_IMAGE.url} />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content={String(SHARE_IMAGE.width)} />
+    <meta property="og:image:height" content={String(SHARE_IMAGE.height)} />
+    <meta property="og:image:alt" content={SHARE_IMAGE.alt} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={seo.title} />
+    <meta name="twitter:description" content={seo.description} />
+    <meta name="twitter:image" content={SHARE_IMAGE.url} />
+    <meta name="twitter:image:alt" content={SHARE_IMAGE.alt} />
+  {:else}
+    <meta name="robots" content="noindex, follow" />
+  {/if}
   <meta name="theme-color" content="#173d30" />
-  <link rel="icon" href={favicon} />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" sizes="any" />
 </svelte:head>
 
 <a href="#content" class="skip-link">К содержимому</a>

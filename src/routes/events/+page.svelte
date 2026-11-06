@@ -28,7 +28,6 @@
     } finally { rolling = false; }
   }
 </script>
-<svelte:head><title>Случайные события — Парма</title></svelte:head>
 <main class="max-w-6xl mx-auto p-6 space-y-5">
   <header><h1 class="text-4xl font-bold">Случайные события</h1><p class="mt-2 text-gray-600">Выберите категорию и бросьте кубик у нужной таблицы. Выпавшее событие появится здесь вместе с его эффектом.</p></header>
   <label class="block"><span class="text-sm">Поиск по таблицам и событиям</span><input class="block w-full border rounded px-3 py-2 mt-1" type="search" bind:value={query} placeholder="Погода, деревня, монстры…" /></label>

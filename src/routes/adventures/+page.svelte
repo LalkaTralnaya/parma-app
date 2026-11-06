@@ -33,10 +33,6 @@
 	});
 </script>
 
-<svelte:head>
-	<title>Приключения — Парма</title>
-	<meta name="description" content="Готовые приключения для настольной ролевой игры Парма." />
-</svelte:head>
 
 <main class="adventures-page">
 	<header class="adventures-hero">

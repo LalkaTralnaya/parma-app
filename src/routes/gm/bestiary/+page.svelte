@@ -50,7 +50,6 @@
 	}
 
 </script>
-<svelte:head><title>Бестиарий — Парма</title></svelte:head>
 <main class="bestiary-page max-w-6xl mx-auto p-6 space-y-6">
   <header class="flex items-start justify-between gap-4 flex-wrap">
     <div><p class="eyebrow">Справочник Сказителя</p><h1 class="text-4xl font-bold">Бестиарий</h1><p class="text-gray-600 mt-2">Выберите местность и найдите противника для следующей встречи.</p></div>

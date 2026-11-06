@@ -32,7 +32,6 @@
   }
 </script>
 
-<svelte:head><title>{title} — Парма</title></svelte:head>
 <main class="reference-page max-w-6xl mx-auto p-6 space-y-5">
   <header><h1 class="text-4xl font-bold">{title}</h1><p class="mt-2 text-gray-600">{description}</p><a class="reading-help" href="/learn?topic=reading">Первый раз здесь? Как пользоваться справочниками →</a></header>
   {#if shortcuts.length}

@@ -34,7 +34,6 @@
   ];
 </script>
 
-<svelte:head><title>Обучение — Парма</title><meta name="description" content="Как создать героя Пармы, пользоваться листом персонажа и читать справочники мира и правил." /></svelte:head>
 <main class="learn-page">
   <header class="learn-hero">
     <div><p class="eyebrow">Первые шаги в Парме</p><h1>У каждой истории<br />есть начало.</h1><p class="lead">Создайте героя, познакомьтесь с его листом и найдите нужные главы мира и правил. Можно пройти всё по порядку или выбрать одну тему.</p><a href="/" class="home-link">← К персонажам</a></div>

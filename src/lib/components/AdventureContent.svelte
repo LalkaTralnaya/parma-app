@@ -74,11 +74,6 @@
 	}
 </script>
 
-<svelte:head>
-	<title>{adventure.title} — Приключения Пармы</title>
-	<meta name="description" content={adventure.summary} />
-</svelte:head>
-
 <main class="adventure-page">
 	<a class="back" href="/adventures">← Все приключения</a>
 	<header class="adventure-heading illustrated-heading">
@@ -172,7 +167,7 @@
 
 			<details class="gm-materials">
 				<summary><Icon name="book" size={21} /> Материалы для сказителя <span>Сюжетные тайны и сцены</span></summary>
-				<div class="gm-content">
+				<div class="gm-content" data-nosnippet>
 					<section class="panel secret" aria-labelledby="secret-title">
 						<h2 id="secret-title">Что происходит на самом деле</h2>
 						<p>{adventure.secret}</p>

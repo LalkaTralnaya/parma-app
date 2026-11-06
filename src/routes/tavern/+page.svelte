@@ -126,7 +126,6 @@
 	onDestroy(() => unsubRoomSettings?.());
 </script>
 
-<svelte:head><title>Таверна — Парма</title><meta name="description" content="Меню корчмы Пармы: блюда, напитки и дорожная провизия." /></svelte:head>
 
 <main class="tavern">
 	<header class="heading">
