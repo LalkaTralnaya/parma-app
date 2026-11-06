@@ -1,4 +1,3 @@
-export const FEEDBACK_RECIPIENT = 'vlad.malcev.2013@gmail.com';
 export const FEEDBACK_TOPICS: Record<string, string> = {
 	bug: 'Ошибка в приложении',
 	idea: 'Предложение',
@@ -42,10 +41,10 @@ export function validateFeedback(input: Record<string, unknown>): Feedback {
 	return feedback;
 }
 
-export function feedbackMail(feedback: Feedback, from: string) {
+export function feedbackMail(feedback: Feedback, from: string, to: string) {
 	return {
 		from,
-		to: FEEDBACK_RECIPIENT,
+		to,
 		...(feedback.replyEmail ? { replyTo: feedback.replyEmail } : {}),
 		subject: `[Парма · ${FEEDBACK_TOPICS[feedback.topic]}] ${feedback.subject}`,
 		text: `Обратная связь из приложения Парма\n\nИмя или логин: ${feedback.name || 'Не указано'}\nАдрес для ответа: ${feedback.replyEmail || 'Не указан'}\nТема: ${FEEDBACK_TOPICS[feedback.topic]}\nЗаголовок: ${feedback.subject}\n\n${feedback.message}`,

@@ -53,7 +53,7 @@
  <section class="feedback" aria-labelledby="feedback-title">
   <h2 id="feedback-title">Обратная связь</h2>
   <p>Нашли ошибку или хотите предложить улучшение? Напишите автору Пармы.</p>
-  {#if !data.feedbackEnabled}<p class="mail-status">Отправка через форму пока не подключена. Можно написать на <a href="mailto:vlad.malcev.2013@gmail.com">vlad.malcev.2013@gmail.com</a>.</p>{/if}
+  {#if !data.feedbackEnabled}<p class="mail-status">Отправка через форму пока недоступна.</p>{/if}
   <form method="POST" action="?/feedback" use:enhance={() => {
    feedbackBusy = true;
    return async ({ update }) => { try { await update({ reset: false, invalidateAll: false }); } finally { feedbackBusy = false; } };
