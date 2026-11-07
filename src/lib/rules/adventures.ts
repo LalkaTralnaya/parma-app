@@ -2,6 +2,7 @@ import type { LibraryEntry } from './parma-library';
 import { WELL_ADVENTURE } from './well-adventure';
 import { BLACK_ILLNESS_ADVENTURE } from './siver-adventure';
 import { GARDARIKI_ROAD_ADVENTURE } from './gardariki-road-adventure';
+import { VYSHGOROD_ADVENTURE } from './vyshgorod-adventure';
 
 export interface AdventureScene {
 	id: string;
@@ -29,6 +30,7 @@ export interface AdventureMap {
   alt: string;
   caption: string;
   markers: AdventureMapMarker[];
+  printedMarkers?: boolean;
   travelDays?: number;
 }
 
@@ -59,7 +61,7 @@ export interface Adventure {
 	pacing: string[];
 	clues: string[];
 	locations: { name: string; atmosphere: string; use: string }[];
-	npcs: { name: string; role: string; motive: string; voice: string }[];
+	npcs: { name: string; role: string; motive: string; voice: string; portrait?: string }[];
 	scenes: AdventureScene[];
 	handouts: { title: string; text: string }[];
 	encounter: { name: string; bestiaryId: string; advice: string };
@@ -68,7 +70,7 @@ export interface Adventure {
 }
 
 /** Сценарий: местные события и обряд не устанавливают новый канон мира. */
-export const ADVENTURES: Adventure[] = [WELL_ADVENTURE, BLACK_ILLNESS_ADVENTURE, GARDARIKI_ROAD_ADVENTURE];
+export const ADVENTURES: Adventure[] = [WELL_ADVENTURE, BLACK_ILLNESS_ADVENTURE, GARDARIKI_ROAD_ADVENTURE, VYSHGOROD_ADVENTURE];
 
 export function getAdventure(slug: string): Adventure | undefined {
 	return ADVENTURES.find((adventure) => adventure.slug === slug);

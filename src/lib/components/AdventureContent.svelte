@@ -130,9 +130,11 @@
 	<section class="map-section" aria-labelledby="map-title">
 		<div class="map-heading">
 			<div><span class="map-eyebrow">Место действия</span><h2 id="map-title">{activeMap.title ?? (adventure.region || "Карта приключения")}</h2></div>
-			<button type="button" class="map-toggle" aria-pressed={showSecretMarkers} onclick={() => showSecretMarkers = !showSecretMarkers}>
-				{showSecretMarkers ? 'Скрыть тайные места' : 'Показать точки сказителя'}
-			</button>
+			{#if activeMap.markers.some((marker) => marker.gmOnly)}
+				<button type="button" class="map-toggle" aria-pressed={showSecretMarkers} onclick={() => showSecretMarkers = !showSecretMarkers}>
+					{showSecretMarkers ? 'Скрыть тайные места' : 'Показать точки сказителя'}
+				</button>
+			{/if}
 		</div>
     {#if adventure.overviewMap}
       <div class="map-views" role="group" aria-label="Масштаб карты">
@@ -143,11 +145,13 @@
 		<figure>
 			<div class="map-canvas">
 				<img src={activeMap.src} alt={activeMap.alt} width="1672" height="941" />
-				{#each visibleMarkers as marker, index (marker.id)}
-					<span class:secret-marker={marker.gmOnly} class="map-marker" style:left={`${marker.x}%`} style:top={`${marker.y}%`} aria-hidden="true">
-						<span class="marker-number">{index + 1}</span><span class="marker-label">{marker.label}</span>
-					</span>
-				{/each}
+				{#if !activeMap.printedMarkers}
+					{#each visibleMarkers as marker, index (marker.id)}
+						<span class:secret-marker={marker.gmOnly} class="map-marker" style:left={`${marker.x}%`} style:top={`${marker.y}%`} aria-hidden="true">
+							<span class="marker-number">{index + 1}</span><span class="marker-label">{marker.label}</span>
+						</span>
+					{/each}
+				{/if}
 			</div>
 			<figcaption>{activeMap.caption} <a href={activeMap.src} target="_blank" rel="noreferrer" download={activeMap.src.startsWith('data:') ? 'adventure-map.png' : undefined}>{activeMap.src.startsWith('data:') ? 'Скачать карту' : 'Открыть карту отдельно'}</a></figcaption>
 		</figure>
@@ -184,7 +188,21 @@
 					</section>
 					<section class="panel" aria-labelledby="npcs-title">
 						<h2 id="npcs-title">Действующие лица</h2>
-						<div class="npc-grid">{#each adventure.npcs as npc}<div><h3>{npc.name}</h3><p class="npc-role">{npc.role}</p><p>{npc.motive}</p><p class="npc-voice">{npc.voice}</p></div>{/each}</div>
+						<div class="npc-grid">
+							{#each adventure.npcs as npc}
+								<div>
+									{#if npc.portrait?.startsWith('/adventures/')}
+										<a class="npc-portrait" href={npc.portrait} target="_blank" rel="noreferrer" aria-label={`Открыть портрет: ${npc.name}`}>
+											<img src={npc.portrait} alt={`Портрет: ${npc.name}`} loading="lazy" decoding="async" />
+										</a>
+									{/if}
+									<h3>{npc.name}</h3>
+									<p class="npc-role">{npc.role}</p>
+									<p>{npc.motive}</p>
+									<p class="npc-voice">{npc.voice}</p>
+								</div>
+							{/each}
+						</div>
 					</section>
 					<section aria-labelledby="scenes-title" class="scenes">
 						<h2 id="scenes-title">Сцены</h2>
@@ -287,7 +305,7 @@
 	.secret-marker .marker-label { border-color: #6f4b42; }
 	.map-section figcaption { padding: 10px 24px 0; color: #51473a; font-size: 13px; }
 	.map-section figcaption a { color: #405b4d; margin-left: 8px; text-decoration: underline; }
-	.map-key { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px 22px; padding: 14px 24px 22px 44px; margin: 0; color: #302b24; }
+	.map-key { display: grid; list-style: decimal; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px 22px; padding: 14px 24px 22px 44px; margin: 0; color: #302b24; }
 	.map-key li { padding-left: 2px; font-size: 12px; }
 	.map-key li + li { margin-top: 0; }
 	.map-key strong { display: block; font-size: 13px; }
@@ -314,8 +332,12 @@
 	.location-use { color: #5b574d; }
 	.npc-grid > div { border: 1px solid #e1e3d6; border-radius: 8px; padding: 14px; }
 	.npc-grid h3 { margin-top: 0; }
+	.npc-portrait { display: block; margin-bottom: 12px; border-radius: 6px; overflow: hidden; }
+	.npc-portrait img { display: block; width: 100%; aspect-ratio: 2 / 3; object-fit: cover; }
+	.npc-portrait:focus-visible { outline: 2px solid #765d37; outline-offset: 3px; }
 	.npc-role { color: #5f6c60; margin: 0; }
 	.npc-voice { color: #493c35; font-style: italic; }
+	.secret p, .handout { white-space: pre-line; }
 	.handout { border-left: 3px solid #897156; padding: 12px 16px; background: #f3ede0; font-family: Georgia, serif; }
 	.scenes > h2 { margin: 16px 0 0; }
 	.scene h3 { margin-top: 0; font-size: 23px; }

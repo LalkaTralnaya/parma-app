@@ -39,6 +39,7 @@
 	import { downloadJson } from '$lib/utils/export';
 	import { EMPTY_STORY_PLOT_WEB, clearLocalStoryPlotWeb, normalizeStoryPlotWeb, readLocalStoryPlotWeb, writeLocalStoryPlotWeb, type StoryPlotWeb } from '$lib/engine/story-plot-web';
 	import { loadStoryPlotWeb, saveStoryPlotWeb as persistStoryPlotWeb } from '$lib/engine/story-plot-store';
+	import { prepareStoryPlotWeb } from '$lib/rules/siver-plot-web';
 	import { PARMA_SEASONS, type ParmaSeason } from '$lib/rules/tavern-menu';
 	import { DEFAULT_TAVERN_SETTINGS, normalizeTavernSettings, readLocalTavernSettings, writeLocalTavernSettings } from '$lib/engine/tavern-settings';
 
@@ -122,27 +123,25 @@
 	const canOpenStoryPlot = $derived(!activeRoomId || roomIsMaster);
 
 	async function loadPrivateStoryPlot() {
-		const local = readLocalStoryPlotWeb();
+		let selected = readLocalStoryPlotWeb();
 		try {
 			const remote = await loadStoryPlotWeb();
-			if (!remote.nodes.length && !remote.edges.length && (local.nodes.length || local.edges.length)) {
-				await persistStoryPlotWeb(local);
-				storyPlotWeb = local;
-				storyPlotStatus = 'Локальная паутина перенесена в приватное хранилище аккаунта Сказителя.';
-			} else {
-				storyPlotWeb = remote;
-				storyPlotStatus = 'Сюжетная паутина доступна только вашему аккаунту Сказителя.';
-			}
+			if (remote.nodes.length || remote.edges.length || remote.templateIds?.length) selected = remote;
+			selected = prepareStoryPlotWeb(selected);
+			if (selected !== remote) await persistStoryPlotWeb(selected);
+			storyPlotWeb = selected;
+			storyPlotStatus = 'Сюжетная паутина сохранена в приватном хранилище Сказителя.';
 			clearLocalStoryPlotWeb();
 		} catch (error) {
-			storyPlotWeb = local;
-			storyPlotStatus = `Сейчас доступна локальная копия в этом браузере. ${error instanceof Error ? error.message : ''}`.trim();
+			storyPlotWeb = prepareStoryPlotWeb(selected);
+			writeLocalStoryPlotWeb(storyPlotWeb);
+			storyPlotStatus = 'Изменения доступны в этом браузере. ' + (error instanceof Error ? error.message : '');
 		}
 		loadingStoryPlot = false;
 	}
 
 	async function savePrivateStoryPlot(next: StoryPlotWeb) {
-		if (savingStoryPlot) return;
+		if (savingStoryPlot) throw new Error('Дождитесь сохранения предыдущего изменения.');
 		savingStoryPlot = true;
 		storyPlotStatus = '';
 		const normalized = normalizeStoryPlotWeb(next);

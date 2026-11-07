@@ -5,6 +5,8 @@ export interface PlotNode {
 	type: PlotNodeType;
 	name: string;
 	description: string;
+	origin?: string;
+	inclinations?: string;
 }
 
 export interface PlotEdge {
@@ -13,12 +15,15 @@ export interface PlotEdge {
 	to: string;
 	label: string;
 	notes: string;
+	condition?: string;
+	consequence?: string;
 }
 
 export interface StoryPlotWeb {
 	version: 1;
 	nodes: PlotNode[];
 	edges: PlotEdge[];
+	templateIds?: string[];
 }
 
 export const EMPTY_STORY_PLOT_WEB: StoryPlotWeb = { version: 1, nodes: [], edges: [] };
@@ -28,21 +33,22 @@ const PLOT_NODE_TYPES: PlotNodeType[] = ['character', 'npc', 'organization', 'qu
 
 export function normalizeStoryPlotWeb(value: unknown): StoryPlotWeb {
 	if (!value || typeof value !== 'object' || Array.isArray(value)) return EMPTY_STORY_PLOT_WEB;
-	const raw = value as { nodes?: unknown; edges?: unknown };
+	const raw = value as { nodes?: unknown; edges?: unknown; templateIds?: unknown };
 	const nodes = Array.isArray(raw.nodes) ? raw.nodes.flatMap((value): PlotNode[] => {
 		if (!value || typeof value !== 'object') return [];
 		const node = value as Partial<PlotNode>;
 		if (typeof node.id !== 'string' || !node.id || typeof node.name !== 'string' || !node.name.trim()) return [];
-		return [{ id: node.id, type: PLOT_NODE_TYPES.includes(node.type as PlotNodeType) ? node.type as PlotNodeType : 'event', name: node.name.trim(), description: typeof node.description === 'string' ? node.description : '' }];
+		return [{ id: node.id, type: PLOT_NODE_TYPES.includes(node.type as PlotNodeType) ? node.type as PlotNodeType : 'event', name: node.name.trim(), description: typeof node.description === 'string' ? node.description : '', origin: typeof node.origin === 'string' ? node.origin : '', inclinations: typeof node.inclinations === 'string' ? node.inclinations : '' }];
 	}) : [];
 	const ids = new Set(nodes.map((node) => node.id));
 	const edges = Array.isArray(raw.edges) ? raw.edges.flatMap((value): PlotEdge[] => {
 		if (!value || typeof value !== 'object') return [];
 		const edge = value as Partial<PlotEdge>;
 		if (typeof edge.from !== 'string' || typeof edge.to !== 'string' || edge.from === edge.to || !ids.has(edge.from) || !ids.has(edge.to)) return [];
-		return [{ id: typeof edge.id === 'string' && edge.id ? edge.id : crypto.randomUUID(), from: edge.from, to: edge.to, label: typeof edge.label === 'string' ? edge.label : '', notes: typeof edge.notes === 'string' ? edge.notes : '' }];
+		return [{ id: typeof edge.id === 'string' && edge.id ? edge.id : crypto.randomUUID(), from: edge.from, to: edge.to, label: typeof edge.label === 'string' ? edge.label : '', notes: typeof edge.notes === 'string' ? edge.notes : '', condition: typeof edge.condition === 'string' ? edge.condition : '', consequence: typeof edge.consequence === 'string' ? edge.consequence : '' }];
 	}) : [];
-	return { version: 1, nodes, edges };
+	const templateIds = Array.isArray(raw.templateIds) ? [...new Set(raw.templateIds.filter((id): id is string => typeof id === 'string' && Boolean(id)))] : [];
+	return { version: 1, nodes, edges, templateIds };
 }
 
 export function readLocalStoryPlotWeb(): StoryPlotWeb {
@@ -64,4 +70,19 @@ export function clearLocalStoryPlotWeb(): void {
 
 export function plotNodeTypeLabel(type: PlotNodeType): string {
 	return ({ character: 'Персонаж', npc: 'НИП', organization: 'Организация', quest: 'Поручение', location: 'Место', clue: 'Зацепка', event: 'Событие', secret: 'Тайна' })[type];
+}
+
+/** Add a scenario once while preserving the storyteller’s edits and deletions. */
+export function mergeStoryPlotTemplate(current: StoryPlotWeb, template: StoryPlotWeb, templateId: string): StoryPlotWeb {
+	const graph = normalizeStoryPlotWeb(current);
+	if (graph.templateIds?.includes(templateId)) return graph;
+	const source = normalizeStoryPlotWeb(template);
+	const nodeIds = new Set(graph.nodes.map((node) => node.id));
+	const edgeIds = new Set(graph.edges.map((edge) => edge.id));
+	return {
+		version: 1,
+		nodes: [...graph.nodes, ...source.nodes.filter((node) => !nodeIds.has(node.id))],
+		edges: [...graph.edges, ...source.edges.filter((edge) => !edgeIds.has(edge.id))],
+		templateIds: [...(graph.templateIds ?? []), templateId]
+	};
 }
