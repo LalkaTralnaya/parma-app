@@ -7,6 +7,9 @@ export interface PlotNode {
 	description: string;
 	origin?: string;
 	inclinations?: string;
+	x?: number;
+	y?: number;
+	pinned?: boolean;
 }
 
 export interface PlotEdge {
@@ -38,7 +41,7 @@ export function normalizeStoryPlotWeb(value: unknown): StoryPlotWeb {
 		if (!value || typeof value !== 'object') return [];
 		const node = value as Partial<PlotNode>;
 		if (typeof node.id !== 'string' || !node.id || typeof node.name !== 'string' || !node.name.trim()) return [];
-		return [{ id: node.id, type: PLOT_NODE_TYPES.includes(node.type as PlotNodeType) ? node.type as PlotNodeType : 'event', name: node.name.trim(), description: typeof node.description === 'string' ? node.description : '', origin: typeof node.origin === 'string' ? node.origin : '', inclinations: typeof node.inclinations === 'string' ? node.inclinations : '' }];
+		return [{ id: node.id, type: PLOT_NODE_TYPES.includes(node.type as PlotNodeType) ? node.type as PlotNodeType : 'event', name: node.name.trim(), description: typeof node.description === 'string' ? node.description : '', origin: typeof node.origin === 'string' ? node.origin : '', inclinations: typeof node.inclinations === 'string' ? node.inclinations : '', ...(typeof node.x === 'number' && Number.isFinite(node.x) && Math.abs(node.x) <= 100000 && typeof node.y === 'number' && Number.isFinite(node.y) && Math.abs(node.y) <= 100000 ? { x: node.x, y: node.y, pinned: node.pinned === true } : {}) }];
 	}) : [];
 	const ids = new Set(nodes.map((node) => node.id));
 	const edges = Array.isArray(raw.edges) ? raw.edges.flatMap((value): PlotEdge[] => {

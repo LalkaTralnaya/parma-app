@@ -40,6 +40,15 @@
     'Сары-Кала': { image: 'kharitonia-capital', size: '300% 100%', position: '0% 50%' },
     'Хашар': { image: 'east-capital', size: '300% 100%', position: '0% 50%' },
   };
+  let mapLoaded = $state(false);
+  let mapFailed = $state(false);
+  let mapAttempt = $state(0);
+  const mapSource = $derived('/heraldry/parma-map.jpg' + (mapAttempt ? '?retry=' + mapAttempt : ''));
+  function retryMap() {
+    mapLoaded = false;
+    mapFailed = false;
+    mapAttempt += 1;
+  }
   let activeGroup = $state('gardariki');
   let selectedPlace = $state('');
   const selected = $derived(groups.find(group => group.id === activeGroup) ?? groups[0]);
@@ -58,14 +67,17 @@
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <div class="map-scroll" role="region" aria-label="Карта Пармы с отмеченными стягами" tabindex="0">
     <div class="map-frame">
-      <img src="/heraldry/parma-map.png" alt="Иллюстрированная карта Пармы с землями и поселениями" width="3840" height="2160" />
-      {#each markers as marker}
+      <img src={mapSource} class:map-unavailable={mapFailed} alt="Иллюстрированная карта Пармы с землями и поселениями" width="3840" height="2160" onload={() => { mapLoaded = true; mapFailed = false; }} onerror={() => { mapLoaded = false; mapFailed = true; }} />
+      {#if mapLoaded}{#each markers as marker}
         <button class:chosen={selectedPlace === marker.name} class="map-flag" style:left={`${marker.x}%`} style:top={`${marker.y}%`} aria-label={`Показать стяги: ${marker.name}`} aria-pressed={selectedPlace === marker.name} title={marker.name} onclick={() => selectMarker(marker)}>
           <span class="flag-art" aria-hidden="true" style:background-image={`url("/heraldry/${markerArt[marker.name].image}.png")`} style:background-size={markerArt[marker.name].size} style:background-position={markerArt[marker.name].position}></span><span class="flag-label">{marker.name}</span>
         </button>
-      {/each}
+      {/each}{/if}
     </div>
   </div>
+  {#if mapFailed}
+    <div class="map-error" role="alert"><p>Не удалось загрузить карту. Попробуйте ещё раз.</p><button type="button" onclick={retryMap}>Загрузить карту повторно</button></div>
+  {:else if !mapLoaded}<p class="map-note" role="status">Загружаем карту…</p>{/if}
   <p class="map-note">На карте отмечены столицы и земли кланов. Стяги других городов и общин доступны в списках земель.</p>
   <div class="land-buttons" role="group" aria-label="Выбрать землю">
     {#each groups as group}<button class:active={activeGroup === group.id} aria-pressed={activeGroup === group.id} onclick={() => { activeGroup = group.id; selectedPlace = ''; }}>{group.title}</button>{/each}
@@ -95,6 +107,10 @@
   .map-scroll { overflow:auto; margin-top:18px; border:1px solid #ad956d; }
   .map-frame { position:relative; min-width:940px; line-height:0; }
   .map-frame img { display:block; width:100%; height:auto; }
+  .map-frame img.map-unavailable { visibility:hidden; }
+  .map-error { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-top:12px; color:#8b3448; }
+  .map-error p { margin:0; }
+  .map-error button { border:1px solid #8b3448; border-radius:4px; padding:8px 12px; background:#fffaf0; color:inherit; cursor:pointer; }
   .map-flag { position:absolute; z-index:1; display:flex; align-items:center; gap:3px; transform:translate(-35%,-100%); padding:0; border:1px solid #f6e8bc; border-radius:3px; background:#173d30e8; color:#fff7dc; font-size:14px; line-height:1.3; cursor:pointer; }
   .map-flag:hover,.map-flag:focus-visible,.map-flag.chosen { z-index:2; background:#713c2e; outline:2px solid #f8db91; }
   .flag-art { display:block; width:25px; height:34px; background-repeat:no-repeat; }
