@@ -3,7 +3,7 @@
 	import { StoryPlotSimulation, type PlotPosition } from '$lib/engine/story-plot-simulation';
 	import { layoutRelationships } from '$lib/engine/relationship-layout';
 	import { plotNodeTypeLabel, type PlotNode, type PlotNodeType, type PlotEdge, type StoryPlotWeb } from '$lib/engine/story-plot-web';
-	import { addSiverStoryPlotWeb, SIVER_PLOT_TEMPLATE_ID } from '$lib/rules/siver-plot-web';
+	import { addSiverStoryPlotWeb, LEGACY_SIVER_PLOT_TEMPLATE_ID, SIVER_PLOT_TEMPLATE_ID } from '$lib/rules/siver-plot-web';
 
 	let { graph, disabled = false, onChange }: { graph: StoryPlotWeb; disabled?: boolean; onChange: (graph: StoryPlotWeb) => void | Promise<void> } = $props();
 	const arrowId = $props.id();
@@ -36,6 +36,7 @@
 	let animationFrame: number | undefined;
 	let reducedMotion = false;
 	let drag = $state<{ pointerId: number; nodeId?: string; clientX: number; clientY: number; x: number; y: number; moved: boolean }>();
+	const legacyTemplate = $derived(graph.templateIds?.includes(LEGACY_SIVER_PLOT_TEMPLATE_ID));
 	const templateAdded = $derived(graph.templateIds?.includes(SIVER_PLOT_TEMPLATE_ID));
 	const visibleEdges = $derived(selectedNodeId ? graph.edges.filter((edge) => edge.from === selectedNodeId || edge.to === selectedNodeId) : graph.edges);
 	const visibleNodes = $derived.by(() => {
@@ -304,9 +305,9 @@
 <div class="plot-web" aria-busy={busy}>
 	<div class="plot-intro">
 		<p>Паутина связывает происхождение, мотивы, склонности и возможные последствия. Стрелка показывает направление связи. Выберите узел, чтобы увидеть его окружение. Записи редактируются и доступны в пульте Сказителя.</p>
-		{#if !templateAdded}
-			<button type="button" disabled={busy} onclick={() => commit(addSiverStoryPlotWeb(graph))}>Добавить сюжет Сивера</button>
-			<p>Добавит связи четырёх приключений к вашей паутине, сохранив существующие записи.</p>
+		{#if !templateAdded && (!legacyTemplate || graph.nodes.length)}
+			<button type="button" disabled={busy} onclick={() => commit(addSiverStoryPlotWeb(graph))}>{legacyTemplate ? 'Обновить сюжет Сивера' : 'Добавить сюжет Сивера'}</button>
+			<p>Связи пяти глав «Сюжета Сивера». Ваши правки и позиции узлов сохранятся.</p>
 		{/if}
 	</div>
 	{#if graph.nodes.length}

@@ -1,4 +1,5 @@
 import { ADVENTURES } from './adventures';
+import { SIVER_BOOK_EDGES, SIVER_BOOK_NODES } from './siver-book-plot';
 import {
 	mergeStoryPlotTemplate,
 	normalizeStoryPlotWeb,
@@ -6,7 +7,8 @@ import {
 	type StoryPlotWeb
 } from '../engine/story-plot-web';
 
-export const SIVER_PLOT_TEMPLATE_ID = 'siver-campaign-v1';
+export const LEGACY_SIVER_PLOT_TEMPLATE_ID = 'siver-campaign-v1';
+export const SIVER_PLOT_TEMPLATE_ID = 'siver-campaign-v2';
 
 const npcSpecs = [
 	['proklyatie-starogo-kolodtsa', 'Пётр', 'petr', 'Заречье, кузница и старый колодец.', 'Боится обещанной цены и пытается спасти себя. Привязан к Даниле.'],
@@ -21,30 +23,30 @@ const npcSpecs = [
 	['chernaya-khvor', 'Отец Игната и Ярослава', 'father', 'Кривцы. Удерживается среди пяти пленников в убежище Сивера.', 'Хочет вернуться к семье, сопротивляется принуждению насколько может.'],
 	['chernaya-khvor', 'Деревенская знахарка', 'herbalist', 'Кривцы, дом знахарки.', 'Сосредоточена на лечении. Нуждается в травах, воде, огне и помощниках.'],
 	['chernaya-khvor', 'Пятеро мужчин', 'hostages', 'Жители Кривцов, похищенные Сивером. Среди них отец мальчиков.', 'Стремятся освободиться и предупредить героев. Подчинение вынужденное.'],
-	['doroga-v-gardariki', 'Гаврила Златобород', 'gavrila', 'Обоз на тракте к Гардарикам. После встречи уезжает в другой регион.', 'Бережёт груз и свою версию событий, неохотно уточняет подробности. Подозрения требуют доказательств.'],
+	['doroga-v-gardariki', 'Гаврила Златобород', 'gavrila', 'Обоз на тракте к Вышгороду. После встречи уезжает в другой регион.', 'Бережёт груз и свою версию событий, неохотно уточняет подробности. Подозрения требуют доказательств.'],
 	['doroga-v-gardariki', 'Охрана обоза', 'caravan-guards', 'Десять наёмников на пяти телегах Гаврилы.', 'Защищает людей и груз, скупо отвечает о нападении.'],
 	['doroga-v-gardariki', 'Дорожная дружина', 'road-patrol', 'Тракт, расследование нападения на обоз.', 'Проверяет показания и сведения о магии. Стоянка героев сама по себе не доказывает вины.'],
 	['stolny-grad-vyshgorod', 'Дарёна Мерная', 'daryona', 'Вышгород, торговый двор Медных Весов.', 'Бережёт дело Гаврилы и тайну его нового маршрута. Готова показать старый счёт при доверии.'],
 	['stolny-grad-vyshgorod', 'Федот Ось', 'fedot', 'Возница обоза Гаврилы, остался в Вышгороде после нападения.', 'Хочет дать показания без огласки. Помнит требование выдать купца.'],
 	['stolny-grad-vyshgorod', 'Остромир', 'ostromir', 'Вышгород, писарь при круге волхвов.', 'Берётся за редкие тексты ради заработка, боится утратить доверие круга.'],
 	['stolny-grad-vyshgorod', 'Волхвиня Ведана', 'vedana', 'Вышгород, Палата рукописей.', 'Защищает закрытые записи, выслушивает доводы, допускает договор о северном походе.'],
-	['stolny-grad-vyshgorod', 'Лесовик', 'lesovik', 'Вышгород, постоялый двор «Три скобы». Участник северного похода.', 'После пропажи Рыжа пьёт и срывает заказы. Открывается при доверительном разговоре, готов искать пса.'],
+	['stolny-grad-vyshgorod', 'Халмири (Лесовик)', 'lesovik', 'Вышгород, постоялый двор «Три скобы». Участник северного похода.', 'После пропажи Рыжа пьёт и срывает заказы. Открывается при доверительном разговоре, готов искать пса.'],
 	['stolny-grad-vyshgorod', 'Мирон Вяз', 'miron', 'Вышгород, поверенный мнимого частного коллекционера.', 'Хочет завершить заказ и сохранить плату. Считает риск преувеличенным.'],
 	['stolny-grad-vyshgorod', 'Рада Щепа', 'rada', 'Вышгород, ремесленные ряды и круг воров.', 'Оценивает выгоду и риск. Соблюдает договор, пока его условия сохраняются.'],
 	['stolny-grad-vyshgorod', 'Сотник Гордей', 'gordey', 'Вышгород, городской дозор и караульня.', 'Сверяет время, свидетелей и бумаги. Для задержания требует оснований.']
 ] as const;
 
 const extraNodes: PlotNode[] = [
-	{ id: 'siver:campaign', type: 'quest', name: 'Сюжет Сивера', description: 'Четыре главы связывают клятву Петра, спасение Кривцов, дорожное расследование и поиск северного маршрута. Условия на связях описывают возможные ветви. Склонности НИПов выведены из их мотивов и поведения.' },
+	{ id: 'siver:campaign', type: 'quest', name: 'Сюжет Сивера', description: 'Пять глав связывают клятву Петра, спасение Кривцов, нападение на обоз, Вышгород и поиски Сосуда в Карнгорне.' },
 	{ id: 'siver:heroes', type: 'character', name: 'Герои кампании', description: 'Добавьте сюда имена игроков, личные цели, решения и обещания вашей группы.' },
 	{ id: 'siver:well-chapter', type: 'quest', name: 'Проклятие старого колодца', description: 'Помочь Заречью, найти Данилу и решить судьбу повреждённой печати.' },
 	{ id: 'siver:illness-chapter', type: 'quest', name: 'Чёрная хворь', description: 'Помочь семье Игната, приготовить средство и освободить пленников.' },
-	{ id: 'siver:road-chapter', type: 'quest', name: 'Дорога в Гардарики', description: 'Семидневный путь, обоз Гаврилы, стоянка и вопросы дружины.' },
+	{ id: 'siver:road-chapter', type: 'quest', name: 'Дорога в Вышгород', description: 'Шестидневный путь, обоз Гаврилы, стоянка и вопросы дружины.' },
 	{ id: 'siver:city-chapter', type: 'quest', name: 'Стольный град Вышгород', description: 'Собрать маршрут на север через городские бумаги, свидетелей и тайник.' },
 	{ id: 'siver:zarechye', type: 'location', name: 'Заречье', description: 'Деревня Петра и Данилы, старый колодец, корчма и кузница.' },
 	{ id: 'siver:krivtsy', type: 'location', name: 'Кривцы', description: 'Деревня Игната, Ярослава и их родителей.' },
 	{ id: 'siver:marsh', type: 'location', name: 'Убежище Сивера в топях', description: 'Новое убежище у Кривцов. Пленники, узел печатей и бумаги о руинах.' },
-	{ id: 'siver:road', type: 'location', name: 'Тракт к Гардарикам', description: 'Три дня до места нападения и ещё четыре до города без дополнительных остановок.' },
+	{ id: 'siver:road', type: 'location', name: 'Тракт к Вышгороду', description: 'Два дня до места нападения и ещё четыре до города без дополнительных остановок.' },
 	{ id: 'siver:vyshgorod', type: 'location', name: 'Вышгород', description: 'Столица Гардарики. Ратибор Мудрый правит городом, Мирослав Быстрый командует Высшей Дружиной. Дело об обозе ведёт городской дозор.' },
 	{ id: 'siver:trade-yard', type: 'location', name: 'Медные Весы', description: 'Торговый двор Гаврилы в Вышгороде.' },
 	{ id: 'siver:manuscripts', type: 'location', name: 'Палата рукописей', description: 'Закрытые северные записи, Остромир и Ведана.' },
@@ -67,8 +69,8 @@ const extraNodes: PlotNode[] = [
 	{ id: 'siver:testimonies', type: 'clue', name: 'Два показания экспедиции', description: 'Оба подлинные, оба упоминают нижнюю тропу. Один свидетель видел башню, другой голый берег.' },
 	{ id: 'siver:instruction', type: 'clue', name: 'Распоряжение из тайника', description: 'Передать бумаги к северной заставе. Фраза о клыке и последнем вздохе связывает дело с Сивером, но могла попасть в чужие руки.' },
 	{ id: 'siver:route', type: 'quest', name: 'Собрать северный маршрут', description: 'Переправа, расколотый камень, нижняя тропа и три сосны. Два независимых источника дают маршрут, либо можно довериться памяти Лесовика.' },
-	{ id: 'siver:ryzh', type: 'quest', name: 'Найти Рыжа', description: 'Лесовик оставил пса у переправы. Его судьба определяется в северной главе.' },
-	{ id: 'siver:expedition', type: 'event', name: 'Неудачный северный поход', description: 'Несколько участников пропали, показания двух вернувшихся противоречат друг другу.' },
+	{ id: 'siver:ryzh', type: 'quest', name: 'Найти Рыжа', description: 'Лесовик оставил пса у переправы. Его судьба остаётся открытой после северной главы.' },
+	{ id: 'siver:expedition', type: 'event', name: 'Неудачный северный поход', description: 'Шесть участников искали Сосуд. Халмири, Радомир и Тверд вернулись с повреждённой памятью. Боривой, Милена и Карп погибли при столкновении.' },
 	{ id: 'siver:ambush', type: 'event', name: 'Нападение на обоз', description: 'Нападение было настоящим. Федот слышал требование выдать Гаврилу живым.' },
 	{ id: 'siver:petr-release', type: 'event', name: 'Прощание Петра с Данилой', description: 'Возможный исход при своевременном размыкании печати. Пётр умирает, получив возможность проститься с сыном.' },
 	{ id: 'siver:transformation', type: 'event', name: 'Обращение Петра', description: 'Возможный исход, если обряд не завершён до восхода полной Луны. После обращения пара клыков уже не возвращает прежний исход.' },
@@ -213,11 +215,44 @@ export function createSiverStoryPlotWeb(): StoryPlotWeb {
 			consequence: details[5] ?? ''
 		};
 	});
-	return normalizeStoryPlotWeb({ version: 1, nodes: [...extraNodes, ...nodes], edges, templateIds: [SIVER_PLOT_TEMPLATE_ID] });
+	return normalizeStoryPlotWeb({ version: 1, nodes: [...extraNodes, ...nodes, ...SIVER_BOOK_NODES], edges: [...edges, ...SIVER_BOOK_EDGES], templateIds: [SIVER_PLOT_TEMPLATE_ID] });
 }
 
+const legacyNodeText: Record<string, Partial<Pick<PlotNode, 'name' | 'description'>>> = {
+  'siver:campaign': { description: 'Четыре главы связывают клятву Петра, спасение Кривцов, дорожное расследование и поиск северного маршрута. Условия на связях описывают возможные ветви. Склонности НИПов выведены из их мотивов и поведения.' },
+  'siver:road-chapter': { name: 'Дорога в Гардарики', description: 'Семидневный путь, обоз Гаврилы, стоянка и вопросы дружины.' },
+  'siver:road': { name: 'Тракт к Гардарикам', description: 'Три дня до места нападения и ещё четыре до города без дополнительных остановок.' },
+  'siver:lesovik': { name: 'Лесовик' },
+  'siver:expedition': { description: 'Несколько участников пропали, показания двух вернувшихся противоречат друг другу.' },
+  'siver:ryzh': { description: 'Лесовик оставил пса у переправы. Его судьба определяется в северной главе.' }
+};
+
 export function addSiverStoryPlotWeb(graph: StoryPlotWeb): StoryPlotWeb {
-	return mergeStoryPlotTemplate(graph, createSiverStoryPlotWeb(), SIVER_PLOT_TEMPLATE_ID);
+	if (graph.templateIds?.includes(SIVER_PLOT_TEMPLATE_ID)) return graph;
+	if (!graph.templateIds?.includes(LEGACY_SIVER_PLOT_TEMPLATE_ID)) {
+	  return mergeStoryPlotTemplate(graph, createSiverStoryPlotWeb(), SIVER_PLOT_TEMPLATE_ID);
+	}
+	if (!graph.nodes.length) return graph;
+
+	const template = createSiverStoryPlotWeb();
+	const currentNodes = new Map(template.nodes.map(node => [node.id, node]));
+	const nodes = graph.nodes.map(node => {
+	  const previous = legacyNodeText[node.id];
+	  const current = currentNodes.get(node.id);
+	  if (!previous || !current) return node;
+	  return {
+	    ...node,
+	    name: node.name === previous.name ? current.name : node.name,
+	    description: node.description === previous.description ? current.description : node.description
+	  };
+	});
+	const existingIds = new Set(nodes.map(node => node.id));
+	const additions = SIVER_BOOK_NODES.filter(node => !existingIds.has(node.id));
+	return normalizeStoryPlotWeb(mergeStoryPlotTemplate(
+	  { ...graph, nodes },
+	  { version: 1, nodes: [...nodes, ...additions], edges: SIVER_BOOK_EDGES },
+	  SIVER_PLOT_TEMPLATE_ID
+	));
 }
 
 /** An intentionally cleared imported graph stays cleared on the next visit. */

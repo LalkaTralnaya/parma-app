@@ -62,20 +62,19 @@ test('road retains caravan facts, unknown watcher, personal clue and alternative
   for(const clue of ['кровь','бинтов','клеймо'])assert.ok(scene('road-bandit-camp').includes(clue));
   assert.ok(scene('road-bandit-camp').includes('Кузнец по предыстории'));
   assert.ok(scene('road-patrol').includes('Не проводите обе версии подряд'));
-  assert.ok(scene('road-gardariki').includes('три до места нападения и четыре после него'));
-  const source=readFileSync('docs/adventures/siver-source.md','utf8');
-  for(const heading of ['## Дорога в Гардарики','### Встреча с Гаврилой Златобородом','### Дружина','### Четыре дня до Гардарики','### Ведение интриги'])assert.ok(source.includes(heading));
+  assert.ok(scene('road-gardariki').includes('два до места нападения и четыре после него'));
+  for (const heading of ["Встреча с Гаврилой Златобородом", "Дружина", "Четыре дня до Вышгорода", "Ведение интриги"]) assert.ok(road.guide.some(entry => entry.title === heading));
 });
 
-test('overview preserves the seven-day road and a separate local map',()=>{
+test('overview preserves the six-day road and a separate local map',()=>{
   const overview=road.map;
-  assert.equal(overview.travelDays,7);
+  assert.equal(overview.travelDays,6);
   assert.notEqual(overview.src,adventure.map.src);
   assert.ok(existsSync(resolve('static',overview.src.slice(1))));
   assert.ok(existsSync(resolve('static',adventure.map.src.slice(1))));
-  assert.deepEqual([...new Set(overview.markers.filter(m=>m.day).map(m=>m.day))].sort(),[1,2,3,4,5,6,7]);
-  assert.equal(overview.markers.find(m=>m.id==='overview-ambush').day,3);
-  assert.equal(overview.markers.find(m=>m.id==='overview-city').day,7);
+  assert.deepEqual([...new Set(overview.markers.filter(m=>m.day).map(m=>m.day))].sort(),[1,2,3,4,5,6]);
+  assert.equal(overview.markers.find(m=>m.id==='overview-ambush').day,2);
+  assert.equal(overview.markers.find(m=>m.id==='overview-city').day,6);
   const village=overview.markers.find(m=>m.id==='overview-krivtsy'), marsh=overview.markers.find(m=>m.id==='overview-marsh');
   assert.ok(marsh.x>village.x&&marsh.y>village.y);
   assert.ok(overview.caption.includes('затем ещё четыре'));
@@ -91,11 +90,26 @@ test('updated road preserves the source intrigue without declaring a culprit',()
   assert.ok(camp.includes('не показывают, был ли раненый'));
   assert.ok(!camp.includes('Разбойники провели здесь'));
   assert.equal(road.locations.at(-1).name,'Стоянка в лесу');
-  assert.equal(road.map.markers.find(m=>m.id==='overview-gavrila').day,2);
-  assert.ok(road.secret.includes('третья сторона'));
+  assert.equal(road.map.markers.find(m=>m.id==='overview-gavrila').day,1);
+  assert.ok(road.secret.includes('наниматель остаётся неизвестным'));
   const intrigue=road.guide.find(e=>e.title==='Ведение интриги');
   assert.ok(intrigue);
-  assert.ok(JSON.stringify(intrigue).includes('Не лгите игрокам в авторском описании'));
-  assert.ok(JSON.stringify(intrigue).includes('Это не три ответа'));
-  assert.ok(!JSON.stringify(road).includes('шесть дней'));
+  assert.ok(JSON.stringify(intrigue).includes('Описывайте наблюдаемое'));
+  assert.ok(JSON.stringify(intrigue).includes('вмешалась третья сторона'));
+  assert.ok(!JSON.stringify(road).includes('семь дней'));
+});
+
+test('the five published chapters follow the book order and lead to the Karngorn finale', () => {
+  const karngorn = getAdventure('karngorn');
+  assert.deepEqual(ADVENTURES.map(chapter => chapter.levels), ['1', '2', '3', '4', '5']);
+  for (const [index, chapter] of ADVENTURES.entries()) {
+    assert.equal(chapter.previousAdventure?.slug, ADVENTURES[index - 1]?.slug);
+    assert.equal(chapter.nextAdventure?.slug, ADVENTURES[index + 1]?.slug);
+    assert.match(chapter.rewards.join(' '), /один уровень/);
+  }
+  assert.ok(karngorn.map.gmOnly);
+  assert.equal(karngorn.map.markers.length, 10);
+  assert.ok(existsSync(resolve('static', karngorn.map.src.slice(1))));
+  assert.ok(karngorn.guide.some(entry => entry.title === 'Финал книги. Пустое вместилище'));
+  assert.match(JSON.stringify(karngorn.scenes), /2к12.*− 32/);
 });

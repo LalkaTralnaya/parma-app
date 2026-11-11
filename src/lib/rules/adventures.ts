@@ -3,6 +3,7 @@ import { WELL_ADVENTURE } from './well-adventure';
 import { BLACK_ILLNESS_ADVENTURE } from './siver-adventure';
 import { GARDARIKI_ROAD_ADVENTURE } from './gardariki-road-adventure';
 import { VYSHGOROD_ADVENTURE } from './vyshgorod-adventure';
+import { KARNGORN_ADVENTURE } from './karngorn-adventure';
 
 export interface AdventureScene {
 	id: string;
@@ -31,6 +32,7 @@ export interface AdventureMap {
   caption: string;
   markers: AdventureMapMarker[];
   printedMarkers?: boolean;
+  gmOnly?: boolean;
   travelDays?: number;
 }
 
@@ -70,7 +72,7 @@ export interface Adventure {
 }
 
 /** Сценарий: местные события и обряд не устанавливают новый канон мира. */
-export const ADVENTURES: Adventure[] = [WELL_ADVENTURE, BLACK_ILLNESS_ADVENTURE, GARDARIKI_ROAD_ADVENTURE, VYSHGOROD_ADVENTURE];
+export const ADVENTURES: Adventure[] = [WELL_ADVENTURE, BLACK_ILLNESS_ADVENTURE, GARDARIKI_ROAD_ADVENTURE, VYSHGOROD_ADVENTURE, KARNGORN_ADVENTURE];
 
 export function getAdventure(slug: string): Adventure | undefined {
 	return ADVENTURES.find((adventure) => adventure.slug === slug);

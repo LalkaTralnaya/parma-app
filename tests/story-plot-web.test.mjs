@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EMPTY_STORY_PLOT_WEB, normalizeStoryPlotWeb } from '../src/lib/engine/story-plot-web.ts';
-import { addSiverStoryPlotWeb, createSiverStoryPlotWeb, prepareStoryPlotWeb, SIVER_PLOT_TEMPLATE_ID } from '../src/lib/rules/siver-plot-web.ts';
+import { addSiverStoryPlotWeb, createSiverStoryPlotWeb, prepareStoryPlotWeb, LEGACY_SIVER_PLOT_TEMPLATE_ID, SIVER_PLOT_TEMPLATE_ID } from '../src/lib/rules/siver-plot-web.ts';
 
 test('old plot graphs retain their data and gain optional origin and consequence fields', () => {
 	const graph = normalizeStoryPlotWeb({
@@ -80,4 +80,28 @@ test('first launch creates independent scenario copies', () => {
 	assert.notEqual(first.edges[0].label, second.edges[0].label);
 	assert.equal(EMPTY_STORY_PLOT_WEB.nodes.length, 0);
 	assert.equal(EMPTY_STORY_PLOT_WEB.edges.length, 0);
+});
+
+test('updating the four-chapter web preserves edits, pinned nodes and deleted records', () => {
+  const legacy = normalizeStoryPlotWeb({
+    templateIds: [LEGACY_SIVER_PLOT_TEMPLATE_ID],
+    nodes: [
+      { id: 'siver:city-chapter', type: 'quest', name: 'Мой Вышгород', x: 50, y: 90, pinned: true },
+      { id: 'siver:road-chapter', type: 'quest', name: 'Дорога в Гардарики', description: 'Мои заметки' },
+      { id: 'siver:siver', type: 'npc', name: 'Сивер' }
+    ],
+    edges: [{ id: 'custom', from: 'siver:city-chapter', to: 'siver:siver', label: 'Связь игрока' }]
+  });
+  const updated = addSiverStoryPlotWeb(legacy);
+  assert.deepEqual(updated.nodes.find(node => node.id === 'siver:city-chapter'), legacy.nodes[0]);
+  assert.equal(updated.nodes.find(node => node.id === 'siver:road-chapter').name, 'Дорога в Вышгород');
+  assert.equal(updated.nodes.find(node => node.id === 'siver:road-chapter').description, 'Мои заметки');
+  assert.ok(updated.nodes.some(node => node.id === 'siver:karngorn-chapter'));
+  assert.ok(updated.edges.some(edge => edge.from === 'siver:city-chapter' && edge.to === 'siver:karngorn-chapter'));
+  assert.ok(!updated.nodes.some(node => node.id === 'siver:petr'));
+  assert.ok(!updated.edges.some(edge => edge.from === 'siver:petr'));
+  assert.deepEqual(updated.edges.find(edge => edge.id === 'custom'), legacy.edges[0]);
+  assert.deepEqual(addSiverStoryPlotWeb(updated), updated);
+  const cleared = { ...legacy, nodes: [], edges: [] };
+  assert.deepEqual(addSiverStoryPlotWeb(cleared), cleared);
 });

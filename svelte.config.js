@@ -13,7 +13,7 @@ const config = {
 				'script-src': ['self', 'wasm-unsafe-eval'],
 				'style-src': ['self'],
 				'style-src-attr': ['unsafe-inline'],
-				'img-src': ['self', 'data:', 'blob:'],
+				'img-src': ['self', 'data:', 'blob:', 'https:'],
 				'font-src': ['self', 'data:'],
 				'connect-src': ['self', 'wss:'],
 				'worker-src': ['self', 'blob:'],

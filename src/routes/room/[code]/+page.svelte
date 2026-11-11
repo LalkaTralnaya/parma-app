@@ -1,4 +1,5 @@
 <script lang="ts">
+ import RoomImage from '$lib/components/RoomImage.svelte';
 	import { exportRoomArchive } from '$lib/engine/relationship-store';
 	import { downloadJson } from '$lib/utils/export';
 	import { onMount, onDestroy } from 'svelte';
@@ -549,7 +550,7 @@ async function declineGift(p: RoomParticipant) {
 
 			<!-- Лог бросков -->
 			<section>
-				<h2 class="text-lg font-semibold mb-3">Броски</h2>
+				<h2 class="text-lg font-semibold mb-3">Броски и изображения</h2>
 				{#if rolls.length === 0}
 					<p class="text-sm text-gray-500">Пока никто не бросал кубик.</p>
 				{:else}
@@ -561,7 +562,7 @@ async function declineGift(p: RoomParticipant) {
 									<div class="font-semibold">{roll.character_name || 'Кто-то'}</div>
 									<div class="text-xs text-gray-500">{timeAgo(roll.created_at)}</div>
 								</div>
-								<div class="{summary.resultClass} mt-1">{summary.text}</div>
+								{#if roll.roll_type === 'image'}<RoomImage data={roll.roll_data} />{:else}<div class="{summary.resultClass} mt-1">{summary.text}</div>{/if}
 							</div>
 						{/each}
 					</div>

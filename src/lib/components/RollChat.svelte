@@ -1,4 +1,5 @@
 <script lang="ts">
+ import RoomImage from './RoomImage.svelte';
  import { onMount, tick } from 'svelte';
  import { getCurrentRoom, findRoomByCode, getRecentRolls, subscribeToRoom, type RoomRoll } from '$lib/engine/rooms';
  import { createRoomRollFeed, type RoomRollFeedState } from '$lib/engine/room-roll-feed';
@@ -55,8 +56,8 @@
  }
 
  function trapFocus(event: KeyboardEvent) {
-  if (event.key !== 'Tab') return;
-  const elements = Array.from((event.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('button:not(:disabled), a[href], [tabindex="0"]'));
+  if (event.key !== 'Tab' || document.querySelector('dialog[open]')) return;
+  const elements = Array.from((event.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, [tabindex="0"]'));
   const first = elements[0];
   const last = elements.at(-1);
   if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
@@ -141,7 +142,7 @@
 	}
 </script>
 
-<svelte:window onkeydown={(event) => { if (open && event.key === 'Escape') { event.preventDefault(); void toggle(); } }} />
+<svelte:window onkeydown={(event) => { if (open && event.key === 'Escape' && !document.querySelector('dialog[open]')) { event.preventDefault(); void toggle(); } }} />
 <button type="button" bind:this={launcher} class="roll-chat-launcher" onclick={toggle} title="Броски комнаты" aria-label="Броски комнаты" aria-expanded={open} aria-controls={chatId}>
  <span aria-hidden="true">🎲</span>
  {#if hasUnread}<span class="roll-chat-unread"><span class="sr-only">Есть новые броски</span></span>{/if}
@@ -175,7 +176,7 @@
        <div class="font-semibold">{roll.character_name || 'Кто-то'}</div>
        <div class="text-xs text-gray-500">{timeAgo(roll.created_at)}</div>
       </div>
-      <div class="{summary.resultClass} mt-1">{summary.text}</div>
+      {#if roll.roll_type === 'image'}<RoomImage data={roll.roll_data} />{:else}<div class="{summary.resultClass} mt-1">{summary.text}</div>{/if}
      </div>
     {/each}
    {/if}

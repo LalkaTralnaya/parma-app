@@ -1,4 +1,5 @@
 <script lang="ts">
+  import AdventureImageShare from './AdventureImageShare.svelte';
   type Group = { id: string; title: string; sheet: string; names: string[]; notes?: string };
   type Marker = { name: string; group: string; x: number; y: number };
   const groups: Group[] = [
@@ -78,6 +79,7 @@
   {#if mapFailed}
     <div class="map-error" role="alert"><p>Не удалось загрузить карту. Попробуйте ещё раз.</p><button type="button" onclick={retryMap}>Загрузить карту повторно</button></div>
   {:else if !mapLoaded}<p class="map-note" role="status">Загружаем карту…</p>{/if}
+  {#if mapLoaded}<AdventureImageShare src="/heraldry/parma-map.jpg" caption="Карта Пармы" kind="map" previewLabel="Открыть карту крупнее" />{/if}
   <p class="map-note">На карте отмечены столицы и земли кланов. Стяги других городов и общин доступны в списках земель.</p>
   <div class="land-buttons" role="group" aria-label="Выбрать землю">
     {#each groups as group}<button class:active={activeGroup === group.id} aria-pressed={activeGroup === group.id} onclick={() => { activeGroup = group.id; selectedPlace = ''; }}>{group.title}</button>{/each}

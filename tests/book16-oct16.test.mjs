@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { KOSCHEI_MASKS, PERSONAL_STORY, WELL_BOOK_GUIDE } from '../src/lib/rules/book16-additions.ts';
+import { KOSCHEI_MASKS, PERSONAL_STORY } from '../src/lib/rules/book16-additions.ts';
 import { ADVENTURES, getAdventure } from '../src/lib/rules/adventures.ts';
 
 const text = value => JSON.stringify(value);
@@ -59,8 +59,7 @@ test('well revision keeps saved scene ids while fixing the ritual deadline and l
 
 test('full well guide preserves the farewell, Danila secret and optional continuation', () => {
  const well = getAdventure('proklyatie-starogo-kolodtsa');
- assert.equal(well.guide, WELL_BOOK_GUIDE);
- const guide = text(WELL_BOOK_GUIDE);
+ const guide = text(well.guide);
  assert.match(guide, /Тайна Данилы/);
  assert.match(guide, /Ты ещё можешь услышать его/);
  assert.match(guide, /не доказывает участия Чернобога/);

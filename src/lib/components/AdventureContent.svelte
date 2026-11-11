@@ -1,4 +1,6 @@
 <script lang="ts">
+	import AdventureImageShare from './AdventureImageShare.svelte';
+	import { normalizeRoomImage } from '$lib/engine/room-image';
 	import StoryPanel from '$lib/components/StoryPanel.svelte';
 	import { onMount, type Snippet } from 'svelte';
 	import type { Adventure } from '$lib/rules/adventures';
@@ -130,9 +132,9 @@
 	<section class="map-section" aria-labelledby="map-title">
 		<div class="map-heading">
 			<div><span class="map-eyebrow">Место действия</span><h2 id="map-title">{activeMap.title ?? (adventure.region || "Карта приключения")}</h2></div>
-			{#if activeMap.markers.some((marker) => marker.gmOnly)}
+			{#if activeMap.gmOnly || activeMap.markers.some((marker) => marker.gmOnly)}
 				<button type="button" class="map-toggle" aria-pressed={showSecretMarkers} onclick={() => showSecretMarkers = !showSecretMarkers}>
-					{showSecretMarkers ? 'Скрыть тайные места' : 'Показать точки сказителя'}
+					{activeMap.gmOnly ? (showSecretMarkers ? 'Скрыть карту Сказителя' : 'Открыть карту Сказителя') : (showSecretMarkers ? 'Скрыть тайные места' : 'Показать точки сказителя')}
 				</button>
 			{/if}
 		</div>
@@ -142,6 +144,7 @@
         <button type="button" aria-pressed={mapView === 'local'} onclick={() => mapView = 'local'}>Кривцы и топи</button>
       </div>
     {/if}
+		{#if !activeMap.gmOnly || showSecretMarkers}
 		<figure>
 			<div class="map-canvas">
 				<img src={activeMap.src} alt={activeMap.alt} width="1672" height="941" />
@@ -153,11 +156,23 @@
 					{/each}
 				{/if}
 			</div>
-			<figcaption>{activeMap.caption} <a href={activeMap.src} target="_blank" rel="noreferrer" download={activeMap.src.startsWith('data:') ? 'adventure-map.png' : undefined}>{activeMap.src.startsWith('data:') ? 'Скачать карту' : 'Открыть карту отдельно'}</a></figcaption>
+			<figcaption>
+				{activeMap.caption}
+				{#if activeMap.src.startsWith("data:")}
+					<a href={activeMap.src} download="adventure-map.png">Скачать карту</a>
+				{:else if normalizeRoomImage({ url: activeMap.src })}
+					{#key activeMap.src}
+						<AdventureImageShare src={activeMap.src} caption={activeMap.title || "Карта — " + adventure.title} kind="map" previewLabel="Открыть карту крупнее" />
+					{/key}
+				{:else}
+					<a href={activeMap.src} target="_blank" rel="noreferrer">Открыть карту отдельно</a>
+				{/if}
+			</figcaption>
 		</figure>
 		<ol class="map-key">
 			{#each visibleMarkers as marker (marker.id)}<li><strong>{marker.label}</strong><span>{marker.note}</span></li>{/each}
 		</ol>
+		{/if}
 	</section>
 
 	<div class="adventure-layout">
@@ -192,9 +207,13 @@
 							{#each adventure.npcs as npc}
 								<div>
 									{#if npc.portrait?.startsWith('/adventures/')}
-										<a class="npc-portrait" href={npc.portrait} target="_blank" rel="noreferrer" aria-label={`Открыть портрет: ${npc.name}`}>
-											<img src={npc.portrait} alt={`Портрет: ${npc.name}`} loading="lazy" decoding="async" />
-										</a>
+										<AdventureImageShare src={npc.portrait} caption={"Портрет: " + npc.name}>
+											{#snippet preview(open)}
+												<button class="npc-portrait" type="button" onclick={open} aria-label={"Открыть портрет: " + npc.name}>
+													<img src={npc.portrait} alt={"Портрет: " + npc.name} loading="lazy" decoding="async" />
+												</button>
+											{/snippet}
+										</AdventureImageShare>
 									{/if}
 									<h3>{npc.name}</h3>
 									<p class="npc-role">{npc.role}</p>
@@ -332,7 +351,7 @@
 	.location-use { color: #5b574d; }
 	.npc-grid > div { border: 1px solid #e1e3d6; border-radius: 8px; padding: 14px; }
 	.npc-grid h3 { margin-top: 0; }
-	.npc-portrait { display: block; margin-bottom: 12px; border-radius: 6px; overflow: hidden; }
+	.npc-portrait { display: block; width:100%; cursor:zoom-in; border-radius: 6px; overflow: hidden; }
 	.npc-portrait img { display: block; width: 100%; aspect-ratio: 2 / 3; object-fit: cover; }
 	.npc-portrait:focus-visible { outline: 2px solid #765d37; outline-offset: 3px; }
 	.npc-role { color: #5f6c60; margin: 0; }
