@@ -1,5 +1,6 @@
 <script lang="ts">
 	import AdventureImageShare from './AdventureImageShare.svelte';
+	import AdventureNpcCard from './AdventureNpcCard.svelte';
 	import { normalizeRoomImage } from '$lib/engine/room-image';
 	import StoryPanel from '$lib/components/StoryPanel.svelte';
 	import { onMount, type Snippet } from 'svelte';
@@ -205,21 +206,7 @@
 						<h2 id="npcs-title">Действующие лица</h2>
 						<div class="npc-grid">
 							{#each adventure.npcs as npc}
-								<div>
-									{#if npc.portrait?.startsWith('/adventures/')}
-										<AdventureImageShare src={npc.portrait} caption={"Портрет: " + npc.name}>
-											{#snippet preview(open)}
-												<button class="npc-portrait" type="button" onclick={open} aria-label={"Открыть портрет: " + npc.name}>
-													<img src={npc.portrait} alt={"Портрет: " + npc.name} loading="lazy" decoding="async" />
-												</button>
-											{/snippet}
-										</AdventureImageShare>
-									{/if}
-									<h3>{npc.name}</h3>
-									<p class="npc-role">{npc.role}</p>
-									<p>{npc.motive}</p>
-									<p class="npc-voice">{npc.voice}</p>
-								</div>
+								<AdventureNpcCard {adventure} {npc} />
 							{/each}
 						</div>
 					</section>
@@ -349,13 +336,6 @@
 	.location-grid > div { border: 1px solid #e0d9c9; border-radius: 8px; padding: 14px; background: #faf8f0; }
 	.location-grid h3 { margin-top: 0; }
 	.location-use { color: #5b574d; }
-	.npc-grid > div { border: 1px solid #e1e3d6; border-radius: 8px; padding: 14px; }
-	.npc-grid h3 { margin-top: 0; }
-	.npc-portrait { display: block; width:100%; cursor:zoom-in; border-radius: 6px; overflow: hidden; }
-	.npc-portrait img { display: block; width: 100%; aspect-ratio: 2 / 3; object-fit: cover; }
-	.npc-portrait:focus-visible { outline: 2px solid #765d37; outline-offset: 3px; }
-	.npc-role { color: #5f6c60; margin: 0; }
-	.npc-voice { color: #493c35; font-style: italic; }
 	.secret p, .handout { white-space: pre-line; }
 	.handout { border-left: 3px solid #897156; padding: 12px 16px; background: #f3ede0; font-family: Georgia, serif; }
 	.scenes > h2 { margin: 16px 0 0; }
