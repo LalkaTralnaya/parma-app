@@ -100,7 +100,8 @@ test('guest character transfer is batched and preserves local originals on failu
  await name.fill('Мира Сиверская');
  await name.press('Enter');
  await expect.poll(() => cloud.get(mira.character_id)?.payload?.name).toBe('Мира Сиверская');
- expect(requests).toEqual(['GET auth/user', 'POST user_characters']);
+ // Auth can validate the session while the sheet is mounting. Count character requests for this edit.
+ expect(requests.filter(request => request.endsWith(' user_characters'))).toEqual(['POST user_characters']);
 
  const lada = [...cloud.values()].find(row => row.payload?.name === 'Лада')!;
  cloud.set(lada.character_id, { ...lada, is_deleted: true, payload: null, client_updated_at: lada.client_updated_at + 1 });
