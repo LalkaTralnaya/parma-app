@@ -1,6 +1,6 @@
 import { applyCheckDifficulty } from './checkDifficulty';
 import { BASE_CHARACTERISTIC_VALUE, MAX_CHECK_TARGET } from '../rules/characteristics';
-import { SKILLS } from '../rules/skills';
+import { SKILLS, type Skill } from '../rules/skills';
 import { RACES } from '../rules/races';
 import { RESOURCES } from '../rules/resources';
 import type { Character } from '$lib/type';
@@ -52,12 +52,13 @@ export function getSkillTotal(
 	char: Character,
 	skillId: string,
 	condMods?: CondModsInput,
-	checkContext?: string
+	checkContext?: string,
+	characteristic?: Skill['parent']
 ): number {
 	const skill = SKILLS.find((s) => s.id === skillId);
 	if (!skill) return 0;
 
-	const parentValue = getCharacteristicValue(char, skill.parent, condMods);
+	const parentValue = getCharacteristicValue(char, characteristic ?? skill.parent, condMods);
 	let total = getModifier(parentValue);
 	total += char.skillPoints[skillId] ?? 0;
 	const background = BACKGROUNDS.find(b => b.id === char.backgroundId);

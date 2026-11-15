@@ -114,3 +114,32 @@ test('a stalled guest-session request times out and can be retried',async()=>{
  assert.equal(chat.state.error,'');
  chat.feed.dispose();
 });
+
+
+test('a room resolved during navigation can be reused only for the same invitation', async () => {
+ let lookups = 0;
+ const chat = setup({findRoom: async code => { lookups++; return room(code); }});
+ await chat.feed.setCode('A', room('a'));
+ assert.equal(lookups, 0);
+ assert.equal(chat.state.room.id, 'a');
+ await chat.feed.setCode('B', room('a'));
+ assert.equal(lookups, 1);
+ assert.equal(chat.state.room.id, 'B');
+ chat.feed.dispose();
+});
+
+test('switching rooms aborts the superseded lookup', async () => {
+ let oldLookup;
+ const chat = setup({findRoom: (code, signal) => {
+  if (code !== 'old') return Promise.resolve(room(code));
+  oldLookup = signal;
+  return new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason), {once:true}));
+ }});
+ const pending = chat.feed.setCode('old');
+ await chat.feed.setCode('new');
+ await pending;
+ assert.equal(oldLookup.aborted, true);
+ assert.equal(chat.state.room.id, 'new');
+ assert.equal(chat.state.error, '');
+ chat.feed.dispose();
+});

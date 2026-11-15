@@ -142,9 +142,9 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		getSpellAttackTarget,
 		getSpellCost,
 		getSpellCastingAvailability,
-		getSpellSkillLevel,
+		getSpellCastingCharacteristic,
+		usesGraceForSpellcasting,
 		getSpellsWithAccess,
-		getMaxSpellLevel,
 		isSpellKnown,
 		classifySpellRoll,
 		rollSpellEffect,
@@ -212,6 +212,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	let decayDelta = $state(1);
 	let lastDecayAction = $state('');
 	let decayLevel = $derived(char ? getDecayStage(char.decay?.points ?? 0).level : 0);
+	let graceCasting = $derived(char ? usesGraceForSpellcasting(char) : false);
 	let hideReligion = $derived(decayLevel >= 4);
 	let visibleCharacteristics = $derived(CHARACTERISTICS.filter((entry) => !hideReligion || entry.id !== 'religion'));
 	let visibleResources = $derived(RESOURCES.filter((entry) => !hideReligion || entry.id !== 'grace'));
@@ -299,6 +300,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	onMount(async () => {
 		rollMode = localStorage.getItem('parma_roll_mode') === 'offline' ? 'offline' : 'online';
 		const found = await getCharacter(page.params.id ?? '');
+		if (diceLifetime.signal.aborted) return;
 		if (!found) {
 			goto('/');
 			return;
@@ -308,6 +310,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		activeRoomCode = getCurrentRoom();
 		relationshipWeb = activeRoomCode ? [] : readLocalRelationshipWeb();
 		if(!activeRoomCode)try{relationshipWeb=(await loadRelationshipTemplate(createRelationshipTemplate(relationshipWeb))).links;}catch{/* Keep the previous local view while storage is unavailable. */}
+		if (diceLifetime.signal.aborted) return;
 		const updateLocalRelationshipWeb = (event: Event) => {
 			if (activeRoomCode) return;
 			const detail = event instanceof CustomEvent ? event.detail : readLocalRelationshipWeb();
@@ -329,12 +332,13 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		// Начальное состояние боя из localStorage
 		combat = getCombat();
   if (combat) await handleRoomCombatUpdate(combat, false);
+		if (diceLifetime.signal.aborted) return;
 		unsubLocalCombat = subscribeCombat((state) => { if (state) void handleRoomCombatUpdate(state, false); else combat = null; });
 
 		// Если мы в комнате — синхронизация боя через Supabase
 		if (activeRoomCode) {
 			try {
-				const room = await findRoomByCode(activeRoomCode);
+				const room = await findRoomByCode(activeRoomCode, diceLifetime.signal);
 				if (room && !diceLifetime.signal.aborted) {
 					combatRoomId = room.id;
 					unsubscribeCombatActions = subscribeRoomCombatActions(room.id, action => {
@@ -372,12 +376,15 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 					};
 					void refreshRelationships();
 					// Первичная загрузка состояния
-					const remote = await getRoomCombatState(room.id);
+					const remote = await getRoomCombatState(room.id, diceLifetime.signal);
+					if (diceLifetime.signal.aborted) return;
 					if (remote) {
 
 						await handleRoomCombatUpdate(remote);
 					}
+					if (diceLifetime.signal.aborted) return;
 					activeRequest = await getActiveRoomRequest(room.id);
+					if (diceLifetime.signal.aborted) return;
 					unsubRequests = subscribeToRoomRequests(room.id, (req) => {
 						activeRequest = req;
 					});
@@ -385,6 +392,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 					unsubRoomCombat = subscribeToRoomCombat(room.id, handleRoomCombatUpdate);
 				}
 			} catch (e) {
+				if (diceLifetime.signal.aborted) return;
 				console.warn('Не удалось подключиться к комнате:', e);
 			}
 		}
@@ -1089,19 +1097,19 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		}
 		const graceAllowed = canUseGraceWithDecay(char.decay?.points ?? 0);
 		if (!graceAllowed && spell.costGrace !== undefined) return;
-		const useGrace = graceAllowed && char.useGraceForSpells;
+		const useGrace = usesGraceForSpellcasting(char);
 		const costInfo = getSpellCost(char, spell, useTwoHands);
 		const availability = getSpellCastingAvailability(char, spell, useTwoHands, useGrace);
 		if (!availability.affordable) { spellNotice = availability.reason; return; }
 		spellNotice = '';
 
-		const target = getSpellAttackTarget(char, school, condMods.attacks ?? 0, spell);
+		const target = getSpellAttackTarget(char, school, condMods.attacks ?? 0, spell, useGrace);
 		const roll = await requestDie(100, `${spell.name}: сотворение`, target);
 		if (roll === null) return;
 		const outcome = classifySpellRoll(roll, target);
 		let combination: { firstSpell: string; roll: number; target: number; success: boolean } | undefined;
 		if (firstHeldSpell) {
-			const combinationTarget = getSpellCastTarget(char, school);
+			const combinationTarget = getSpellCastTarget(char, school, availability.resource === 'grace');
 			const combinationRoll = await requestDie(100, `${spell.name}: совмещение с ${firstHeldSpell.name}`, combinationTarget);
 			if (combinationRoll === null) return;
 			combination = { firstSpell: firstHeldSpell.name, roll: combinationRoll, target: combinationTarget, success: combinationRoll <= combinationTarget };
@@ -1142,7 +1150,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		const decayGained = spell.decayCost ?? (spell.usesNezhiva ? 1 : 0);
 		if (decayGained) char = adjustDecayPoints(char, decayGained);
 
-		const resourceId = spell.costResource==='hp' ? 'hp' : useGrace ? 'grace' : costInfo.resource;
+		const resourceId = availability.resource;
 		const resourceMax = getResourceMax(char, resourceId);
 		const current = getCurrentResource(char, resourceId, resourceMax);
 
@@ -1177,7 +1185,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 			target,
 			outcome,
 			cost: actuallySpent,
-			resource: useGrace ? 'grace' : costInfo.resource,
+			resource: resourceId,
 			effect: effectResult,
 			damageApplied,
 			decayGained,
@@ -2789,12 +2797,12 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 				<h2 id="spells" class="text-xl font-semibold">Заклинания</h2>
 				{#if !hideReligion}
 				<label class="spell-resource-switch" class:unavailable={!canUseGraceWithDecay(char.decay?.points ?? 0)}>
-					<span class:active={!(canUseGraceWithDecay(char.decay?.points ?? 0) && char.useGraceForSpells)}>Жива</span>
+					<span class:active={!graceCasting}>Жива</span>
 					<input
 						type="checkbox"
 						role="switch"
 						aria-label="Творить Благодатью"
-						checked={canUseGraceWithDecay(char.decay?.points ?? 0) && char.useGraceForSpells}
+						checked={graceCasting}
 						disabled={!canUseGraceWithDecay(char.decay?.points ?? 0)}
 						onchange={async () => {
 							if (!canUseGraceWithDecay(char!.decay?.points ?? 0)) return;
@@ -2802,7 +2810,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 							char = { ...char! };
 						}} />
 					<span class="resource-track" aria-hidden="true"><span class="resource-thumb"></span></span>
-					<span class:active={canUseGraceWithDecay(char.decay?.points ?? 0) && char.useGraceForSpells}>Благодать</span>
+					<span class:active={graceCasting}>Благодать</span>
 				</label>
 				{/if}
 			</div>
@@ -2852,10 +2860,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 			{#if holdNotice}<p class="text-sm mb-3" role="status">{holdNotice}</p>{/if}
 			<div class="space-y-3">
 				{#each visibleSpellSchools as [schoolId, _spells]}
-					{@const schoolLevel = getSpellSkillLevel(char, schoolId)}
-					{@const maxSpellLevel = getMaxSpellLevel(char, schoolId)}
 					{@const schoolSkill = SKILLS.find((s) => s.id === schoolId)}
-					{@const castTarget = getSpellCastTarget(char, schoolId)}
 					{@const spellList = getSpellsWithAccess(char, schoolId)}
 					{@const stability = SCHOOL_STABILITY_THRESHOLDS[schoolId] ?? 36}
 					{@const stable = isSchoolStable(char, schoolId)}
@@ -2886,7 +2891,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 										{@const selectedSchool = spellSchoolChoices[spell.id] ?? spell.school}
 										{@const selectedSpell = {...spell,school:selectedSchool}}
 										{@const useTwo = twoHands[spell.id] ?? false}
-										{@const casting = getSpellCastingAvailability(char, selectedSpell, useTwo || spell.costOneHand === undefined, char.useGraceForSpells && canUseGraceWithDecay(char.decay?.points ?? 0))}
+										{@const casting = getSpellCastingAvailability(char, selectedSpell, useTwo || spell.costOneHand === undefined, graceCasting)}
 										{@const castBlockReason = spell.costGrace !== undefined && !canUseGraceWithDecay(char.decay?.points ?? 0) ? 'Благодать недоступна из-за Тлена' : casting.reason}
 						{@const holdBlockReason = heldSpell ? 'Сначала прекратите текущее удержание.' : ''}
 										{@const costOneHand = getSpellCost(char, selectedSpell, false)}
@@ -2912,7 +2917,11 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 												{#if canHoldSpell(spell)}<span class="text-xs text-gray-500">удержание · {spell.holdCost} живы/{spell.holdInterval==='hour'?'час':'раунд'}</span>{/if}
 												{#if spell.application === 'ritual'}<span class="text-xs text-gray-500">ритуал</span>{/if}
 											</div>
-											<SpellInfo spell={selectedSpell} oneHand={costOneHand} twoHands={costTwoHands} holdable={canHoldSpell(spell)} useGrace={char.useGraceForSpells && canUseGraceWithDecay(char.decay?.points ?? 0)} />
+											{#if known}
+												{@const characteristic = getSpellCastingCharacteristic(selectedSchool, casting.resource === 'grace')}
+												<p class="text-xs text-gray-600">Проверка сотворения · {CHARACTERISTICS.find(entry => entry.id === characteristic)?.name} · к100 ≤ {getSpellAttackTarget(char, selectedSchool, condMods.attacks ?? 0, selectedSpell, graceCasting)}</p>
+											{/if}
+											<SpellInfo spell={selectedSpell} oneHand={costOneHand} twoHands={costTwoHands} holdable={canHoldSpell(spell)} useGrace={graceCasting} />
           {#if spell.alternativeSchools}<label class="block text-sm mb-2">Школа сотворения<select class="border rounded ml-2 p-1" value={selectedSchool} onchange={e=>spellSchoolChoices[spell.id]=e.currentTarget.value}>{#each spell.alternativeSchools as school}<option value={school}>{SKILLS.find(s=>s.id===school)?.name??school}</option>{/each}</select></label>{/if}
 {#if available}
 												<div class="flex gap-3 items-center flex-wrap">

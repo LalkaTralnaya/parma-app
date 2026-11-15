@@ -1,5 +1,6 @@
 import { getTreeRankBonus } from './combat';
 import { getCheckDifficulty, applyCheckDifficulty } from './checkDifficulty';
+import { canUseGraceWithDecay } from './decay';
 import { SKILLS } from '../rules/skills';
 import {
 	SPELLS,
@@ -19,13 +20,30 @@ export const SPELL_LEVEL_THRESHOLDS: Record<number, number> = {
 	4: 84
 };
 
+export function usesGraceForSpellcasting(char: Character): boolean {
+	return Boolean(char.useGraceForSpells) && canUseGraceWithDecay(char.decay?.points ?? 0);
+}
+
+export function getSpellCastingCharacteristic(school: string, useGrace: boolean) {
+	const parent = SKILLS.find(skill => skill.id === school)?.parent;
+	return parent && useGrace ? 'religion' : parent;
+}
+
+function getSpellCastingResource(spell: Spell, useGrace: boolean): 'hp' | 'grace' | 'mana' {
+	if (spell.costResource === 'hp') return 'hp';
+	return useGrace || spell.costGrace !== undefined ? 'grace' : 'mana';
+}
+
+function getSpellCheckBase(char: Character, school: string, useGrace: boolean): number | undefined {
+	const characteristic = getSpellCastingCharacteristic(school, useGrace);
+	if (!characteristic) return undefined;
+	return getCharacteristicValue(char, characteristic) + getSkillTotal(char, school, undefined, undefined, characteristic);
+}
+
 /** Целевое число проверки сотворения: характеристика + значение навыка школы */
-export function getSpellCastTarget(char: Character, school: string): number {
-	const skill = SKILLS.find((s) => s.id === school);
-	if (!skill) return 0;
-	const charValue = getCharacteristicValue(char, skill.parent);
-	const skillTotal = getSkillTotal(char, school);
-	return applyCheckDifficulty(charValue + skillTotal, char);
+export function getSpellCastTarget(char: Character, school: string, useGrace = usesGraceForSpellcasting(char)): number {
+	const base = getSpellCheckBase(char, school, useGrace);
+	return base === undefined ? 0 : applyCheckDifficulty(base, char);
 }
 
 /** Цель магической атаки: значение характеристики + полный итог навыка школы + бонусы. Броня цели не влияет на сотворение. */
@@ -33,18 +51,18 @@ export function getSpellAttackTarget(
 	char: Character,
 	school: string,
 	attackBonus = 0,
-	spell?: Spell
+	spell?: Spell,
+	useGrace = usesGraceForSpellcasting(char)
 ): number {
-	const skill = SKILLS.find((s) => s.id === school);
-	if (!skill) return 0;
-	const charValue = getCharacteristicValue(char, skill.parent);
+	const base = getSpellCheckBase(char, school, spell ? getSpellCastingResource(spell, useGrace) === 'grace' : useGrace);
+	if (base === undefined) return 0;
 	let abilityBonus = spell?.usesNezhiva ? getTreeRankBonus(char,'NV','base',[5,10,15]) : 0;
 	if (spell?.school === 'illusion') {
 		if (spell.id === 'calm' && isAbilityLearned(char, 'IL.calm')) abilityBonus += 5;
 		if (spell.id === 'rage' && isAbilityLearned(char, 'IL.rage')) abilityBonus += 5;
 		if (['minor_illusion', 'invisibility'].includes(spell.id) && isAbilityLearned(char, 'IL.people')) abilityBonus += 5;
 	}
-	return Math.max(0, charValue + getSkillTotal(char, school) + attackBonus + abilityBonus + getCheckDifficulty(char));
+	return Math.max(0, base + attackBonus + abilityBonus + getCheckDifficulty(char));
 }
 
 /** Уровень владения школой у персонажа (0 — не умеет, 1+ — умеет) */
@@ -262,7 +280,7 @@ export function rollSpellEffect(
 /** Проверка ресурса до броска: критический успех не позволяет начать бесплатное сотворение без ресурсов. */
 export function getSpellCastingAvailability(char: Character, spell: Spell, useTwoHands: boolean, useGrace: boolean) {
 	const cost = getSpellCost(char, spell, useTwoHands).reduced;
-	const resource = spell.costResource==='hp' ? 'hp' : useGrace || spell.costGrace !== undefined ? 'grace' : 'mana';
+	const resource = getSpellCastingResource(spell, useGrace);
 	const current = char.currentResources?.[resource] ?? getResourceMax(char, resource);
 	const versionReason=char.currentResources?.hp===0 && (char.tempHp??0)<=0 ? 'Нельзя сотворять без Здравия и возможности действовать.' : getSpellVersionReason(char,spell,useTwoHands);
 	const affordable = current >= cost && !versionReason;

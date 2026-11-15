@@ -3,11 +3,11 @@
  import RoomImage from '$lib/components/RoomImage.svelte';
 	import { exportRoomArchive } from '$lib/engine/relationship-store';
 	import { downloadJson } from '$lib/utils/export';
-	import { onMount, onDestroy } from 'svelte';
+	import { mergeRoomRolls } from '$lib/engine/room-roll-feed';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import {
-	findRoomByCode, joinRoom, getRoomParticipants, getRecentRolls,
+	findRoomByCode, takeRoomNavigation, joinRoom, getRoomParticipants, getRecentRolls,
 	leaveRoom, updateCharacterSnapshot, subscribeToRoom,
 		getRoomCombatState, subscribeToRoomCombat, updateRoomTavernSettings,
 	setCurrentRoom, clearCurrentRoom, deleteRoom, listMyMasterRooms,
@@ -30,8 +30,6 @@
 	let myCharacters = $state<Character[]>([]);
 	let showCharPicker = $state(false);
 	let selectedCharacterId = $state<string>('');
-	let unsubscribe: (() => void) | null = null;
-	let unsubscribeTavern: (() => void) | null = null;
 	let tavernSeason = $state<ParmaSeason>(DEFAULT_TAVERN_SETTINGS.season);
 	let tavernSeasonStatus = $state('');
 	let savingTavernSeason = $state(false);
@@ -156,70 +154,90 @@ async function declineGift(p: RoomParticipant) {
 	}
 	
 
-	onMount(async () => {
+	$effect(() => {
 		const code = page.params.code;
-		if (!code) {
-			goto('/room');
-			return;
-		}
+		const controller = new AbortController();
+		const signal = controller.signal;
+		let unsubscribe: (() => void) | undefined;
+		let unsubscribeTavern: (() => void) | undefined;
 
-		try {
-			tavernSeason = readLocalTavernSettings().season;
-			authUserId = await ensureRoomSession();
-			const r = await findRoomByCode(code);
-			if (!r) {
-				error = 'Комната не найдена';
-				loading = false;
+		async function connect() {
+			if (!code) {
+				void goto('/room');
 				return;
 			}
-			room = r;
-			setCurrentRoom(r.code);
+			loading = true;
+			error = '';
+			room = null;
+			rolls = [];
+			selectedCharacterId = '';
+			showCharPicker = false;
 			try {
-				const roomCombat = await getRoomCombatState(r.id);
-				applyTavernSettings(roomCombat?.tavernSettings);
-			} catch { /* Сезон останется локальным, если сервер временно недоступен. */ }
-			unsubscribeTavern = subscribeToRoomCombat(r.id, (state) => {
-				const settings = normalizeTavernSettings(state?.tavernSettings);
-				if (settings) {
-					applyTavernSettings(settings);
-					writeLocalTavernSettings(settings);
+				tavernSeason = readLocalTavernSettings().season;
+				const authId = await ensureRoomSession();
+				signal.throwIfAborted();
+				const resolved = takeRoomNavigation(code, authId) ?? await findRoomByCode(code, signal);
+				signal.throwIfAborted();
+				if (!resolved) throw new Error('Комната не найдена');
+				const roomId = resolved.id;
+
+				const characters = await listCharacters();
+				signal.throwIfAborted();
+				const displayName = localStorage.getItem('parma_player_name') || 'Гость';
+				await joinRoom(resolved.id, displayName, null, resolved.code, signal);
+				signal.throwIfAborted();
+
+				authUserId = authId;
+				room = resolved;
+				myCharacters = characters;
+				let receivedTavernSettings = false;
+				unsubscribeTavern = subscribeToRoomCombat(resolved.id, state => {
+					const settings = normalizeTavernSettings(state?.tavernSettings);
+					if (!signal.aborted && settings) {
+						receivedTavernSettings = true;
+						applyTavernSettings(settings);
+						writeLocalTavernSettings(settings);
+					}
+				});
+
+				async function refreshParticipants() {
+					try {
+						const result = await getRoomParticipants(roomId, signal);
+						if (!signal.aborted) participants = result;
+					} catch (cause) {
+						if (!signal.aborted) console.warn('Не удалось обновить участников комнаты:', cause);
+					}
 				}
-			});
+				unsubscribe = subscribeToRoom(resolved.id, () => void refreshParticipants(), roll => {
+					if (!signal.aborted) rolls = mergeRoomRolls([roll, ...rolls], 30);
+				});
 
-			// Загружаем список локальных персонажей
-			myCharacters = await listCharacters();
-
-			// Присоединяемся (если уже в комнате — обновляем)
-			const displayName = localStorage.getItem('parma_player_name') || 'Гость';
-			const char = selectedCharacterId ? (await getCharacter(selectedCharacterId)) ?? null : null;
-		await joinRoom(r.id, displayName, char, r.code);
-
-			// Загружаем всех участников и броски
-			participants = await getRoomParticipants(r.id);
-			rolls = await getRecentRolls(r.id);
-
-			// Подписываемся на real-time
-			unsubscribe = subscribeToRoom(
-				r.id,
-				async () => {
-					participants = await getRoomParticipants(r.id);
-				},
-				(roll) => {
-					rolls = [roll, ...rolls].slice(0, 30);
-				}
-			);
-
-			loading = false;
-		} catch (e) {
-			error = (e as Error).message;
-			loading = false;
+				setCurrentRoom(resolved.code, resolved);
+				const [roomCombat, currentParticipants, history] = await Promise.all([
+					getRoomCombatState(resolved.id, signal).catch(() => null),
+					getRoomParticipants(roomId, signal),
+					getRecentRolls(resolved.id)
+				]);
+				signal.throwIfAborted();
+				if (!receivedTavernSettings) applyTavernSettings(roomCombat?.tavernSettings);
+				participants = currentParticipants;
+				rolls = mergeRoomRolls([...rolls, ...history], 30);
+				loading = false;
+			} catch (cause) {
+				if (signal.aborted) return;
+				error = cause instanceof Error ? cause.message : 'Не удалось открыть комнату.';
+				loading = false;
+			}
 		}
+
+		void connect();
+		return () => {
+			controller.abort();
+			unsubscribe?.();
+			unsubscribeTavern?.();
+		};
 	});
 
-	onDestroy(() => {
-		unsubscribe?.();
-		unsubscribeTavern?.();
-	});
 
 	async function pickCharacter(charId: string) {
 	selectedCharacterId = charId;

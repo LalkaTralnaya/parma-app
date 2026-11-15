@@ -204,3 +204,21 @@ test('book attacks keep special bonuses, separate damage stats and armor-free ch
   assert.equal(olderRusalka.scaledHp - olderRusalka.base.hp - olderRusalka.hpRolls[0], 5);
   assert.equal(olderRusalka.scaledAttacks[0].damageModifier, 7);
 });
+
+test('grace uses Religion for the spell check and its school modifier', () => {
+  const mage = {
+    ...char,
+    characteristics: { intelligence: { levelUpBonus: 12 }, religion: { levelUpBonus: 24 } },
+    skillPoints: { destruction: 8 },
+    checkDifficulty: -3
+  };
+  const priest = { ...mage, useGraceForSpells: true };
+
+  assert.equal(getSpellCastTarget(mage, 'destruction'), 61); // 48 + 8 + 8 − 3
+  assert.equal(getSpellCastTarget(priest, 'destruction'), 75); // 60 + 10 + 8 − 3
+  assert.equal(getSpellAttackTarget(priest, 'destruction', -5), 70);
+  assert.equal(getSpellCastTarget({ ...priest, decay: { points: 10 } }, 'destruction'), 61);
+  assert.equal(getSpellCastTarget(priest, 'unknown'), 0);
+  assert.equal(getSpellAttackTarget(mage, 'destruction', 0, { costGrace: 2 }), 75);
+  assert.equal(getSpellAttackTarget(priest, 'destruction', 0, { costResource: 'hp' }), 61);
+});

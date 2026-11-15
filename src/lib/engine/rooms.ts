@@ -17,23 +17,39 @@ function isRoomMigrationMissing(message: string): boolean {
 	return /could not find the function public\.(create_secure_room|lookup_room_by_invite|join_secure_room)|PGRST202/i.test(message);
 }
 
-async function roomRequest<T>(query: (signal: AbortSignal) => PromiseLike<T>): Promise<T> {
-	await ensureRoomSession();
+async function roomRequest<T>(
+	query: (signal: AbortSignal) => PromiseLike<T>,
+	lifetime?: AbortSignal
+): Promise<T> {
 	const controller = new AbortController();
+	const signal = lifetime ? AbortSignal.any([lifetime, controller.signal]) : controller.signal;
 	let timeoutId: ReturnType<typeof setTimeout> | undefined;
-	const timeout = new Promise<never>((_, reject) => {
+	let cancel: (() => void) | undefined;
+	const stopped = new Promise<never>((_, reject) => {
+		cancel = () => reject(signal.reason);
+		if (signal.aborted) {
+			cancel();
+			return;
+		}
+		signal.addEventListener('abort', cancel, { once: true });
 		timeoutId = setTimeout(() => {
-			reject(new Error(`Нет ответа от сервера комнат за ${ROOM_REQUEST_TIMEOUT_MS / 1000} секунд. Проверьте мобильную сеть, Wi-Fi или VPN и повторите попытку.`));
-			controller.abort();
+			controller.abort(new Error(`Нет ответа от сервера комнат за ${ROOM_REQUEST_TIMEOUT_MS / 1000} секунд. Проверьте мобильную сеть, Wi-Fi или VPN и повторите попытку.`));
 		}, ROOM_REQUEST_TIMEOUT_MS);
 	});
 	try {
-		return await Promise.race([Promise.resolve(query(controller.signal)), timeout]);
+		const request = async () => {
+			signal.throwIfAborted();
+			await ensureRoomSession();
+			signal.throwIfAborted();
+			return query(signal);
+		};
+		return await Promise.race([request(), stopped]);
 	} catch (error) {
 		if (isNetworkError((error as Error).message ?? '')) throw new Error(ROOM_CONNECTION_ERROR);
 		throw error;
 	} finally {
 		clearTimeout(timeoutId);
+		if (cancel) signal.removeEventListener('abort', cancel);
 	}
 }
 
@@ -108,11 +124,10 @@ export async function createRoom(name: string): Promise<Room> {
 }
 
 /** Найти комнату по коду */
-export async function findRoomByCode(code: string): Promise<Room | null> {
-	await ensureRoomSession();
+export async function findRoomByCode(code: string, lifetime?: AbortSignal): Promise<Room | null> {
 	const { data, error } = await roomRequest((signal) => roomSupabase
 		.rpc('lookup_room_by_invite', { p_code: code.trim().toLowerCase() })
-		.abortSignal(signal));
+		.abortSignal(signal), lifetime);
 
 	if (error) {
 		if (isRoomMigrationMissing(error.message)) {
@@ -128,15 +143,15 @@ export async function joinRoom(
 	roomId: string,
 	displayName: string,
 	characterSnapshot: Character | null,
-	inviteCode: string
+	inviteCode: string,
+	lifetime?: AbortSignal
 ): Promise<RoomParticipant> {
-	await ensureRoomSession();
 	const { data, error } = await roomRequest((signal) => roomSupabase.rpc('join_secure_room', {
 		p_room_id: roomId,
 		p_code: inviteCode.trim().toLowerCase(),
 		p_display_name: displayName,
 		p_character_snapshot: characterSnapshot
-	}).abortSignal(signal));
+	}).abortSignal(signal), lifetime);
 
 	if (error) {
 		if (isRoomMigrationMissing(error.message)) {
@@ -148,14 +163,13 @@ export async function joinRoom(
 }
 
 /** Список участников комнаты */
-export async function getRoomParticipants(roomId: string): Promise<RoomParticipant[]> {
-	await ensureRoomSession();
+export async function getRoomParticipants(roomId: string, lifetime?: AbortSignal): Promise<RoomParticipant[]> {
 	const { data, error } = await roomRequest((signal) => roomSupabase
 		.from('room_participants')
 		.select('*')
 		.eq('room_id', roomId)
 		.order('joined_at', { ascending: true })
-		.abortSignal(signal));
+		.abortSignal(signal), lifetime);
 
 	if (error) throw new Error(isNetworkError(error.message) ? ROOM_CONNECTION_ERROR : `Ошибка загрузки участников: ${error.message}`);
 	return (data ?? []) as RoomParticipant[];
@@ -218,8 +232,21 @@ export async function rollRoomDice(roomId: string, sides: number[], label: strin
  return values;
 }
 
-/** Последние N бросков комнаты */
+const rollHistoryRequests = new Map<string, Promise<RoomRoll[]>>();
+
 export async function getRecentRolls(roomId: string, limit = 30): Promise<RoomRoll[]> {
+	const authId = await ensureRoomSession();
+	const key = `${authId}:${roomId}:${limit}`;
+	let request = rollHistoryRequests.get(key);
+	if (!request) {
+		request = fetchRecentRolls(roomId, limit).finally(() => rollHistoryRequests.delete(key));
+		rollHistoryRequests.set(key, request);
+	}
+	return request;
+}
+
+/** Последние N бросков комнаты */
+async function fetchRecentRolls(roomId: string, limit: number): Promise<RoomRoll[]> {
 	const { data, error } = await roomRequest((signal) => roomSupabase
 		.from('room_rolls')
 		.select('*')
@@ -243,64 +270,103 @@ export async function leaveRoom(roomId: string): Promise<void> {
 		.eq('auth_user_id', authId);
 }
 
-/** Подписка на изменения в комнате — участники + броски */
+type RoomListener = { onParticipantsChange: () => void; onRoll: (roll: RoomRoll) => void };
+type RoomChannel = { listeners: Set<RoomListener>; close: () => void };
+const roomChannels = new Map<string, RoomChannel>();
+
+/** One channel per room within this tab, kept alive while the page or chat needs it. */
 export function subscribeToRoom(
 	roomId: string,
 	onParticipantsChange: () => void,
 	onRoll: (roll: RoomRoll) => void
-) {
-	// Уникальный суффикс, чтобы Supabase не возвращал старый канал
-	const uniqueName = `room:${roomId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+): () => void {
+	let entry = roomChannels.get(roomId);
+	if (!entry) {
+		const listeners = new Set<RoomListener>();
+		const channel = roomSupabase.channel(`room:${roomId}:${crypto.randomUUID()}`)
+			.on('postgres_changes', {
+				event: '*', schema: 'public', table: 'room_participants', filter: `room_id=eq.${roomId}`
+			}, () => {
+				for (const listener of listeners) listener.onParticipantsChange();
+			})
+			.on('postgres_changes', {
+				event: 'INSERT', schema: 'public', table: 'room_rolls', filter: `room_id=eq.${roomId}`
+			}, ({ new: roll }) => {
+				for (const listener of listeners) listener.onRoll(roll as RoomRoll);
+			})
+			.subscribe();
 
-	const channel = roomSupabase
-		.channel(uniqueName)
-		.on(
-			'postgres_changes',
-			{
-				event: '*',
-				schema: 'public',
-				table: 'room_participants',
-				filter: `room_id=eq.${roomId}`
-			},
-			() => onParticipantsChange()
-		)
-		.on(
-			'postgres_changes',
-			{
-				event: 'INSERT',
-				schema: 'public',
-				table: 'room_rolls',
-				filter: `room_id=eq.${roomId}`
-			},
-			(payload) => {
-				console.log('[combat] пришло изменение!', payload.new);
-				const s = (payload.new as { state?: CombatState }).state ?? null;
-				onRoll(payload.new as RoomRoll);
-			}
-		)
-		.subscribe();
+		entry = { listeners, close: () => { void roomSupabase.removeChannel(channel); } };
+		roomChannels.set(roomId, entry);
+	}
 
+	const active = entry;
+	const listener = { onParticipantsChange, onRoll };
+	active.listeners.add(listener);
 	return () => {
-		roomSupabase.removeChannel(channel);
+		if (!active.listeners.delete(listener) || active.listeners.size) return;
+		roomChannels.delete(roomId);
+		active.close();
 	};
 }
-/** Запомнить, что игрок сейчас в комнате (для автопубликации бросков) */
-export function setCurrentRoom(code: string): void {
+
+const currentRoomKey = 'parma_current_room_code';
+const roomChangedEvent = 'parma-current-room-change';
+
+export function setCurrentRoom(code: string, resolvedRoom?: Room): void {
 	if (typeof window === 'undefined') return;
-	localStorage.setItem('parma_current_room_code', code.toUpperCase());
+	const storedCode = code.toUpperCase();
+	localStorage.setItem(currentRoomKey, storedCode);
+	window.dispatchEvent(new CustomEvent(roomChangedEvent, { detail: { code: storedCode, room: resolvedRoom } }));
 }
 
-/** Получить код активной комнаты (или null) */
 export function getCurrentRoom(): string | null {
 	if (typeof window === 'undefined') return null;
-	return localStorage.getItem('parma_current_room_code');
+	return localStorage.getItem(currentRoomKey);
 }
 
-/** Очистить активную комнату */
 export function clearCurrentRoom(): void {
 	if (typeof window === 'undefined') return;
-	localStorage.removeItem('parma_current_room_code');
+	localStorage.removeItem(currentRoomKey);
+	window.dispatchEvent(new CustomEvent(roomChangedEvent, { detail: { code: null } }));
 }
+
+export function subscribeCurrentRoom(
+	onChange: (code: string | null, room?: Room) => void,
+	onStorageError: () => void
+): () => void {
+	function sameTab(event: Event) {
+		const change = (event as CustomEvent<{ code: string | null; room?: Room }>).detail;
+		onChange(change.code, change.room);
+	}
+	function otherTab(event: StorageEvent) {
+		if (event.key !== currentRoomKey && event.key !== null) return;
+		try {
+			if (event.storageArea === localStorage) onChange(getCurrentRoom());
+		} catch { onStorageError(); }
+	}
+	window.addEventListener(roomChangedEvent, sameTab);
+	window.addEventListener('storage', otherTab);
+	return () => {
+		window.removeEventListener(roomChangedEvent, sameTab);
+		window.removeEventListener('storage', otherTab);
+	};
+}
+
+// One invitation result can be passed from the join form to its destination within the same session.
+let roomNavigation: { room: Room; authId: string; expiresAt: number } | undefined;
+
+export function rememberRoomNavigation(room: Room, authId: string): void {
+	roomNavigation = { room, authId, expiresAt: Date.now() + ROOM_REQUEST_TIMEOUT_MS };
+}
+
+export function takeRoomNavigation(code: string, authId: string): Room | null {
+	const navigation = roomNavigation;
+	roomNavigation = undefined;
+	return navigation && navigation.authId === authId && navigation.expiresAt > Date.now()
+		&& navigation.room.code.toLowerCase() === code.toLowerCase() ? navigation.room : null;
+}
+
 
 /** Публикация броска в активную комнату (если игрок в ней).
  *  Тихо ничего не делает, если комнаты нет. */
@@ -486,13 +552,12 @@ export function subscribeToCombat(
 import type { CombatState } from '$lib/sync/combat';
 
 /** Прочитать состояние боя из комнаты (или null, если пусто) */
-export async function getRoomCombatState(roomId: string): Promise<CombatState | null> {
+export async function getRoomCombatState(roomId: string, lifetime?: AbortSignal): Promise<CombatState | null> {
 	await ensureRoomSession();
-	const { data, error } = await roomSupabase
-		.from('room_combat')
-		.select('state')
-		.eq('room_id', roomId)
-		.maybeSingle();
+	lifetime?.throwIfAborted();
+	const query = roomSupabase.from('room_combat').select('state').eq('room_id', roomId);
+	if (lifetime) query.abortSignal(lifetime);
+	const { data, error } = await query.maybeSingle();
 	if (error) return null;
 	if (!data || !data.state) return null;
 	const s = data.state as CombatState | Record<string, never>;

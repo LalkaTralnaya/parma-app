@@ -2,7 +2,7 @@
 	import { verifiedDiceSummary } from '$lib/engine/verified-room-dice';
  import RoomImage from './RoomImage.svelte';
  import { onMount, tick } from 'svelte';
- import { getCurrentRoom, findRoomByCode, getRecentRolls, subscribeToRoom, type RoomRoll } from '$lib/engine/rooms';
+ import { getCurrentRoom, findRoomByCode, getRecentRolls, subscribeToRoom, subscribeCurrentRoom, type RoomRoll } from '$lib/engine/rooms';
  import { createRoomRollFeed, type RoomRollFeedState } from '$lib/engine/room-roll-feed';
 
  const chatId = $props.id();
@@ -23,27 +23,30 @@
  });
 
  onMount(() => {
+  function handleStorageError() {
+   feed = { ...feed, loading: false, error: 'Не удалось прочитать активную комнату. Разрешите хранение данных сайта и повторите попытку.' };
+  }
   function syncRoom() {
    try { void controller.setCode(getCurrentRoom()); }
-   catch { feed = { ...feed, loading: false, error: 'Не удалось прочитать активную комнату. Разрешите хранение данных сайта и повторите попытку.' }; }
+   catch { handleStorageError(); }
   }
   function reconnect() {
+   if (document.visibilityState !== 'visible') return;
    syncRoom();
-   if (feed.error && document.visibilityState === 'visible') retryLoad();
+   if (feed.error) retryLoad();
   }
+  const unsubscribe = subscribeCurrentRoom((code, room) => { void controller.setCode(code, room); }, handleStorageError);
   syncRoom();
-  const timer = setInterval(syncRoom, 1500);
-  window.addEventListener('storage', syncRoom);
   window.addEventListener('online', reconnect);
   document.addEventListener('visibilitychange', reconnect);
   return () => {
-   clearInterval(timer);
-   window.removeEventListener('storage', syncRoom);
+   unsubscribe();
    window.removeEventListener('online', reconnect);
    document.removeEventListener('visibilitychange', reconnect);
    controller.dispose();
   };
  });
+
 
  function retryLoad() {
   try {

@@ -30,7 +30,7 @@
 		if (!id) return;
 		realtime = supabase.channel(`characters:${id}`).on('postgres_changes', {
 			event: '*', schema: 'public', table: 'user_characters', filter: `user_id=eq.${id}`
-		}, () => { void syncCharacters().then(refreshCharacters).catch(console.error); }).subscribe();
+		}, () => { void syncCharacters(id).then(refreshCharacters).catch(console.error); }).subscribe();
 	}
 
 	function applyUser(user: User | null) {
@@ -42,7 +42,7 @@
 		if (changed) {
 			void countGuestCharacters().then((count) => guestCount = count);
 			refreshCharacters();
-			if (nextId) void syncCharacters().then(refreshCharacters).catch((error) => {
+			if (nextId) void syncCharacters(nextId).then(refreshCharacters).catch((error) => {
 				message = `Не удалось загрузить облачные данные: ${(error as Error).message}`;
 			});
 		}
@@ -94,18 +94,23 @@
 	}
 
 	async function syncNow() {
+		if (!userId) return;
 		busy = true;
-		try { await syncCharacters(); refreshCharacters(); message = 'Персонажи синхронизированы.'; }
+		try { await syncCharacters(userId); refreshCharacters(); message = 'Персонажи синхронизированы.'; }
 		catch (error) { message = `Ошибка синхронизации: ${(error as Error).message}`; }
 		finally { busy = false; }
 	}
 
 	async function claimGuestCharacters() {
-		if (!userId) return;
+		const accountId = userId;
+		if (!accountId) return;
 		busy = true;
 		try {
-			const copied = await copyGuestCharactersToAccount(userId);
-			await syncCharacters();
+			const copied = await copyGuestCharactersToAccount(accountId);
+			await syncCharacters(accountId);
+			const { data: { session }, error } = await supabase.auth.getSession();
+			if (error) throw error;
+			if (session?.user.id !== accountId) throw new Error('Сессия аккаунта изменилась. Войдите снова.');
 			await clearGuestCharacters();
 			guestCount = 0;
 			refreshCharacters();

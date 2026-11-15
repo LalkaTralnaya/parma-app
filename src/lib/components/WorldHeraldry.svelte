@@ -1,5 +1,6 @@
 <script lang="ts">
   import AdventureImageShare from './AdventureImageShare.svelte';
+  import { WORLD_MAP_IMAGE } from '$lib/site-seo';
   type Group = { id: string; title: string; sheet: string; names: string[]; notes?: string };
   type Marker = { name: string; group: string; x: number; y: number };
   const groups: Group[] = [
@@ -44,7 +45,7 @@
   let mapLoaded = $state(false);
   let mapFailed = $state(false);
   let mapAttempt = $state(0);
-  const mapSource = $derived('/heraldry/parma-map.jpg' + (mapAttempt ? '?retry=' + mapAttempt : ''));
+  const mapSource = $derived(WORLD_MAP_IMAGE + (mapAttempt ? '?retry=' + mapAttempt : ''));
   function retryMap() {
     mapLoaded = false;
     mapFailed = false;
@@ -68,7 +69,7 @@
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <div class="map-scroll" role="region" aria-label="Карта Пармы с отмеченными стягами" tabindex="0">
     <div class="map-frame">
-      <img src={mapSource} class:map-unavailable={mapFailed} alt="Иллюстрированная карта Пармы с землями и поселениями" width="3840" height="2160" onload={() => { mapLoaded = true; mapFailed = false; }} onerror={() => { mapLoaded = false; mapFailed = true; }} />
+      <img src={mapSource} fetchpriority="high" class:map-unavailable={mapFailed} alt="Иллюстрированная карта Пармы с землями и поселениями" width="3840" height="2160" onload={() => { mapLoaded = true; mapFailed = false; }} onerror={() => { mapLoaded = false; mapFailed = true; }} />
       {#if mapLoaded}{#each markers as marker}
         <button class:chosen={selectedPlace === marker.name} class="map-flag" style:left={`${marker.x}%`} style:top={`${marker.y}%`} aria-label={`Показать стяги: ${marker.name}`} aria-pressed={selectedPlace === marker.name} title={marker.name} onclick={() => selectMarker(marker)}>
           <span class="flag-art" aria-hidden="true" style:background-image={`url("/heraldry/${markerArt[marker.name].image}.png")`} style:background-size={markerArt[marker.name].size} style:background-position={markerArt[marker.name].position}></span><span class="flag-label">{marker.name}</span>
@@ -79,7 +80,7 @@
   {#if mapFailed}
     <div class="map-error" role="alert"><p>Не удалось загрузить карту. Попробуйте ещё раз.</p><button type="button" onclick={retryMap}>Загрузить карту повторно</button></div>
   {:else if !mapLoaded}<p class="map-note" role="status">Загружаем карту…</p>{/if}
-  {#if mapLoaded}<AdventureImageShare src="/heraldry/parma-map.jpg" caption="Карта Пармы" kind="map" previewLabel="Открыть карту крупнее" />{/if}
+  {#if mapLoaded}<AdventureImageShare src={WORLD_MAP_IMAGE} caption="Карта Пармы" kind="map" previewLabel="Открыть карту крупнее" />{/if}
   <p class="map-note">На карте отмечены столицы и земли кланов. Стяги других городов и общин доступны в списках земель.</p>
   <div class="land-buttons" role="group" aria-label="Выбрать землю">
     {#each groups as group}<button class:active={activeGroup === group.id} aria-pressed={activeGroup === group.id} onclick={() => { activeGroup = group.id; selectedPlace = ''; }}>{group.title}</button>{/each}

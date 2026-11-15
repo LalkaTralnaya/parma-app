@@ -94,6 +94,7 @@
 	let templateReady=$state(false);
 	let roomIsMaster=$state(false);
 	let unsubscribeRoomWeb:(()=>void)|undefined;
+	const roomLifetime = new AbortController();
 	let relationshipPlayers = $state<RoomParticipant[]>([]);
 	let relationshipAccess = $state<RoomRelationshipAccess[]>([]);
 	let updatingRelationshipAccess = $state(false);
@@ -370,6 +371,7 @@
 
 	onMount(async () => {
 		await load();
+		if (roomLifetime.signal.aborted) return;
 		unsubscribeCharacters = subscribeCharacterUpdates(() => { void load(); });
 		session = getSession();
 		unsubscribe = subscribe((s) => {
@@ -378,15 +380,23 @@
 
 		// Supabase-запросы
 		const code = getCurrentRoom();
-		if (code) {
-			const room = await findRoomByCode(code);
+		if (!code) return;
+		try {
+			const room = await findRoomByCode(code, roomLifetime.signal);
+			if (roomLifetime.signal.aborted) return;
 			if (room) {
 				activeRoomId = room.id;
 				roomIsMaster=room.master_auth_id===await ensureRoomSession();
+				if (roomLifetime.signal.aborted) return;
 				relationshipView='room';
-				try{roomSnapshot=await loadRoomRelationships(room.id);unsubscribeRoomWeb=subscribeRoomRelationships(room.id,snapshot=>roomSnapshot=snapshot);}
+				try {
+					roomSnapshot = await loadRoomRelationships(room.id);
+					if (roomLifetime.signal.aborted) return;
+					unsubscribeRoomWeb = subscribeRoomRelationships(room.id, snapshot => roomSnapshot = snapshot);
+				}
 				catch(error){relationshipStatus=error instanceof Error?error.message:'Не удалось загрузить паутину комнаты.';}
-				const roomParticipants = await getRoomParticipants(room.id).catch(() => []);
+				const roomParticipants = await getRoomParticipants(room.id, roomLifetime.signal).catch(() => []);
+				if (roomLifetime.signal.aborted) return;
 				if (roomIsMaster) {
 					relationshipPlayers = roomParticipants.filter((participant) => participant.role === 'player');
 					try { relationshipAccess = await loadRoomRelationshipAccess(room.id); }
@@ -399,7 +409,8 @@
 						return character ? [{ id: character.id, name: character.name }] : [];
 					})
 				].map((character) => [character.id, character])).values()];
-				const combatState = await getRoomCombatState(room.id);
+				const combatState = await getRoomCombatState(room.id, roomLifetime.signal);
+				if (roomLifetime.signal.aborted) return;
 				const sharedTavernSettings = normalizeTavernSettings(combatState?.tavernSettings);
 				if (sharedTavernSettings) {
 					tavernSeason = sharedTavernSettings.season;
@@ -414,14 +425,18 @@
 					}
 				});
 				activeRequest = await getActiveRoomRequest(room.id);
+				if (roomLifetime.signal.aborted) return;
 				unsubRequests = subscribeToRoomRequests(room.id, (req) => {
 					activeRequest = req;
 				});
 			}
+		} catch (cause) {
+			if (!roomLifetime.signal.aborted) console.warn('Не удалось подключиться к комнате:', cause);
 		}
 	});
 
 	onDestroy(() => {
+		roomLifetime.abort();
 		unsubscribe?.();
 		unsubscribeCharacters?.();
 		unsubRequests?.();

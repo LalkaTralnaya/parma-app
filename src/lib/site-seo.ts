@@ -14,6 +14,7 @@ function siteOrigin() {
 
 export const SITE_URL = siteOrigin();
 export const SITE_NAME = 'Парма';
+export const WORLD_MAP_IMAGE = '/heraldry/parma-map.jpg';
 export const SHARE_IMAGE = {
   url: new URL('/parma-share.jpg', SITE_URL).href,
   width: 1200,

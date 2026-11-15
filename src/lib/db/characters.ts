@@ -85,9 +85,9 @@ export async function saveCharacters(characters: Character[]): Promise<void> {
   await db.deletions.bulkDelete(records.map(char => char.id));
  });
  characters.forEach((char, i) => { char.updatedAt = records[i].updatedAt; });
- if (userId) void import('$lib/sync/cloudCharacters').then(({ queueCharacterSync }) => {
-  for (const record of records) queueCharacterSync(record, userId);
- }).catch(console.error);
+ if (userId) void import('$lib/sync/cloudCharacters')
+  .then(({ queueCharactersSync }) => queueCharactersSync(records, userId))
+  .catch(console.error);
 }
 
 export async function saveCharacter(char: Character): Promise<void> {

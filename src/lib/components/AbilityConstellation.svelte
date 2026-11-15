@@ -1,20 +1,33 @@
+<script module lang="ts">
+ import type { Ability } from '$lib/rules/abilities';
+ import { layoutAbilities } from '$lib/ui/ability-layout';
+
+ const layouts = new WeakMap<Ability[], ReturnType<typeof layoutAbilities>>();
+ function getLayout(nodes: Ability[]) {
+  let layout = layouts.get(nodes);
+  if (!layout) {
+   layout = layoutAbilities(nodes);
+   layouts.set(nodes, layout);
+  }
+  return layout;
+ }
+</script>
+
 <script lang="ts">
  import { playerText } from '$lib/ui/player-copy';
  import type { Character } from '$lib/type';
- import { ABILITIES, type Ability } from '$lib/rules/abilities';
+ import { ABILITIES } from '$lib/rules/abilities';
  import { getAbilityBlockReason, isAbilityLearned } from '$lib/engine/character';
- import { layoutAbilities } from '$lib/ui/ability-layout';
  let { nodes, treeId, character, saving, onstudy, onapply }: { nodes: Ability[]; treeId: string; character: Character; saving: boolean; onstudy: (id: string) => void | Promise<void>; onapply?: (text: string) => void } = $props();
  let selectedId = $state(''); let zoom = $state<number | null>(null); let viewportWidth = $state(0); let pendingId = $state(''); let circleNotice = $state('');
- const layout = $derived(layoutAbilities(nodes));
+ const layout = $derived(getLayout(nodes));
  const autoZoom = $derived(Math.max(65, Math.min(85, viewportWidth > 0 ? Math.floor(viewportWidth / layout.width * 20) * 5 : 85)));
  const displayedZoom = $derived(zoom ?? autoZoom);
  const selected = $derived(nodes.find(n => n.id === selectedId) ?? nodes[0]);
  const reason = $derived(selected ? getAbilityBlockReason(character, selected.id) : null);
  const learnedSelected = $derived(selected ? isAbilityLearned(character, selected.id) : false);
  const names = (ids: string[]) => ids.map(id => ABILITIES.find(a => a.id === id)?.name ?? id).join(', ');
- const nodeState = (a: Ability) => { if (isAbilityLearned(character,a.id)) return 'learned'; const blocked = getAbilityBlockReason(character,a.id); return blocked === null || blocked === 'Нет очков умений' ? 'available' : 'locked'; };
- const stateLabel = (a: Ability) => nodeState(a) === 'learned' ? 'Изучено' : nodeState(a) === 'available' ? 'Не изучено · открыто' : 'Не изучено · закрыто';
+ const stateLabels = { learned: 'Изучено', available: 'Не изучено · открыто', locked: 'Не изучено · закрыто' };
  const highlighted = (from: string, to: string) => from === selected?.id || to === selected?.id;
  async function activateCircle(ability: Ability) {
   selectedId = ability.id; circleNotice = '';
@@ -51,12 +64,13 @@
     {#each layout.nodes as n (n.ability.id)}
      {@const blocked = getAbilityBlockReason(character,n.ability.id)}
      {@const learned = isAbilityLearned(character,n.ability.id)}
-     <div class="constellation-node" data-state={nodeState(n.ability)} data-selected={selected?.id === n.ability.id} data-related={layout.edges.some(e => (e.from === selected?.id && e.to === n.ability.id) || (e.to === selected?.id && e.from === n.ability.id))} style:left={`${n.x-85}px`} style:top={`${n.y}px`}>
+     {@const state = learned ? 'learned' : blocked === null || blocked === 'Нет очков умений' ? 'available' : 'locked'}
+     <div class="constellation-node" data-state={state} data-selected={selected?.id === n.ability.id} data-related={layout.edges.some(e => (e.from === selected?.id && e.to === n.ability.id) || (e.to === selected?.id && e.from === n.ability.id))} style:left={`${n.x-85}px`} style:top={`${n.y}px`}>
       <button type="button" class="star-action" aria-label={learned ? `${n.ability.name}. Изучено` : `Изучить ${n.ability.name} · 1 очко`} title={learned ? 'Уже изучено' : blocked ?? 'Изучить · 1 очко'} disabled={saving || Boolean(pendingId)} onclick={() => activateCircle(n.ability)}>
        <span class="star-mark" aria-hidden="true">{learned ? '✓' : blocked === null ? '+' : ''}</span>
       </button>
       <button type="button" class="star-name" aria-pressed={selected?.id === n.ability.id} aria-label={`Описание: ${n.ability.name}`} onclick={() => {selectedId=n.ability.id;circleNotice='';}}>{n.ability.name}</button>
-      <span class="star-state" role="status">{selectedId===n.ability.id && circleNotice ? circleNotice : pendingId===n.ability.id ? 'Изучаем…' : blocked===null && !learned ? 'Нажмите + · 1 очко' : stateLabel(n.ability)}</span>
+      <span class="star-state" role="status">{selectedId===n.ability.id && circleNotice ? circleNotice : pendingId===n.ability.id ? 'Изучаем…' : blocked===null && !learned ? 'Нажмите + · 1 очко' : stateLabels[state]}</span>
      </div>
     {/each}
    </div>

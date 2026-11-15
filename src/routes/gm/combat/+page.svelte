@@ -31,6 +31,7 @@
 		type CombatState, type CombatParticipant, type MonsterAttackData
 	} from '../../../lib/sync/combat';
 	import type { Character } from '$lib/type';
+	const roomLifetime = new AbortController();
 	let unsubRoomParticipants: (() => void) | null = null;
 	let combatState = $state<CombatState>(createEmptyCombat());
 	let characters = $state<Character[]>([]);
@@ -278,6 +279,7 @@
 
 	onMount(async () => {
 	await loadCharacters();
+	if (roomLifetime.signal.aborted) return;
 	const requestedMonster = page.url.searchParams.get('monster');
 	if (requestedMonster && BESTIARY.some(m => m.id === requestedMonster)) {
 		enemyMonsterId = requestedMonster;
@@ -289,27 +291,31 @@
 	const code = getCurrentRoom();
 	if (code) {
 		try {
-			const room = await findRoomByCode(code);
+			const room = await findRoomByCode(code, roomLifetime.signal);
+			if (roomLifetime.signal.aborted) return;
 			if (room) {
 				roomId = room.id;
 				roomCode = room.code;
 				combatRoomMaster = room.master_auth_id === await ensureRoomSession();
+				if (roomLifetime.signal.aborted) return;
 				if (combatRoomMaster) {
 					unsubCombatActions = subscribeRoomCombatActions(room.id, () => { void refreshCombatActions(); });
 					void refreshCombatActions();
 				}
-				roomParticipants = await getRoomParticipants(room.id);
+				roomParticipants = await getRoomParticipants(room.id, roomLifetime.signal);
+				if (roomLifetime.signal.aborted) return;
 				// Подписка на изменения участников — чтобы видеть, кто зашёл в комнату
 				const unsubParticipants = subscribeToRoom(
 					room.id,
 					async () => {
-						roomParticipants = await getRoomParticipants(room.id);
+						roomParticipants = await getRoomParticipants(room.id, roomLifetime.signal);
 					},
 					() => {} // броски в бою нам не нужны
 				);
 				unsubRoomParticipants = unsubParticipants;
 				// Загружаем бой из комнаты (если есть)
-				const remote = await getRoomCombatState(room.id);
+				const remote = await getRoomCombatState(room.id, roomLifetime.signal);
+				if (roomLifetime.signal.aborted) return;
 				if (remote) {
 					combatState = remote;
 				} else {
@@ -319,6 +325,7 @@
 					await saveRoomCombatState(room.id, empty);
 				}
 
+				if (roomLifetime.signal.aborted) return;
 				// Подписываемся на изменения боя в комнате
 				unsubRoomCombat = subscribeToRoomCombat(room.id, (newState) => {
 					if (!newState) return;
@@ -329,6 +336,7 @@
 				});
 			}
 		} catch (e) {
+			if (roomLifetime.signal.aborted) return;
 			console.warn('Не удалось подключиться к комнате:', e);
 		}
 	}
@@ -344,6 +352,7 @@
 });
 
 	onDestroy(() => {
+	roomLifetime.abort();
 	unsubscribe?.();
 	unsubRoomCombat?.();
 	unsubRoomParticipants?.();

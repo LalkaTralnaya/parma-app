@@ -1,16 +1,17 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { goto } from '$app/navigation';
 	import {
 	createRoom,
 	findRoomByCode,
+	rememberRoomNavigation,
 	joinRoom,
 	listMyMasterRooms,
 	deleteRoom,
 	touchRoom,
 	type Room
 } from '$lib/engine/rooms';
-	import { getPlayerName, setPlayerName } from '../../lib/supabase/client';
+	import { getPlayerName, setPlayerName, ensureRoomSession } from '../../lib/supabase/client';
 
 	let mode = $state<'choose' | 'create' | 'join'>('choose');
 	let roomName = $state('');
@@ -19,6 +20,8 @@
 	let busy = $state(false);
 	let joinStage = $state<'lookup' | 'navigation'>('lookup');
 	let error = $state('');
+	const pageLifetime = new AbortController();
+	onDestroy(() => pageLifetime.abort());
 
 	async function openJoinedRoom(roomCode: string) {
 		let timer: ReturnType<typeof setTimeout> | undefined;
@@ -78,11 +81,14 @@
 			} catch {
 				// The player may paste either the invitation token or the full link.
 			}
-			const room = await findRoomByCode(inviteCode);
+			const room = await findRoomByCode(inviteCode, pageLifetime.signal);
+			const authId = await ensureRoomSession();
+			if (pageLifetime.signal.aborted) return;
 			if (!room) {
 				error = 'Комната с таким кодом не найдена';
 				return;
 			}
+			rememberRoomNavigation(room, authId);
 			joinStage = 'navigation';
 			await openJoinedRoom(room.code);
 		} catch (e) {

@@ -14,10 +14,42 @@
   let query = $state('');
   let category = $state('Все');
   const playerEntries = $derived(entries.filter(entry => entry.title !== 'Перенос уже созданного героя').map(entry => ({ id: entry.id, title: playerText(entry.title), category: playerText(entry.category), blocks: entry.blocks.map(block => block.kind === 'table' ? { ...block, rows: playerTable(block.rows) } : { ...block, text: playerText(block.text) }).filter(block => block.kind === 'table' ? block.rows.length > 0 : Boolean(block.text)) })).filter(entry => entry.blocks.length));
-  const chapters = $derived(readingOrder ? arrangeReference(entries, readingOrder).map(chapter => ({ ...chapter, entries: chapter.entries.map(entry => playerEntries.find(clean => clean.id === entry.id)).filter((entry): entry is typeof playerEntries[number] => Boolean(entry)) })).filter(chapter => chapter.entries.length) : [{ id: 'all', title: '', description: '', number: 0, entries: playerEntries }]);
+  const entriesById = $derived.by(() => {
+    const result = new Map<string, typeof playerEntries[number]>();
+    for (const entry of playerEntries) {
+      if (!result.has(entry.id)) result.set(entry.id, entry);
+    }
+    return result;
+  });
+  const chapters = $derived(readingOrder
+    ? arrangeReference(entries, readingOrder)
+        .map(chapter => ({
+          ...chapter,
+          entries: chapter.entries.map(entry => entriesById.get(entry.id)).filter(entry => entry !== undefined)
+        }))
+        .filter(chapter => chapter.entries.length)
+    : [{ id: 'all', title: '', description: '', number: 0, entries: playerEntries }]);
   const categories = $derived(['Все', ...(readingOrder ? chapters.map(chapter => chapter.title) : new Set(playerEntries.map(entry => entry.category)))]);
-  const visible = $derived(playerEntries.filter(entry => (category === 'Все' || (readingOrder ? chapters.some(chapter => chapter.title === category && chapter.entries.some(member => member.id === entry.id)) : category === entry.category)) && JSON.stringify([entry.title, entry.category, entry.blocks]).toLocaleLowerCase('ru').includes(query.trim().toLocaleLowerCase('ru'))));
-  const visibleChapters = $derived(chapters.map(chapter => ({ ...chapter, entries: chapter.entries.filter(entry => visible.some(member => member.id === entry.id)) })).filter(chapter => chapter.entries.length));
+  const chapterEntryIds = $derived(new Set(
+    chapters.filter(chapter => chapter.title === category).flatMap(chapter => chapter.entries.map(entry => entry.id))
+  ));
+  const searchQuery = $derived(query.trim().toLocaleLowerCase('ru'));
+  const searchTexts = $derived.by(() => new Map(playerEntries.map(entry => [
+    entry, JSON.stringify([entry.title, entry.category, entry.blocks]).toLocaleLowerCase('ru')
+  ])));
+  const visible = $derived.by(() => {
+    const selectedEntries = category === 'Все' ? playerEntries : playerEntries.filter(entry =>
+      readingOrder ? chapterEntryIds.has(entry.id) : category === entry.category
+    );
+    if (!searchQuery || selectedEntries.length === 0) return selectedEntries;
+    const texts = searchTexts;
+    return selectedEntries.filter(entry => texts.get(entry)?.includes(searchQuery));
+  });
+  const visibleIds = $derived(new Set(visible.map(entry => entry.id)));
+  const visibleChapters = $derived(chapters.map(chapter => ({
+    ...chapter,
+    entries: chapter.entries.filter(entry => visibleIds.has(entry.id))
+  })).filter(chapter => chapter.entries.length));
   const shortcutIds = { lore: ['book16-masters', 'book16-rulers-and-circles'], mechanics: ['book16-skill-growth-story', 'book16-navi-shadows'] };
   const shortcuts = $derived(readingOrder ? shortcutIds[readingOrder].flatMap(id => playerEntries.filter(entry => entry.id === id)) : []);
   function closeEntry(event: MouseEvent) {
