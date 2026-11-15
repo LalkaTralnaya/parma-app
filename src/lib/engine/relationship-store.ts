@@ -39,3 +39,32 @@ export async function exportRoomArchive(roomId:string):Promise<Record<string,unk
  await ensureRoomSession();const result=await roomSupabase.rpc('export_room_archive',{p_room_id:roomId});
  if(result.error)throw new Error(`Не удалось выгрузить комнату: ${result.error.message}`);return result.data as Record<string,unknown>;
 }
+
+export interface RoomRelationshipAccess {
+ participant_id: string;
+ character_id: string;
+}
+
+export async function loadPersonalRoomRelationships(roomId: string, characterId: string): Promise<RelationshipSnapshot> {
+ await ensureRoomSession();
+ const { data, error } = await roomSupabase.rpc('get_personal_room_relationships', {
+  p_room_id: roomId, p_character_id: characterId
+ });
+ if (error) throw failure(error.message);
+ return normalizeRelationshipSnapshot(data);
+}
+
+export async function loadRoomRelationshipAccess(roomId: string): Promise<RoomRelationshipAccess[]> {
+ await ensureRoomSession();
+ const { data, error } = await roomSupabase.rpc('get_room_relationship_access', { p_room_id: roomId });
+ if (error) throw failure(error.message);
+ return data ?? [];
+}
+
+export async function setRoomRelationshipAccess(roomId: string, participantId: string, characterId: string | null): Promise<void> {
+ await ensureRoomSession();
+ const { error } = await roomSupabase.rpc('set_room_relationship_access', {
+  p_room_id: roomId, p_participant_id: participantId, p_expected_character_id: characterId
+ });
+ if (error) throw failure(error.message);
+}

@@ -3,11 +3,13 @@
 	import {
 	findRoomByCode, getRoomParticipants,
 	getRoomCombatState, saveRoomCombatState, subscribeToRoomCombat,
+	loadPendingRoomCombatActions, reviewRoomCombatAction, subscribeRoomCombatActions, rollRoomDice, type RoomCombatAction,
 	subscribeToRoom,
 	getCurrentRoom,
 	type RoomParticipant
 } from '../../../lib/engine/rooms';
 	import Dialog from '$lib/components/Dialog.svelte';
+	import { ensureRoomSession } from '$lib/supabase/client';
 	import CombatEffects from '$lib/components/CombatEffects.svelte';
 	import { combatModifiers, participantCharacter, tickCombatEffects } from '$lib/engine/combatEffects';
 	import { page } from '$app/state';
@@ -15,7 +17,7 @@
 	import { createRequest, SESSION_LABELS } from '../../../lib/sync/session';
 	import { getCharacter, saveCharacter } from '../../../lib/db/characters';
 	import { notifyCharacterUpdate } from '../../../lib/sync/combat';
-	import { rollD100 } from '../../../lib/engine/dice';
+
 	import { onMount, onDestroy } from 'svelte';
 	import { getCharacteristicValue, getModifier, getResourceMax } from '../../../lib/engine/character';
 	import { getArmorValue } from '../../../lib/engine/combat';
@@ -54,7 +56,56 @@
 	let roomCode = $state<string | null>(null);
 	let unsubRoomCombat: (() => void) | null = null;
 	const isRoomMode = $derived(!!roomId);
+	let pendingCombatActions = $state<RoomCombatAction[]>([]);
+	let combatActionMessage = $state('');
+	let reviewingCombatAction = $state<string | null>(null);
+	let combatRoomMaster = $state(false);
+	let unsubCombatActions: (() => void) | undefined;
 
+	async function refreshCombatActions() {
+		if (!roomId) return;
+		try { pendingCombatActions = await loadPendingRoomCombatActions(roomId); }
+		catch (error) { combatActionMessage = error instanceof Error ? error.message : 'Не удалось загрузить действия.'; }
+	}
+
+	async function decideCombatAction(action: RoomCombatAction, apply: boolean) {
+		if (!roomId || reviewingCombatAction) return;
+		reviewingCombatAction = action.id;
+		try {
+			const result = await reviewRoomCombatAction(roomId, action.id, apply);
+			pendingCombatActions = pendingCombatActions.filter((pending) => pending.id !== action.id);
+			if (result.status === 'applied') {
+				const state = await getRoomCombatState(roomId);
+				if (state) { combatState = state; saveCombat(state); }
+			}
+			combatActionMessage = result.status === 'stale'
+				? 'Цель или ход изменились. Игроку потребуется повторить действие.'
+				: result.status === 'applied' ? 'Действие применено.' : 'Действие отклонено.';
+		} catch (error) {
+			combatActionMessage = error instanceof Error ? error.message : 'Не удалось обработать действие.';
+		} finally {
+			reviewingCombatAction = null;
+		}
+	}
+
+	const combatFieldLabels: Record<string, string> = {
+		currentHp: 'Здравие', effects: 'Эффекты', itemTreatments: 'Лечение', prone: 'Повален', grapple: 'Захват'
+	};
+
+	function describeCombatValue(value: unknown): string {
+		if (value == null) return '—';
+		if (typeof value === 'boolean') return value ? 'да' : 'нет';
+		if (typeof value === 'number') return String(value);
+		if (Array.isArray(value)) {
+			return value.map((entry) => entry?.name ?? entry?.conditionId ?? 'Эффект').join(', ') || '—';
+		}
+		if (typeof value === 'object' && 'kind' in value) {
+			return ({ grab: 'Захват', clinch: 'Клинч', hold: 'Удержание' } as Record<string, string>)[String(value.kind)] ?? 'Захват';
+		}
+		return '—';
+	}
+
+	let attackRolling = $state(false);
 	let pendingAttack = $state<{
 		attacker: CombatParticipant;
 		attack: MonsterAttackData;
@@ -68,14 +119,39 @@
 		double: 'Явь! Дубль'
 	};
 
-	function rollDice(diceString: string): number[] {
-		const m = diceString.match(/^(\d+)[кd](\d+)$/i);
-		if (!m) return [];
-		const count = Number(m[1]);
-		const sides = Number(m[2]);
-		const out: number[] = [];
-		for (let i = 0; i < count; i++) out.push(Math.floor(Math.random() * sides) + 1);
-		return out;
+	async function requestCombatDice(sides: number, count: number, label: string): Promise<number[] | null> {
+		if (!roomId) return Array.from({ length: count }, () => Math.floor(Math.random() * sides) + 1);
+		try {
+			const values: number[] = [];
+			for (let remaining = count; remaining > 0; remaining -= 50) {
+				values.push(...await rollRoomDice(roomId, Array<number>(Math.min(remaining, 50)).fill(sides), label));
+			}
+			return values;
+		} catch (error) {
+			combatActionMessage = error instanceof Error ? error.message : 'Серверный бросок не удался.';
+			return null;
+		}
+	}
+
+	async function requestCombatDie(sides: number, label: string): Promise<number | null> {
+		return (await requestCombatDice(sides, 1, label))?.[0] ?? null;
+	}
+
+	function rollDice(diceString: string, label: string): Promise<number[] | null> {
+		const match = diceString.match(/^(\d+)[кd](\d+)$/i);
+		return match ? requestCombatDice(Number(match[2]), Number(match[1]), label) : Promise.resolve([]);
+	}
+
+	async function rollDamageDice(attack: MonsterAttackData) {
+		const rolls = await rollDice(attack.damageDice, attack.name + ': урон');
+		if (!rolls) return null;
+		const extraRolls: Array<{ dice: string; rolls: number[] }> = [];
+		for (const dice of attack.extraDamageDice ?? []) {
+			const extra = await rollDice(dice, attack.name + ': дополнительный урон');
+			if (!extra) return null;
+			extraRolls.push({ dice, rolls: extra });
+		}
+		return { rolls, extraRolls };
 	}
 
 	function initiateAttack(attacker: CombatParticipant, attack: MonsterAttackData) {
@@ -83,12 +159,16 @@
 	}
 
 		async function confirmAttack(target: CombatParticipant) {
-		if (!pendingAttack) return;
+		if (!pendingAttack || attackRolling) return;
+		attackRolling = true;
+		try {
 		const { attacker, attack } = pendingAttack;
-		const roll = rollD100();
 		const mods = combatModifiers(participantCharacter(attacker), attacker);
 		if (mods.canAct === false) { alert('Участник не может действовать из-за состояния.'); return; }
 		const targetValue = (attack.hitTarget ?? 30 + attack.hitBonus) + (mods.characteristics ?? 0) + (mods.attacks ?? 0) - (attack.ignoresArmor ? 0 : effectiveArmor(target));
+
+		const roll = await requestCombatDie(100, attacker.name + ': ' + attack.name);
+		if (roll === null) return;
 
 		let outcome: 'hit' | 'miss' | 'critical_hit' | 'critical_miss' | 'double';
 		if (roll === 1) outcome = 'critical_hit';
@@ -96,14 +176,23 @@
 		else if (roll % 11 === 0 && roll <= 99 && roll <= targetValue) outcome = 'double';
 		else outcome = roll <= targetValue ? 'hit' : 'miss';
 		const weaponCategory = /двуруч/i.test(attack.name) ? 'two_handed' : undefined;
-		const effect = rollCombatAttackEffect(outcome, weaponCategory);
+		let effect: ReturnType<typeof rollCombatAttackEffect>;
+		if (outcome === 'critical_hit' || outcome === 'critical_miss' || outcome === 'double') {
+			const effectRoll = await requestCombatDie(outcome === 'double' ? 10 : 12, attack.name + ': особый эффект');
+			if (effectRoll === null) return;
+			const plan = rollCombatAttackEffect(outcome, weaponCategory, () => effectRoll);
+			const extra = plan?.extraDamageFormula ? await rollDice(plan.extraDamageFormula, attack.name + ': урон эффекта') : [];
+			if (!extra) return;
+			if (plan) effect = { ...plan, extraDamageRolls: plan.extraDamageFormula ? extra : undefined };
+		}
 
 		let damageRoll;
 		let appliedDamage = 0;
 
 		if ((outcome === 'hit' || outcome === 'critical_hit' || outcome === 'double') && attack.damageDice !== '0') {
-			const rolls = rollDice(attack.damageDice);
-			const extraRolls = (attack.extraDamageDice ?? []).map((dice) => ({ dice, rolls: rollDice(dice) }));
+			const damage = await rollDamageDice(attack);
+			if (!damage) return;
+			const { rolls, extraRolls } = damage;
 			const baseSum = rolls.reduce((a, b) => a + b, 0);
 			const extraSum = extraRolls.reduce((sum, part) => sum + part.rolls.reduce((a, b) => a + b, 0), 0);
 			const mod = attack.damageModifier ?? attacker.primaryMod ?? 0;
@@ -146,13 +235,15 @@
 		};
 
 		pendingAttack = null;
+		} finally { attackRolling = false; }
 	}
 
-	function rollJustDamage(attacker: CombatParticipant, attack: MonsterAttackData) {
+	async function rollJustDamage(attacker: CombatParticipant, attack: MonsterAttackData) {
 		if (attack.damageDice === '0') return;
-		const rolls = rollDice(attack.damageDice);
+		const damage = await rollDamageDice(attack);
+		if (!damage) return;
+		const { rolls, extraRolls } = damage;
 		const baseSum = rolls.reduce((a, b) => a + b, 0);
-		const extraRolls = (attack.extraDamageDice ?? []).map((dice) => ({ dice, rolls: rollDice(dice) }));
 		const extraSum = extraRolls.reduce((sum, part) => sum + part.rolls.reduce((a, b) => a + b, 0), 0);
 		const mod = attack.damageModifier ?? attacker.primaryMod ?? 0;
 		attackResult = {
@@ -202,6 +293,11 @@
 			if (room) {
 				roomId = room.id;
 				roomCode = room.code;
+				combatRoomMaster = room.master_auth_id === await ensureRoomSession();
+				if (combatRoomMaster) {
+					unsubCombatActions = subscribeRoomCombatActions(room.id, () => { void refreshCombatActions(); });
+					void refreshCombatActions();
+				}
 				roomParticipants = await getRoomParticipants(room.id);
 				// Подписка на изменения участников — чтобы видеть, кто зашёл в комнату
 				const unsubParticipants = subscribeToRoom(
@@ -251,6 +347,7 @@
 	unsubscribe?.();
 	unsubRoomCombat?.();
 	unsubRoomParticipants?.();
+	unsubCombatActions?.();
 });
 
 	async function persist(newState: CombatState) {
@@ -262,14 +359,12 @@
 		try {
 			await saveRoomCombatState(roomId, newState);
 		} catch (e) {
-			console.warn('Не удалось синхронизировать бой:', e);
+			combatActionMessage = e instanceof Error ? e.message : 'Не удалось сохранить бой в комнате.';
 		}
 	}
 }
 
-	function rollD20(): number {
-		return Math.floor(Math.random() * 20) + 1;
-	}
+
 
 	/** Добавить всех персонажей, которых ещё нет в бою */
 async function addSelectedPlayers() {
@@ -294,7 +389,8 @@ async function addSelectedPlayers() {
 			const hpMax = getResourceMax(c, 'hp');
 			const realHp = getCurrentResource(c, 'hp', hpMax);
 			const tempHp = (c as any).tempHp ?? 0;
-			const roll = rollD20();
+			const roll = await requestCombatDie(20, (c.name || 'Персонаж') + ': прыть');
+			if (roll === null) return;
 
 			s.participants.push({
 				id: crypto.randomUUID(),
@@ -323,7 +419,8 @@ async function addSelectedPlayers() {
 			const hpMax = getResourceMax(c, 'hp');
 			const realHp = getCurrentResource(c, 'hp', hpMax);
 			const tempHp = (c as any).tempHp ?? 0;
-			const roll = rollD20();
+			const roll = await requestCombatDie(20, (c.name || 'Персонаж') + ': прыть');
+			if (roll === null) return;
 			s.participants.push({
 				id: crypto.randomUUID(),
 				name: c.name || '(без имени)',
@@ -352,7 +449,8 @@ async function addSelectedPlayers() {
 		enemyLevel = scaled.level;
 		const s = getCombat() ?? createEmptyCombat();
 		const dexMod = scaled.scaledMods.dexterity ?? 0;
-		const roll = rollD20();
+		const roll = await requestCombatDie(20, base.name + ': прыть');
+		if (roll === null) return;
 
 		s.participants.push({
 			id: crypto.randomUUID(),
@@ -393,10 +491,9 @@ async function addSelectedPlayers() {
 	}
 	async function rerollAll() {
 	const s = getCombat() ?? createEmptyCombat();
-	s.participants = s.participants.map((p) => {
-		const roll = rollD20();
-		return { ...p, initiativeRoll: roll, initiative: roll + (p.initiativeMod ?? 0) };
-	});
+	const rolls = await requestCombatDice(20, s.participants.length, 'Прыть: перебросить всем');
+	if (!rolls) return;
+	s.participants = s.participants.map((p, i) => ({ ...p, initiativeRoll: rolls[i], initiative: rolls[i] + (p.initiativeMod ?? 0) }));
 	s.currentTurnIndex = 0;
 	await persist(s);
 }
@@ -551,6 +648,30 @@ async function addSelectedPlayers() {
 			<a href="/gm" class="px-4 py-2 border rounded hover:bg-gray-50">← К сказителю</a>
 		</div>
 	</header>
+	{#if combatRoomMaster}
+		<section class="mb-4 space-y-2 rounded border p-3" aria-labelledby="combat-actions-title">
+			<div class="flex flex-wrap items-center justify-between gap-2">
+				<h2 id="combat-actions-title" class="font-semibold">Действия игроков · {pendingCombatActions.length}</h2>
+				<button type="button" class="rounded border px-2 py-1" onclick={refreshCombatActions}>Обновить</button>
+			</div>
+			{#each pendingCombatActions as action (action.id)}
+				<div class="space-y-2 border-t pt-2">
+					<p class="font-semibold">{action.actor_name}</p>
+					{#each action.changes as change (change.id)}
+						<p class="text-sm"><strong>{combatState.participants.find((p) => p.id === change.id)?.name ?? 'Участник выбыл'}</strong>
+							{#each Object.entries(change.after) as [field, value] (field)}
+								· {combatFieldLabels[field]} {describeCombatValue(change.before[field as keyof typeof change.before])} → {describeCombatValue(value)}
+							{/each}
+						</p>
+					{/each}
+					<details><summary class="text-sm">Детали изменения</summary><pre class="max-h-48 overflow-auto whitespace-pre-wrap text-xs">{JSON.stringify(action.changes, null, 2)}</pre></details>
+					<button type="button" class="rounded border px-2 py-1" disabled={!!reviewingCombatAction} onclick={() => decideCombatAction(action, true)}>Применить</button>
+					<button type="button" class="rounded border px-2 py-1" disabled={!!reviewingCombatAction} onclick={() => decideCombatAction(action, false)}>Отклонить</button>
+				</div>
+			{/each}
+			{#if combatActionMessage}<p role="status">{combatActionMessage}</p>{/if}
+		</section>
+	{/if}
 
 	{#if combatState.participants.length === 0}
 		<div class="border-2 border-dashed rounded-lg p-10 text-center text-gray-500">
@@ -644,7 +765,7 @@ async function addSelectedPlayers() {
 									<button class="px-2 py-1 text-xs border rounded hover:bg-gray-100" onclick={() => hp(p.id, +5)}>+5</button>
 								</div>
 							</div>
-							<CombatEffects participant={p} encounter={combatState} onchange={persist} character={p.isPlayer ? playerSnapshot(p) : null} initialText={p.id === enemies.find(e => e.sourceId === page.url.searchParams.get('monster'))?.id ? page.url.searchParams.get('special') ?? '' : ''} />
+							<CombatEffects participant={p} encounter={combatState} onchange={persist} requestOnlineDie={requestCombatDie} character={p.isPlayer ? playerSnapshot(p) : null} initialText={p.id === enemies.find(e => e.sourceId === page.url.searchParams.get('monster'))?.id ? page.url.searchParams.get('special') ?? '' : ''} />
 						</div>
 					{/each}
 				</div>
@@ -731,7 +852,7 @@ async function addSelectedPlayers() {
 									{p.traits.join(' · ')}
 								</div>
 							{/if}
-							<CombatEffects participant={p} encounter={combatState} onchange={persist} character={p.isPlayer ? playerSnapshot(p) : null} initialText={p.id === enemies.find(e => e.sourceId === page.url.searchParams.get('monster'))?.id ? page.url.searchParams.get('special') ?? '' : ''} />
+							<CombatEffects participant={p} encounter={combatState} onchange={persist} requestOnlineDie={requestCombatDie} character={p.isPlayer ? playerSnapshot(p) : null} initialText={p.id === enemies.find(e => e.sourceId === page.url.searchParams.get('monster'))?.id ? page.url.searchParams.get('special') ?? '' : ''} />
 						</div>
 					{/each}
 				</div>
@@ -851,7 +972,7 @@ async function addSelectedPlayers() {
 					{#each combatState.participants.filter(p => p.id !== pendingAttack?.attacker.id) as target (target.id)}
 						<button
 							class="w-full text-left px-3 py-2 border rounded hover:bg-gray-50"
-							onclick={() => confirmAttack(target)}>
+							disabled={attackRolling} onclick={() => confirmAttack(target)}>
 							<div class="font-medium">
 								{#if target.playerName}
 									<span class="text-blue-700">{target.playerName}</span>

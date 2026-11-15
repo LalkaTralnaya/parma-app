@@ -5,7 +5,7 @@
 	import Icon from '$lib/components/Icon.svelte';
 	import { autosizeTextarea } from '$lib/ui/autosize-textarea';
  import Dialog from '$lib/components/Dialog.svelte';
- import { applyItemTreatments, treatWithItem } from '$lib/engine/itemTreatment';
+ import { treatWithItem } from '$lib/engine/itemTreatment';
  import { playerText } from '$lib/ui/player-copy';
   import SpellInfo from '$lib/components/SpellInfo.svelte';
 	import RelationshipWebView from '$lib/components/RelationshipWeb.svelte';
@@ -18,6 +18,9 @@
 	// ИМПОРТЫ
 	// ────────────────────────────────────────────
 	import { onMount, onDestroy } from 'svelte';
+	import { prepareRoomCombatAction } from '$lib/engine/room-combat-changes';
+	import { changeCharacterHealth, characterCombatHealth, reconcileCharacterCombat } from '$lib/engine/character-combat';
+	import { rollRoomDice } from '$lib/engine/rooms';
 	import { showDice } from '$lib/ui/dice';
 	const diceLifetime = new AbortController();
 	onDestroy(() => diceLifetime.abort());
@@ -31,7 +34,8 @@
 		publishToActiveRoom,
 		findRoomByCode,
 		getRoomCombatState,
-		saveRoomCombatState,
+		submitRoomCombatAction,
+		subscribeRoomCombatActions,
 		subscribeToRoomCombat,
 		getActiveRoomRequest,
 		subscribeToRoomRequests,
@@ -54,6 +58,7 @@
 		getCombat,
 		saveCombat,
 		findParticipantBySource,
+		changeCombatParticipantHealth,
 		normalizeCombatState,
 		setParticipantInitiative,
 		subscribeCharacterUpdates,
@@ -75,7 +80,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	import { SKILLS } from '../../../lib/rules/skills';
 	import { RESOURCES } from '../../../lib/rules/resources';
 	import { RACES } from '../../../lib/rules/races';
-	import { spellDamageSaveTarget, spellDamageAfterSave } from '$lib/engine/spellTargets';
+	import { resolveSpellCombatDamage } from '$lib/engine/spellTargets';
 	import AbilityTrees from '$lib/components/AbilityTrees.svelte';
 	import MartialActions from '$lib/components/MartialActions.svelte';
 	import { ABILITY_THRESHOLDS } from '../../../lib/rules/abilities';
@@ -162,7 +167,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	} from '../../../lib/engine/combat';
 
 	import type { Character } from '$lib/type';
-	import { loadRoomRelationships, subscribeRoomRelationships, loadRelationshipTemplate } from '$lib/engine/relationship-store';
+	import { loadPersonalRoomRelationships, loadRelationshipTemplate } from '$lib/engine/relationship-store';
 	import { createRelationshipTemplate } from '$lib/engine/relationship-snapshot';
 	import { normalizeRelationshipWeb, readLocalRelationshipWeb, type RelationshipLink } from '$lib/engine/relationship-web';
 
@@ -233,6 +238,14 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	let unsubLocalCombat: (() => void) | null = null;
 	let unsubCharUpdates: (() => void) | null = null;
 	let unsubscribeRoomWeb:(()=>void)|undefined;
+	let roomRelationshipError = $state('');
+	let combatRoomId: string | null = null;
+	let latestCombatActionId: string | null = null;
+	let roomCombatNotice = $state('');
+	let roomDiceError = $state('');
+	let roomDiceBusy = false;
+	const usesRequestedDice = $derived(rollMode === 'offline' || !!activeRoomCode);
+	let unsubscribeCombatActions: (() => void) | undefined;
 	let unsubRelationshipStorage: (() => void) | null = null;
 
 	// Бой
@@ -322,12 +335,46 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		if (activeRoomCode) {
 			try {
 				const room = await findRoomByCode(activeRoomCode);
-				if (room) {
-					try{const graph=await loadRoomRelationships(room.id);if(graph)relationshipWeb=graph.links;unsubscribeRoomWeb=subscribeRoomRelationships(room.id,graph=>relationshipWeb=graph?.links??[]);}catch{/* Older databases still expose their previous room links. */}
+				if (room && !diceLifetime.signal.aborted) {
+					combatRoomId = room.id;
+					unsubscribeCombatActions = subscribeRoomCombatActions(room.id, action => {
+						if (action.id !== latestCombatActionId || action.status === 'pending') return;
+						roomCombatNotice = action.status === 'applied' ? 'Сказитель применил действие.'
+							: action.status === 'rejected' ? 'Сказитель отклонил действие.'
+							: 'Цель или ход изменились. Действие не применено.';
+					});
+					let disposed = false;
+					let loadingRelationships = false;
+					const refreshRelationships = async () => {
+						if (disposed || loadingRelationships || document.hidden) return;
+						loadingRelationships = true;
+						try {
+							const graph = await loadPersonalRoomRelationships(room.id, found.id);
+							if (!disposed) {
+								relationshipWeb = graph.links;
+								roomRelationshipError = '';
+							}
+						} catch (error) {
+							if (!disposed) {
+								relationshipWeb = [];
+								roomRelationshipError = error instanceof Error ? error.message : 'Не удалось загрузить личные связи.';
+							}
+						} finally {
+							loadingRelationships = false;
+						}
+					};
+					const relationshipTimer = window.setInterval(() => { void refreshRelationships(); }, 15000);
+					document.addEventListener('visibilitychange', refreshRelationships);
+					unsubscribeRoomWeb = () => {
+						disposed = true;
+						window.clearInterval(relationshipTimer);
+						document.removeEventListener('visibilitychange', refreshRelationships);
+					};
+					void refreshRelationships();
 					// Первичная загрузка состояния
 					const remote = await getRoomCombatState(room.id);
 					if (remote) {
-						if(!relationshipWeb.length)relationshipWeb = normalizeRelationshipWeb(remote.relationshipWeb);
+
 						await handleRoomCombatUpdate(remote);
 					}
 					activeRequest = await getActiveRoomRequest(room.id);
@@ -359,115 +406,56 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		unsubRequests?.();
 		unsubRelationshipStorage?.();
 		unsubscribeRoomWeb?.();
+		unsubscribeCombatActions?.();
 	});
 
 	// ────────────────────────────────────────────
 	// СИНХРОНИЗАЦИЯ БОЯ
 	// ────────────────────────────────────────────
 	async function handleRoomCombatUpdate(newState: CombatState | null, persistLocal = true) {
-		newState = normalizeCombatState(newState);
-		if (!newState) return;
-		combat = newState;
-
-		if (persistLocal) saveCombat(newState);
-
-		const s = newState;
+		const state = normalizeCombatState(newState);
+		if (!state) return;
+		combat = state;
+		if (persistLocal) saveCombat(state);
 		if (!char) return;
 
-		const myP = findParticipantBySource(s, char.id);
-		if (!myP) return;
-  const treated = applyItemTreatments(char, myP);
-  if (treated !== char) {
-   await saveCharacter(treated);
-   char = treated;
-  }
-  if (!s.active) return;
-
-		// Первая синхронизация — запоминаем, что видим
-		if (lastCombatHp === null) {
-			lastCombatHp = myP.currentHp;
-			return;
+		const participant = findParticipantBySource(state, char.id);
+		if (!participant) return;
+		const update = reconcileCharacterCombat(char, participant, state.active, lastCombatHp);
+		lastCombatHp = update.observedHealth;
+		if (update.character !== char) {
+			char = update.character;
+			await saveCharacter($state.snapshot(char) as Character);
 		}
-
-		const prevHp = lastCombatHp;
-		lastCombatHp = myP.currentHp;
-		if (prevHp === myP.currentHp) return;
-
-		const max = getResourceMax(char, 'hp');
-		const currentReal = getCurrentResource(char, 'hp', max);
-		const currentTemp = char.tempHp ?? 0;
-
-		if (myP.currentHp < prevHp) {
-			// ГМ нанёс урон: сначала tempHp, потом реальный
-			const damage = prevHp - myP.currentHp;
-			const tempSpent = Math.min(currentTemp, damage);
-			char.tempHp = currentTemp - tempSpent;
-			const remaining = damage - tempSpent;
-
-			if (remaining > 0) {
-				char.currentResources = {
-					...(char.currentResources ?? {}),
-					hp: Math.max(0, currentReal - remaining),
-				};
-			}
-
-			char = { ...char };
-			await saveCharacter($state.snapshot(char) as Character);
-
-			// Возвращаем итог обратно в трекер, чтобы tempHp тоже учёлся
-			const newTotal = (char.currentResources!.hp ?? 0) + (char.tempHp ?? 0);
-			if (newTotal !== myP.currentHp) {
-				lastCombatHp = newTotal;
-				await writeCombatState({
-					...s,
-					participants: s.participants.map((p) =>
-						p.id === myP.id ? { ...p, currentHp: newTotal } : p
-					),
-				});
-			}
-		} else {
-			// ГМ восстановил HP
-			const heal = myP.currentHp - prevHp;
-			char.currentResources = {
-				...(char.currentResources ?? {}),
-				hp: Math.min(max, currentReal + heal),
-			};
-			char = { ...char };
-			await saveCharacter($state.snapshot(char) as Character);
+		if (update.correction !== null) {
+			const correctedHealth = update.correction;
+			lastCombatHp = correctedHealth;
+			await writeCombatState(changeCombatParticipantHealth(state, participant.id, () => correctedHealth), state);
 		}
 	}
 
 	/** Единая запись боя: локально + в комнату, если мы в ней */
-	async function writeCombatState(next: CombatState) {
-	if (char) next = { ...next, participants: next.participants.map(p => p.isPlayer && p.sourceId === char?.id ? { ...p, characterSnapshot: $state.snapshot(char) as Character } : p) };
-	console.log('[char/combat] writeCombatState', next);
-	combat = next;
-
-	try {
-		saveCombat(next);
-		console.log('[char/combat] localStorage ОК');
-	} catch (e) {
-		console.error('[char/combat] localStorage упал:', e);
-	}
-
-	if (!activeRoomCode) {
-		console.warn('[char/combat] нет activeRoomCode — пропускаем Supabase');
-		return;
-	}
-
-	try {
-		const room = await findRoomByCode(activeRoomCode);
-		if (!room) {
-			console.error('[char/combat] комната не найдена:', activeRoomCode);
-			return;
+	async function writeCombatState(next: CombatState, before = combat): Promise<'applied' | 'pending' | 'failed'> {
+		if (!activeRoomCode) {
+			combat = next;
+			saveCombat(next);
+			return 'applied';
 		}
-		await saveRoomCombatState(room.id, next);
-		console.log('[char/combat] Supabase ОК', room.id);
-	} catch (e) {
-		console.error('[char/combat] Supabase упал:', e);
-	}
-}
 
+		try {
+			const characterId = char?.id;
+			if (!before || !characterId || !combatRoomId) throw new Error('Боевой трекер комнаты ещё не подключён.');
+			const prepared = prepareRoomCombatAction(before, next, characterId);
+			if (!prepared) return 'applied';
+			const action = await submitRoomCombatAction(combatRoomId, characterId, prepared.actorId, prepared.phase, prepared.changes);
+			latestCombatActionId = action.id;
+			roomCombatNotice = action.status === 'pending' ? 'Действие отправлено. Ожидается решение сказителя.' : 'Действие применено в комнате.';
+			return action.status === 'pending' ? 'pending' : 'applied';
+		} catch (error) {
+			roomCombatNotice = error instanceof Error ? error.message : 'Не удалось отправить действие в комнату.';
+			return 'failed';
+		}
+	}
 
 	// ────────────────────────────────────────────
 	// DERIVED
@@ -553,10 +541,25 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		}
 		finishManualDie(value);
 	}
-	async function requestDie(sides: number, label: string, target?: number): Promise<number | null> {
+	async function requestRoomDie(sides: number, label: string): Promise<number | null> {
+		if (roomDiceBusy) return null;
+		roomDiceBusy = true;
+		roomDiceError = '';
+		try {
+			if (!combatRoomId) throw new Error('Комната ещё не подключена. Повторите бросок после подключения.');
+			const [value] = await rollRoomDice(combatRoomId, [sides], label);
+			return diceLifetime.signal.aborted ? null : value;
+		} catch (error) {
+			roomDiceError = error instanceof Error ? error.message : 'Серверный бросок не удался.';
+			return null;
+		} finally { roomDiceBusy = false; }
+	}
+
+	async function requestDie(sides: number, label: string, target?: number, animate = true): Promise<number | null> {
 		if (rollMode === 'online') {
-			const value = Math.floor(Math.random() * sides) + 1;
-			await showDice({ sides, value, label, target, signal: diceLifetime.signal });
+			const value = activeRoomCode ? await requestRoomDie(sides, label) : Math.floor(Math.random() * sides) + 1;
+			if (value === null) return null;
+			if (animate) await showDice({ sides, value, label, target, signal: diceLifetime.signal });
 			return diceLifetime.signal.aborted ? null : value;
 		}
 		if (pendingDie) return null;
@@ -658,50 +661,20 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	// ────────────────────────────────────────────
 	async function applyHpDelta(delta: number) {
 		if (!char) return;
-		const max = getResourceMax(char, 'hp');
-		const current = getCurrentResource(char, 'hp', max);
-
-		if (delta < 0) {
-			const damage = -delta;
-			const temp = char.tempHp ?? 0;
-			const tempSpent = Math.min(temp, damage);
-			char.tempHp = temp - tempSpent;
-			const remaining = damage - tempSpent;
-			if (remaining > 0) {
-				char.currentResources = {
-					...(char.currentResources ?? {}),
-					hp: Math.max(0, current - remaining),
-				};
-			}
-		} else {
-			char.currentResources = {
-				...(char.currentResources ?? {}),
-				hp: Math.min(max, current + delta),
-			};
-		}
-
-		char = { ...char };
+		char = changeCharacterHealth(char, delta);
 		await saveCharacter($state.snapshot(char) as Character);
 		await syncHpToCombat();
 	}
 
 	async function syncHpToCombat() {
 		if (!char || !combat?.active) return;
-		const myP = myCombatParticipant;
-		if (!myP) return;
-		const max = getResourceMax(char, 'hp');
-		const real = getCurrentResource(char, 'hp', max);
-		const temp = char.tempHp ?? 0;
-		const total = real + temp;
-		if (myP.currentHp === total) return;
+		const participant = myCombatParticipant;
+		if (!participant) return;
+		const total = characterCombatHealth(char);
+		if (participant.currentHp === total) return;
 
 		lastCombatHp = total;
-		await writeCombatState({
-			...combat,
-			participants: combat.participants.map((p) =>
-				p.id === myP.id ? { ...p, currentHp: total } : p
-			),
-		});
+		await writeCombatState(changeCombatParticipantHealth(combat, participant.id, () => total));
 	}
 
 	// ────────────────────────────────────────────
@@ -886,7 +859,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		const adjustedTargetArmor = targetArmor - (condMods.attacks ?? 0) + (myCombatParticipant?.grapple?.kind==='clinch'?15:myCombatParticipant?.grapple?.kind==='hold'?10:0);
 		const { target, parts } = getAttackTarget(char, weapon, attackType, adjustedTargetArmor, useTwoHandsWeapon);
 		let attacks: SingleAttackRoll[];
-		if (rollMode === 'offline') {
+		if (usesRequestedDice) {
 			rollBusy = true;
 			try {
 				const dice: number[] = [];
@@ -909,19 +882,19 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 							const sides = outcome === 'critical_hit'
 								? weapon.category === 'two_handed' ? 8 : 6
 								: weapon.category === 'two_handed' ? 6 : 4;
-							const extra = await requestDie(sides, `${weapon.name}: дополнительный урон`);
+							const extra = await requestDie(sides, `${weapon.name}: дополнительный урон`, undefined, false);
 							if (extra === null) return;
 							dice.push(extra);
 						}
 					}
 					if (outcome === 'hit' || outcome === 'double') {
 						for (let j = 0; j < damageCount; j++) {
-							const damage = await requestDie(damageSides, `${weapon.name}: урон ${j + 1} из ${damageCount}`);
+							const damage = await requestDie(damageSides, `${weapon.name}: урон ${j + 1} из ${damageCount}`, undefined, false);
 							if (damage === null) return;
 							dice.push(damage);
 						}
 						for (const bonus of arrowBonus) for (let j = 0; j < bonus.count; j++) {
-							const damage = await requestDie(bonus.sides, `${bonus.label}: урон ${j + 1} из ${bonus.count}`);
+							const damage = await requestDie(bonus.sides, `${bonus.label}: урон ${j + 1} из ${bonus.count}`, undefined, false);
 							if (damage === null) return;
 							dice.push(damage);
 						}
@@ -967,14 +940,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 				}
 			}
 			if (totalDamage > 0) {
-				await writeCombatState({
-					...combat,
-					participants: combat.participants.map((p) =>
-						p.id === targetEnemyId
-							? { ...p, currentHp: Math.max(0, p.currentHp - totalDamage) }
-							: p
-					),
-				});
+				await writeCombatState(changeCombatParticipantHealth(combat, targetEnemyId, hp => hp - totalDamage));
 			}
 		}
 
@@ -1079,12 +1045,12 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 			const next = advanceSpellHolding(char);
 			let effect: SpellEffectRoll | null = null;
 			if (!next.reason) {
-				if (rollMode === 'offline') {
+				if (usesRequestedDice) {
 					const plan = rollHeldSpellEffect(char, spell, originalHold, () => 1);
 					if (plan) {
 						const dice: number[] = [];
 						for (let i = 0; i < plan.diceCount; i++) {
-							const value = await requestDie(plan.diceSides, spell.name + ': удержание ' + (i + 1) + ' из ' + plan.diceCount);
+							const value = await requestDie(plan.diceSides, spell.name + ': удержание ' + (i + 1) + ' из ' + plan.diceCount, undefined, false);
 							if (value === null) return;
 							dice.push(value);
 						}
@@ -1101,7 +1067,8 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 			if (committed.reason) effect = null;
 			await saveCharacter($state.snapshot(char) as Character);
 			if (!committed.reason && effect && spell.holdDamage && spell.target === 'creature' && combat?.active && originalHold.targetId) {
-				await writeCombatState({ ...combat, participants: combat.participants.map((p) => p.id === originalHold.targetId ? { ...p, currentHp: Math.max(0, p.currentHp - effect!.total) } : p) });
+				const damage = effect.total;
+				await writeCombatState(changeCombatParticipantHealth(combat, originalHold.targetId, hp => hp - damage));
 			}
 			lastHold = { spell: spell.name, round: committed.round, cost: committed.cost, description: holdNotice, effect };
 			visibleRoll = 'hold';
@@ -1143,12 +1110,12 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		if (criticalCostDie === null) return;
 		let effectResult: SpellEffectRoll | null = null;
 		if (outcome === 'success' || outcome === 'critical_success') {
-			if (rollMode === 'offline') {
+			if (usesRequestedDice) {
 				const plan = rollSpellEffect(char, spell, useTwoHands, useGrace, () => 1);
 				if (plan) {
 					const dice: number[] = [];
 					for (let i = 0; i < plan.diceCount; i++) {
-						const value = await requestDie(plan.diceSides, `${spell.name}: ${spell.damage ? 'урон' : 'эффект'} ${i + 1} из ${plan.diceCount}`);
+						const value = await requestDie(plan.diceSides, `${spell.name}: ${spell.damage ? 'урон' : 'эффект'} ${i + 1} из ${plan.diceCount}`, undefined, false);
 						if (value === null) return;
 						dice.push(value);
 					}
@@ -1157,7 +1124,19 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 				}
 			} else effectResult = rollSpellEffect(char, spell, useTwoHands, useGrace);
 		}
-		// Ресурсы могли измениться в другой вкладке во время ввода физических кубиков.
+		const beforeSaves = getSpellCastingAvailability(char, spell, useTwoHands, useGrace);
+		if (!beforeSaves.affordable) { spellNotice = beforeSaves.reason; return; }
+
+		const combatBeforeCast = combat;
+		const targetIds = spell.target === 'area' && areaSpellTargets.length
+			? [...areaSpellTargets]
+			: targetEnemyId ? [targetEnemyId] : [];
+		const spellDamage = combatBeforeCast?.active && effectResult && spell.damage && targetIds.length
+			? await resolveSpellCombatDamage(combatBeforeCast, spell, effectResult.total, targetIds, (victim, target) =>
+				requestDie(100, `${victim.name}: Избавление от ${spell.name}`, target))
+			: undefined;
+		if (spellDamage === null) return;
+
 		const finalAvailability = getSpellCastingAvailability(char, spell, useTwoHands, useGrace);
 		if (!finalAvailability.affordable) { spellNotice = finalAvailability.reason; return; }
 		const decayGained = spell.decayCost ?? (spell.usesNezhiva ? 1 : 0);
@@ -1177,24 +1156,20 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 			spendResource(char, resourceId, total, resourceMax);
 		}
 
-        let damageApplied = 0;
-        if (combat?.active && effectResult && spell.damage) {
-         const ids=spell.target==='area' && areaSpellTargets.length ? areaSpellTargets : targetEnemyId?[targetEnemyId]:[];
-         let next=combat;
-         for(const id of ids) {
-          const victim=next.participants.find(p=>p.id===id);if(!victim)continue;
-          const saveTarget=spellDamageSaveTarget(victim,spell);
-          const save=saveTarget===null?null:await requestDie(100,victim.name+': Избавление от '+spell.name,saveTarget);
-          if(saveTarget!==null&&save===null)return;
-          const damage=spellDamageAfterSave(effectResult.total,save,saveTarget);
-          damageApplied+=Math.min(victim.currentHp,damage);
-          if(spell.id==='life_drain'&&damage===effectResult.total&&!(save===1||(save!==null&&saveTarget!==null&&save<=saveTarget))) {
-           const hpMax=getResourceMax(char,'hp');char={...char,currentResources:{...char.currentResources,hp:Math.min(hpMax,(char.currentResources?.hp??hpMax)+Math.min(victim.currentHp,damage))}};
-          }
-          next={...next,participants:next.participants.map(p=>p.id===id?{...p,currentHp:Math.max(0,p.currentHp-damage)}:p)};
-         }
-         if(ids.length)await writeCombatState(next);
-        }
+		let damageApplied = 0;
+		if (spellDamage && combatBeforeCast) {
+			let next = spellDamage.encounter;
+			if (activeRoomCode && spellDamage.drainedHp > 0) {
+				const caster = findParticipantBySource(next, char.id);
+				if (caster) {
+					const max = getResourceMax(char, 'hp');
+					next = changeCombatParticipantHealth(next, caster.id, hp => Math.min(max, hp + spellDamage.drainedHp));
+				}
+			}
+			const combatOutcome = await writeCombatState(next, combatBeforeCast);
+			if (combatOutcome === 'applied') damageApplied = spellDamage.damageApplied;
+			if (!activeRoomCode && spellDamage.drainedHp > 0) char = changeCharacterHealth(char, spellDamage.drainedHp);
+		}
 
 		lastCast = {
 			spell: spell.name,
@@ -1338,7 +1313,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 	async function applyDotDamage() {
 		if (!char) return;
 		const dice: number[] = [];
-		if (rollMode === 'offline') {
+		if (usesRequestedDice) {
 			for (const condition of char.conditions ?? []) {
 				const def = findCondition(condition.id);
 				const match = def?.dotDamage?.match(/^(\d+)[кd](\d+)$/i);
@@ -1351,7 +1326,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 			}
 		}
 		let cursor = 0;
-		const { total, details } = rollMode === 'offline'
+		const { total, details } = usesRequestedDice
 			? rollConditionsDotDamage(char, () => dice[cursor++])
 			: rollConditionsDotDamage(char);
 		if (total === 0) {
@@ -1514,11 +1489,21 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
    if (!target) throw new Error('Выберите цель.');
    const self = target.characterId === char.id;
    const recipient = self ? $state.snapshot(char) as Character : target.characterId ? await getCharacter(target.characterId) : null;
-   const result = treatWithItem($state.snapshot(char) as Character, treatmentItem, recipient ?? null, combat, target.participantId ?? null, crypto.randomUUID());
+   const actor = $state.snapshot(char) as Character;
+   const before = combat;
+   const result = treatWithItem(actor, treatmentItem, recipient ?? null, before, target.participantId ?? null, crypto.randomUUID());
+   const outcome = result.state ? await writeCombatState(result.state, before) : 'applied';
+   if (outcome === 'failed') throw new Error(roomCombatNotice);
+   if (outcome === 'pending') {
+    char = { ...actor, inventory: result.actor.inventory };
+    await saveCharacter($state.snapshot(char) as Character);
+    itemNotice = 'Лечение ожидает подтверждения сказителя.';
+    treatmentItem = null;
+    return;
+   }
    await saveCharacters(result.recipient && recipient && !self ? [result.actor, result.recipient] : [result.actor]);
    char = result.actor;
    if (result.recipient && recipient && !self) notifyCharacterUpdate(result.recipient.id);
-   if (result.state) await writeCombatState(result.state);
    itemNotice = `${target.name}: снято состояние «${findCondition(result.conditionId)?.name ?? result.conditionId}». ${treatmentName} использован.`;
    publishToActiveRoom(char.name || 'Безымянный', 'effect', {label:treatmentName,details:itemNotice});
    treatmentItem = null;
@@ -1711,6 +1696,15 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 </style>
 <main class="character-sheet max-w-4xl mx-auto p-6 space-y-6" class:print-preview={printPreview} data-decay-stage={decayLevel} data-sheet-background="parchment" data-sheet-frame="carved">
 	{#if char}<CharacterPrint character={char} modifiers={condMods} preview={printPreview} onclose={() => printPreview = false} />{/if}
+	{#if roomDiceError}
+		<p class="sticky top-2 z-20 rounded border bg-white p-3 text-red-700 print-hide" role="alert">{roomDiceError} <button type="button" class="ml-2 rounded border px-2" onclick={() => roomDiceError = ''}>Закрыть</button></p>
+	{/if}
+	{#if roomCombatNotice}
+		<div class="print-hide rounded border p-3" role="status">
+			{roomCombatNotice}
+			<button type="button" class="ml-2 rounded border px-2" onclick={() => roomCombatNotice = ''}>Закрыть</button>
+		</div>
+	{/if}
 	{#if pendingDie}
 		<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 print-hide" role="presentation">
 			<div class="w-full max-w-sm rounded-xl border border-gray-500 bg-white p-6 shadow-2xl text-gray-900" role="dialog" aria-modal="true" aria-label="Ввод физического броска">
@@ -1859,8 +1853,10 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		<section class="rounded-lg border bg-stone-50 p-4" aria-labelledby="relationships">
 			<div class="mb-4">
 				<h2 id="relationships" class="text-xl font-semibold">Мои связи</h2>
-				<p class="mt-1 text-sm text-gray-600">Здесь видны ваши отношения с организациями и поручениями, а также спутники, связанные с вами общим делом.</p>
+				<p class="mt-1 text-sm text-gray-600">Здесь видны ваши связи с персонажами, организациями и поручениями.</p>
 			</div>
+			{#if activeRoomCode && roomRelationshipError}<p role="status">{roomRelationshipError}</p>{/if}
+			{#if activeRoomCode && !relationshipWeb.length && !roomRelationshipError}<p class="text-sm">Связи появятся после подтверждения персонажа сказителем и добавления связей.</p>{/if}
 			<RelationshipWebView links={relationshipWeb} ownerCharacterId={char.id} />
 		</section>
 
@@ -2038,7 +2034,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		<section>
 			<h2 id="conditions" class="text-xl font-semibold mb-3">Состояния</h2>
 			{#if combat && myCombatParticipant}
-				<CombatEffects participant={myCombatParticipant} encounter={combat} character={char} initialText={activeAbilityText} onchange={writeCombatState} />
+				<CombatEffects participant={myCombatParticipant} encounter={combat} character={char} initialText={activeAbilityText} onchange={writeCombatState} requestOnlineDie={activeRoomCode ? requestRoomDie : undefined} />
 			{/if}
 
 			<!-- Активные состояния -->

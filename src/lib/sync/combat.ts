@@ -158,6 +158,19 @@ export function findParticipantIdBySource(sourceId: string): string | null {
 }
 
 /** Обновить состояние участника */
+export function changeCombatParticipantHealth(
+	state: CombatState,
+	participantId: string,
+	update: (health: number) => number
+): CombatState {
+	return {
+		...state,
+		participants: state.participants.map(participant => participant.id === participantId
+			? { ...participant, currentHp: Math.max(0, update(participant.currentHp)) }
+			: participant)
+	};
+}
+
 export function updateParticipant(id: string, patch: Partial<CombatParticipant>): CombatState {
 	const state = getCombat() ?? createEmptyCombat();
 	state.participants = state.participants.map((p) =>

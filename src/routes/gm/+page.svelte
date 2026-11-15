@@ -29,13 +29,15 @@
 		getRoomParticipants,
 		subscribeToRoomCombat,
 		closeRoomRequest,
+		rollRoomDice,
 		type RoomRequest,
+		type RoomParticipant,
 	} from '../../lib/engine/rooms';
 	import type { Character } from '$lib/type';
 	import { readRelationshipNpcs, readLocalRelationshipWeb, writeLocalRelationshipWeb, type RelationshipLink, type RelationshipNpc } from '$lib/engine/relationship-web';
 	import { ensureRoomSession } from '$lib/supabase/client';
 	import { createRelationshipTemplate, normalizeRelationshipSnapshot, type RelationshipSnapshot } from '$lib/engine/relationship-snapshot';
-	import { loadRelationshipTemplate, saveRelationshipTemplate, loadRoomRelationships, saveRoomRelationships, attachRelationshipsToRoom, subscribeRoomRelationships, exportRoomArchive } from '$lib/engine/relationship-store';
+	import { loadRelationshipTemplate, saveRelationshipTemplate, loadRoomRelationships, saveRoomRelationships, attachRelationshipsToRoom, subscribeRoomRelationships, exportRoomArchive, loadRoomRelationshipAccess, setRoomRelationshipAccess, type RoomRelationshipAccess } from '$lib/engine/relationship-store';
 	import { downloadJson } from '$lib/utils/export';
 	import { EMPTY_STORY_PLOT_WEB, clearLocalStoryPlotWeb, normalizeStoryPlotWeb, readLocalStoryPlotWeb, writeLocalStoryPlotWeb, type StoryPlotWeb } from '$lib/engine/story-plot-web';
 	import { loadStoryPlotWeb, saveStoryPlotWeb as persistStoryPlotWeb } from '$lib/engine/story-plot-store';
@@ -92,6 +94,33 @@
 	let templateReady=$state(false);
 	let roomIsMaster=$state(false);
 	let unsubscribeRoomWeb:(()=>void)|undefined;
+	let relationshipPlayers = $state<RoomParticipant[]>([]);
+	let relationshipAccess = $state<RoomRelationshipAccess[]>([]);
+	let updatingRelationshipAccess = $state(false);
+
+	async function refreshRelationshipAccess() {
+		if (!activeRoomId || !roomIsMaster) return;
+		const [players, access] = await Promise.all([
+			getRoomParticipants(activeRoomId),
+			loadRoomRelationshipAccess(activeRoomId)
+		]);
+		relationshipPlayers = players.filter((participant) => participant.role === 'player');
+		relationshipAccess = access;
+	}
+
+	async function updateRelationshipAccess(player?: RoomParticipant, characterId: string | null = null) {
+		if (!activeRoomId || !roomIsMaster || updatingRelationshipAccess) return;
+		updatingRelationshipAccess = true;
+		try {
+			if (player) await setRoomRelationshipAccess(activeRoomId, player.id, characterId);
+			await refreshRelationshipAccess();
+			relationshipStatus = player ? (characterId ? 'Личные связи открыты игроку.' : 'Доступ игрока к связям отозван.') : '';
+		} catch (error) {
+			relationshipStatus = error instanceof Error ? error.message : 'Не удалось обновить доступ к связям.';
+		} finally {
+			updatingRelationshipAccess = false;
+		}
+	}
 	const activeRelationshipSnapshot=$derived(relationshipView==='room'&&roomSnapshot?roomSnapshot:templateSnapshot);
 	const relationshipWeb=$derived(activeRelationshipSnapshot.links);
 	const graphEditable=$derived(relationshipView==='main'?templateReady:!!roomSnapshot&&roomIsMaster);
@@ -253,17 +282,23 @@
 		if (!type) return;
 
 		const skillId = SESSION_SKILLS[type];
+		if (type !== 'initiative' && !skillId) return;
 		let roll: number, target: number, modifier: number;
+		let roomRoll: number | undefined;
+		if (activeRoomId) {
+			try { [roomRoll] = await rollRoomDice(activeRoomId, [type === 'initiative' ? 20 : 100], (c.name || 'Персонаж') + ': ' + SESSION_LABELS[type]); }
+			catch (error) { alert(error instanceof Error ? error.message : 'Серверный бросок не удался.'); return; }
+		}
 		let result: RollResult;
 
 		if (type === 'initiative') {
-			roll = rollD20();
+			roll = roomRoll ?? rollD20();
 			modifier = getModifier(getCharacteristicValue(c, 'dexterity'));
 			target = 0;
 			result = 'success';
 		} else if (skillId) {
 			target = getSkillCheckTarget(c, skillId);
-			roll = rollD100();
+			roll = roomRoll ?? rollD100();
 			modifier = 0;
 			result = classifyRoll(roll, target);
 		} else return;
@@ -352,6 +387,11 @@
 				try{roomSnapshot=await loadRoomRelationships(room.id);unsubscribeRoomWeb=subscribeRoomRelationships(room.id,snapshot=>roomSnapshot=snapshot);}
 				catch(error){relationshipStatus=error instanceof Error?error.message:'Не удалось загрузить паутину комнаты.';}
 				const roomParticipants = await getRoomParticipants(room.id).catch(() => []);
+				if (roomIsMaster) {
+					relationshipPlayers = roomParticipants.filter((participant) => participant.role === 'player');
+					try { relationshipAccess = await loadRoomRelationshipAccess(room.id); }
+					catch (error) { relationshipStatus = error instanceof Error ? error.message : 'Не удалось загрузить доступ к связям.'; }
+				}
 				relationshipCharacters = [...new Map([
 					...characters.map((character) => ({ id: character.id, name: character.name })),
 					...roomParticipants.flatMap((participant) => {
@@ -676,7 +716,7 @@
 	<section class="border rounded-lg bg-white p-4 mb-6" aria-labelledby="relationship-web-title">
 		<div class="mb-4">
 			<h2 id="relationship-web-title" class="text-xl font-semibold">Паутина связей</h2>
-			<p class="text-sm text-gray-600">Связывайте персонажей с общинами, кругами, цехами, поручениями и друг с другом. Игроки увидят свои связи и тех, кто связан с ними общим делом.</p>
+			<p class="text-sm text-gray-600">Связывайте персонажей с общинами, кругами, цехами, поручениями и друг с другом. Участники комнаты увидят личные связи подтверждённых персонажей.</p>
 			<div class="flex flex-wrap gap-2 mt-3" role="group" aria-label="Паутина для просмотра">
 			<button type="button" class="px-3 py-2 border rounded" class:bg-green-800={relationshipView==='main'} class:text-white={relationshipView==='main'} aria-pressed={relationshipView==='main'} disabled={savingRelationshipWeb} onclick={()=>relationshipView='main'}>Основная паутина</button>
 			{#if activeRoomId}<button type="button" class="px-3 py-2 border rounded" class:bg-green-800={relationshipView==='room'} class:text-white={relationshipView==='room'} aria-pressed={relationshipView==='room'} disabled={savingRelationshipWeb} onclick={()=>relationshipView='room'}>Паутина комнаты</button>{/if}
@@ -685,6 +725,23 @@
 		<p class="mt-2 text-sm">{relationshipView==='room'&&roomSnapshot?'Копия этой комнаты хранится в базе независимо от основной паутины.':templateReady?'Основная паутина сохранена в базе. В комнату добавляется её независимая копия.':'Основная паутина — шаблон для новых комнат.'}</p>
 		{#if relationshipView==='room'&&!roomSnapshot}<p class="mt-2 text-sm">В комнату ещё не добавлена паутина. Ниже показана основная.</p>{#if roomIsMaster}<button type="button" class="mt-2 px-3 py-2 border rounded" disabled={!templateReady||savingRelationshipWeb} onclick={attachMainGraph}>Создать копию основной паутины в комнате</button>{/if}{/if}
 		</div>
+		{#if relationshipView === 'room' && roomIsMaster && roomSnapshot}
+			<details class="mb-4 rounded border p-3">
+				<summary>Доступ игроков к личным связям</summary>
+				<p class="my-2 text-sm">Подтвердите персонажа каждого игрока. После смены персонажа подтвердите его снова.</p>
+				<button type="button" class="mb-2 rounded border px-3 py-2" disabled={updatingRelationshipAccess} onclick={() => updateRelationshipAccess()}>Обновить список игроков</button>
+				{#each relationshipPlayers as player (player.id)}
+					{@const grantedId = relationshipAccess.find((entry) => entry.participant_id === player.id)?.character_id}
+					{@const selected = player.character_snapshot}
+					<div class="flex flex-wrap items-center gap-2 border-t py-2">
+						<span>{player.display_name ?? 'Игрок'} · {selected?.name ?? 'Персонаж не выбран'}</span>
+						{#if selected && grantedId !== selected.id}<button type="button" class="rounded border px-3 py-2" disabled={updatingRelationshipAccess} onclick={() => updateRelationshipAccess(player, selected.id)}>Подтвердить персонажа</button>{/if}
+						{#if grantedId}<button type="button" class="rounded border px-3 py-2" disabled={updatingRelationshipAccess} onclick={() => updateRelationshipAccess(player)}>Отозвать доступ</button>{/if}
+						{#if selected && grantedId === selected.id}<span class="text-sm">Личные связи доступны</span>{/if}
+					</div>
+				{/each}
+			</details>
+		{/if}
 		<RelationshipWebView links={relationshipWeb} characters={relationshipCharacters.length ? relationshipCharacters : characters.map((character) => ({ id: character.id, name: character.name }))} npcs={activeRelationshipSnapshot.npcs} editable={graphEditable} onChange={saveRelationshipWeb} />
 		{#if relationshipStatus}<p class="mt-3 text-sm" role="status">{relationshipStatus}</p>{/if}
 	</section>

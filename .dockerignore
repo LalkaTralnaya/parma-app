@@ -9,3 +9,5 @@ build
 tmp
 work
 reports
+test-results
+playwright-report

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { verifiedDiceSummary } from '$lib/engine/verified-room-dice';
  import RoomImage from '$lib/components/RoomImage.svelte';
 	import { exportRoomArchive } from '$lib/engine/relationship-store';
 	import { downloadJson } from '$lib/utils/export';
@@ -315,6 +316,8 @@ async function declineGift(p: RoomParticipant) {
 	}
 
 	function rollSummary(roll: RoomRoll): { text: string; resultClass: string } {
+		const verified = verifiedDiceSummary(roll);
+		if (verified) return { text: verified, resultClass: 'text-blue-700' };
 		const d = roll.roll_data as Record<string, unknown>;
 		const r = (d.result as string) ?? '';
 

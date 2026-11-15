@@ -5,7 +5,7 @@
  import { getMaxAttackCount } from '$lib/engine/combat';
  import { getSkillCheckTarget } from '$lib/engine/character';
  import { participantCharacter } from '$lib/engine/combatEffects';
- let { character, encounter, onchange, oncombat, requestDie }: {character:Character;encounter:CombatState|null;onchange:(c:Character)=>Promise<void>;oncombat:(c:CombatState)=>Promise<void>;requestDie:(s:number,label:string,target?:number)=>Promise<number|null>}=$props();
+ let { character, encounter, onchange, oncombat, requestDie }: {character:Character;encounter:CombatState|null;onchange:(c:Character)=>Promise<void>;oncombat:(c:CombatState, previous?:CombatState)=>Promise<void|'applied'|'pending'|'failed'>;requestDie:(s:number,label:string,target?:number)=>Promise<number|null>}=$props();
  let action=$state<MartialAction>('hand'),count=$state(1),targetId=$state(''),defenseSkill=$state('athletics'),manualArmor=$state(0),manualDefense=$state(42),ready=$state(false),busy=$state(false),notice=$state('');
  let freeHands=$state(2);
  let last=$state<ReturnType<typeof resolveMartialAction>|null>(null);
@@ -19,13 +19,24 @@
  const defender=$derived.by(()=>{if(!target)return manualDefense;try{return getSkillCheckTarget(participantCharacter(target), action==='escape'?'martial':['pain','choke'].includes(action)?'fortitude':defenseSkill);}catch{return manualDefense;}});
  async function apply() {
   if(busy||reason||!ready)return;busy=true;notice='';
+  const previous = encounter;
+  const source = actor;
+  const victim = target;
   try {
    const roll=action==='maintain'?1:await requestDie(100,chosen.name,check);if(roll===null)return;
    const defense=!strike&&action!=='maintain'?await requestDie(100,'Сопротивление: '+(target?.name??'цель'),defender):50;if(defense===null)return;
-   const plan=resolveMartialAction(character,encounter,actor?.id??character.id,targetId,action,count,roll,defense,defender,()=>1,defenseSkill,freeHands);
+   const plan=resolveMartialAction(character,previous,source?.id??character.id,victim?.id??'',action,count,roll,defense,defender,()=>1,defenseSkill,freeHands);
    const dice:number[]=[];for(let i=0;i<plan.dice.length;i++){const size=action==='hand-kick'?(i===0?4:6):['kick','throw','trip'].includes(action)?6:4; const value=strike&&roll===1?size:await requestDie(size,chosen.name+': урон '+(i+1));if(value===null)return;dice.push(value);}
-   let index=0;const result=resolveMartialAction(character,encounter,actor?.id??character.id,targetId,action,count,roll,defense,defender,()=>dice[index++],defenseSkill,freeHands);
-   await onchange(result.character);if(result.encounter&&target&&actor)await oncombat(result.encounter);last=result;
+   let index=0;const result=resolveMartialAction(character,previous,source?.id??character.id,victim?.id??'',action,count,roll,defense,defender,()=>dice[index++],defenseSkill,freeHands);
+   await onchange(result.character);
+   if (result.encounter && previous && victim && source) {
+    const sync = await oncombat(result.encounter, previous);
+    if (sync === 'pending' || sync === 'failed') {
+     notice = sync === 'pending' ? 'Приём ожидает подтверждения сказителя.' : 'Не удалось передать приём в трекер.';
+     return;
+    }
+   }
+   last = result;
   }catch(e){notice=e instanceof Error?e.message:'Не удалось выполнить приём.';}finally{busy=false;}
  }
 </script>

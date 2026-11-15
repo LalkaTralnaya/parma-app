@@ -25,3 +25,6 @@ vite.config.ts.timestamp-*
 # Local previews and book extraction workspace
 /tmp/
 /work/
+
+/test-results/
+/playwright-report/

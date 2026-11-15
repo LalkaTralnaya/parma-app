@@ -10,7 +10,7 @@
 	import { ABILITIES } from '../rules/abilities';
 	import { getCharacter } from '../db/characters';
 	import { attemptCombatEffectSave, effectPreset, effectSaveTarget, isTargetedSpecial, removeCombatEffect, resolveCombatEffect, type CombatEffect } from '../engine/combatEffects';
-	let { participant, encounter, onchange, character = null, initialText = '' }: {participant:CombatParticipant;encounter:CombatState;onchange:(s:CombatState)=>Promise<void>;character?:Character|null;initialText?:string}=$props();
+	let { participant, encounter, onchange, character = null, initialText = '', requestOnlineDie }: {participant:CombatParticipant;encounter:CombatState;onchange:(s:CombatState, previous?:CombatState)=>Promise<void|'applied'|'pending'|'failed'>;character?:Character|null;initialText?:string;requestOnlineDie?:(sides:number,label:string,target?:number,animate?:boolean)=>Promise<number|null>}=$props();
 	let open=$state(false),busy=$state(false),message=$state(''),text=$state(''),name=$state('');
 	let conditionId=$state(''),stat=$state('strength'),skill=$state(''),penalty=$state(0),rounds=$state<number|null>(null),targetId=$state(''),needsSave=$state(true),physical=$state(false),die=$state(50);
 	let seenText='';
@@ -24,7 +24,9 @@
 	}
 	$effect(()=>{if(initialText && initialText!==seenText){seenText=initialText;begin(initialText);}});
 	async function live(p:CombatParticipant) {return p.id===participant.id && character ? character : p.isPlayer&&p.sourceId ? await getCharacter(p.sourceId) : null;}
-	function roll(){return physical?Number(die):Math.floor(Math.random()*100)+1;}
+	async function roll(sides:number,label:string,target?:number) {
+		return requestOnlineDie ? requestOnlineDie(sides,label,target) : Math.floor(Math.random()*sides)+1;
+	}
 	async function apply(){
 		if(busy || !targetId)return;busy=true;
 		try{
@@ -32,29 +34,49 @@
 			if(!def && !text.trim())throw new Error('Опишите эффект.');
 			const e:CombatEffect={id:crypto.randomUUID(),name:name||def?.name||'Особый эффект',description:text,sourceId:participant.id,sourceName:participant.name,conditionId:conditionId||undefined,modifiers:def?.modifiers??{attacks:Number(attackMod)||0,armor:Number(armorMod)||0,speed:Number(speedMod)||0,saves:Number(saveMod)||0,canAct:!cannotAct},save:needsSave?{charA:stat,skillA:skill||undefined,...(def?.save?.charA===stat && def.save.skillA===(skill||undefined)?{charB:def.save.charB,skillB:def.save.skillB}:{})}:undefined,penalty:Number(penalty)||0,roundsLeft:rounds===null||Number(rounds)===0?null:Math.max(1,Math.floor(Number(rounds)))};
 			const target=encounter.participants.find(p=>p.id===targetId);if(!target)throw new Error('Выберите цель.');
-			const r=needsSave?roll():null;
-			const result=resolveCombatEffect(encounter,targetId,e,r,await live(target));
-			await onchange(result.state);
+			const previous = encounter;
+			const liveTarget = await live(target);
+			const saveTarget = needsSave ? effectSaveTarget(target,e,liveTarget) : null;
+			const r = needsSave ? (physical ? Number(die) : await roll(100, target.name + ': избавление', saveTarget ?? undefined)) : null;
+			if (needsSave && r === null) { message = 'Серверный бросок не удался.'; return; }
+			const result=resolveCombatEffect(previous,targetId,e,r,liveTarget);
+			const sync = await onchange(result.state, previous);
+			if (sync === 'pending' || sync === 'failed') { message = sync === 'pending' ? 'Эффект ожидает подтверждения сказителя.' : 'Не удалось передать эффект в трекер.'; return; }
 			message=`${target.name}: ${result.immune?'иммунитет':result.target===null?'эффект наложен':`к100 ${r} ≤ ${result.target} — ${result.success?'избавление успешно, эффект не наложен':'провал, эффект наложен'}`}`;
 		}catch(error){message=(error as Error).message;}finally{busy=false;}
 	}
 	async function escape(e:CombatEffect,alternative=false){
 		if(busy)return;busy=true;
 		try{
+			const previous = encounter;
 			const target=effectSaveTarget(participant,e,await live(participant),alternative);if(target===null)return;
-			const r=physical?Number(prompt('Результат физического к100 (1–100):','50')):roll();
-			if(!Number.isInteger(r)||r<1||r>100)return;
-			const result=attemptCombatEffectSave(encounter,participant.id,e.id,r,await live(participant),alternative);
+			const r=physical?Number(prompt('Результат физического к100 (1–100):','50')):await roll(100,participant.name + ': избавление',target);
+			if (r === null) { message = 'Серверный бросок не удался.'; return; }
+			if (!Number.isInteger(r) || r < 1 || r > 100) return;
+			const result=attemptCombatEffectSave(previous,participant.id,e.id,r,await live(participant),alternative);
 			const success=result.success;
 			message=`${participant.name}: к100 ${r} ≤ ${target} — ${success?'эффект снят':'эффект остаётся'}`;
-			if(success)await onchange(result.state);
+			if (success) {
+				const sync = await onchange(result.state, previous);
+				if (sync === 'pending') message = 'Избавление ожидает подтверждения сказителя.';
+				if (sync === 'failed') message = 'Не удалось передать избавление в трекер.';
+			}
 		}catch(error){message=(error as Error).message;}finally{busy=false;}
 	}
 	async function dot(e:CombatEffect){
 		const def=CONDITIONS.find(c=>c.id===e.conditionId);const m=def?.dotDamage?.match(/^(\d+)[кd](\d+)$/i);if(!m)return;
-		const damage=physical?Number(prompt(`Урон ${def?.dotDamage}:`,'1')):Array.from({length:Number(m[1])},()=>Math.floor(Math.random()*Number(m[2]))+1).reduce((a,b)=>a+b,0);
+		const previous = encounter;
+		let damage = physical ? Number(prompt(`Урон ${def?.dotDamage}:`,'1')) : 0;
+		if (!physical) {
+			for (let i = 0; i < Number(m[1]); i++) {
+				const value = await roll(Number(m[2]), participant.name + ': ' + e.name);
+				if (value === null) { message = 'Серверный бросок не удался.'; return; }
+				damage += value;
+			}
+		}
 		if(!Number.isInteger(damage)||damage<0)return;
-		await onchange({...encounter,participants:encounter.participants.map(p=>p.id===participant.id?{...p,currentHp:Math.max(0,p.currentHp-damage)}:p)});
+		const sync = await onchange({...previous,participants:previous.participants.map(p=>p.id===participant.id?{...p,currentHp:Math.max(0,p.currentHp-damage)}:p)}, previous);
+		if (sync === 'pending' || sync === 'failed') { message = sync === 'pending' ? 'Урон ожидает подтверждения сказителя.' : 'Не удалось передать урон в трекер.'; return; }
 		message=`${participant.name}: −${damage} ЗДР (${def?.name})`;
 	}
 </script>

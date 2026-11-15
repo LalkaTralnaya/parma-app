@@ -4,6 +4,7 @@ import type { TavernSettings } from './tavern-settings';
 import type { RelationshipWeb } from './relationship-web';
 import { loadRoomRelationships, saveRoomRelationships } from './relationship-store';
 import { normalizeRelationshipSnapshot } from './relationship-snapshot';
+import type { RoomCombatChange } from './room-combat-changes';
 
 const ROOM_REQUEST_TIMEOUT_MS = 15_000;
 const ROOM_CONNECTION_ERROR = 'Нет связи с сервером комнат. Проверьте мобильную сеть, Wi-Fi или VPN и повторите попытку.';
@@ -67,6 +68,7 @@ export interface RoomRoll {
 	device_id: string;
 	character_name: string | null;
 	roll_type: string;
+	server_roll_id?: string | null;
 	roll_data: Record<string, unknown>;
 	created_at: string;
 }
@@ -191,6 +193,29 @@ export async function publishRoll(
 		roll_data: rollData
 	});
 	if (error) throw new Error(`Ошибка отправки броска: ${error.message}`);
+}
+
+export async function rollRoomDice(roomId: string, sides: number[], label: string): Promise<number[]> {
+ const requestId = crypto.randomUUID();
+ const { data, error } = await roomRequest((signal) => roomSupabase.rpc('roll_room_dice', {
+  p_room_id: roomId,
+  p_request_id: requestId,
+  p_sides: sides,
+  p_label: Array.from(label.trim()).slice(0, 160).join('')
+ }).abortSignal(signal));
+
+ if (error) {
+  if (/schema cache|could not find the function/i.test(error.message)) throw new Error('Для серверных бросков нужна миграция Supabase.');
+  if (error.code === '42501') throw new Error('Войдите в комнату, чтобы бросить кубик.');
+  if (isNetworkError(error.message)) throw new Error(ROOM_CONNECTION_ERROR);
+  throw new Error('Сервер не принял бросок. Проверьте подключение к комнате или повторите позже.');
+ }
+
+ const values: unknown = data?.values;
+ if (!Array.isArray(values) || values.length !== sides.length || !values.every((value, i) =>
+  Number.isInteger(value) && value >= 1 && value <= sides[i]
+ )) throw new Error('Сервер вернул неверный результат броска.');
+ return values;
 }
 
 /** Последние N бросков комнаты */
@@ -481,22 +506,67 @@ export async function saveRoomCombatState(
 	state: CombatState
 ): Promise<void> {
 	await ensureRoomSession();
-	console.log('[combat] сохраняем состояние в комнату', roomId, state);
-	const { data, error, count } = await roomSupabase
+	const { data, error } = await roomSupabase
 		.from('room_combat')
 		.update({ state })
 		.eq('room_id', roomId)
-		.select();
-
-	if (error) {
-		console.error('[combat] ошибка сохранения:', error);
-		throw new Error(`Ошибка сохранения боя: ${error.message}`);
-	}
-	console.log('[combat] сохранено, затронуто строк:', data?.length ?? 0);
-	if (!data || data.length === 0) {
-		console.warn('[combat] ⚠️ НИ ОДНОЙ строки не обновлено! Проверь room_id или наличие строки.');
-	}
+		.select('room_id')
+		.maybeSingle();
+	if (error) throw new Error(`Ошибка сохранения боя: ${error.message}`);
+	if (!data) throw new Error('Бой может обновлять сказитель комнаты. Проверьте роль и состояние комнаты.');
 }
+export type RoomCombatActionResult = 'pending' | 'applied' | 'rejected' | 'stale';
+export interface RoomCombatAction {
+ id: string;
+ actor_name: string;
+ changes: RoomCombatChange[];
+ status: RoomCombatActionResult;
+}
+
+function roomCombatActionError(message: string): Error {
+ if (/schema cache|could not find|does not exist/i.test(message)) return new Error('Для действий в комнате нужно обновить базу Supabase.');
+ if (message.includes('Select your character')) return new Error('Сначала выберите этого персонажа в комнате.');
+ if (message.includes('encounter changed')) return new Error('Состояние боя изменилось. Проверьте трекер и повторите действие.');
+ if (message.includes('not in the encounter')) return new Error('Сказитель должен добавить персонажа в бой.');
+ if (message.includes('Too many combat actions')) return new Error('Слишком много запросов. Дождитесь решения сказителя.');
+ return new Error('Не удалось передать действие в боевой трекер. Проверьте соединение и состояние комнаты.');
+}
+
+export async function submitRoomCombatAction(
+ roomId: string, characterId: string, actorId: string, phase: [boolean, number, number], changes: RoomCombatChange[]
+): Promise<RoomCombatAction> {
+ const { data, error } = await roomRequest((signal) => roomSupabase.rpc('submit_room_combat_action', {
+  p_id: crypto.randomUUID(), p_room_id: roomId, p_character_id: characterId, p_actor_id: actorId,
+  p_phase: phase, p_changes: changes
+ }).abortSignal(signal));
+ if (error) throw roomCombatActionError(error.message);
+ return data;
+}
+
+export async function loadPendingRoomCombatActions(roomId: string): Promise<RoomCombatAction[]> {
+ const { data, error } = await roomRequest((signal) => roomSupabase.from('room_combat_actions')
+  .select('id,actor_name,changes,status').eq('room_id', roomId).eq('status', 'pending')
+  .order('created_at').limit(100).abortSignal(signal));
+ if (error) throw roomCombatActionError(error.message);
+ return data ?? [];
+}
+
+export async function reviewRoomCombatAction(roomId: string, id: string, apply: boolean): Promise<RoomCombatAction> {
+ const { data, error } = await roomRequest((signal) => roomSupabase.rpc('review_room_combat_action', {
+  p_room_id: roomId, p_id: id, p_apply: apply
+ }).abortSignal(signal));
+ if (error) throw roomCombatActionError(error.message);
+ return data;
+}
+
+export function subscribeRoomCombatActions(roomId: string, onChange: (action: RoomCombatAction) => void): () => void {
+ const channel = roomSupabase.channel(`room-combat-actions:${roomId}:${crypto.randomUUID()}`)
+  .on('postgres_changes', { event: '*', schema: 'public', table: 'room_combat_actions', filter: `room_id=eq.${roomId}` }, ({ new: action }) => {
+   if ('id' in action && 'status' in action) onChange(action as RoomCombatAction);
+  }).subscribe();
+ return () => { void roomSupabase.removeChannel(channel); };
+}
+
 
 /** Update tavern season without replacing the room's combat state. Storyteller-only RLS still applies. */
 export async function updateRoomTavernSettings(roomId: string, settings: TavernSettings): Promise<void> {

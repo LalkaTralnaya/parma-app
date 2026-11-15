@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { verifiedDiceSummary } from '$lib/engine/verified-room-dice';
  import RoomImage from './RoomImage.svelte';
  import { onMount, tick } from 'svelte';
  import { getCurrentRoom, findRoomByCode, getRecentRolls, subscribeToRoom, type RoomRoll } from '$lib/engine/rooms';
@@ -105,6 +106,8 @@
 	}
 
 	function rollSummary(roll: RoomRoll): { text: string; resultClass: string } {
+		const verified = verifiedDiceSummary(roll);
+		if (verified) return { text: verified, resultClass: 'text-blue-700' };
 		const d = roll.roll_data as Record<string, unknown>;
 		const r = (d.result as string) ?? '';
 
