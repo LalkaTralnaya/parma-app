@@ -21,7 +21,8 @@ export default defineConfig({
    HOST: host,
    PORT: String(port),
    PUBLIC_SUPABASE_URL: 'http://127.0.0.1:9',
-   PUBLIC_SUPABASE_ANON_KEY: 'parma-browser-test'
+   PUBLIC_SUPABASE_ANON_KEY: 'parma-browser-test',
+   PARMA_ADVENTURE_REPORT_TEST: '1'
   }
  }
 });

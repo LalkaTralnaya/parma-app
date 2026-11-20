@@ -143,3 +143,19 @@ test('reconnecting retries chat loading after an interrupted lookup', async ({ c
  await page.evaluate(() => window.dispatchEvent(new Event('online')));
  await expect(chat.getByText(serverRoll, { exact: true })).toBeVisible();
 });
+
+test('the invitation field accepts a complete link and explains the separate guest session', async ({ context, page }) => {
+ const { calls } = await mockRooms(context);
+ await page.goto('/room');
+ await page.getByRole('button', { name: /Я игрок/ }).click();
+ const field = page.getByRole('textbox', { name: 'Секрет приглашения' });
+ await expect(field).toHaveAccessibleDescription(/полную ссылку/);
+ await expect(page.getByText(/Для комнаты используется отдельная гостевая сессия/)).toBeVisible();
+ await page.getByRole('textbox', { name: 'Ваше имя' }).fill(characterName);
+ const invitation = 'https://parma-app.relaxdev.ru/room/' + invite;
+ await field.pressSequentially(invitation);
+ await expect(field).toHaveValue(invitation);
+ await page.getByRole('button', { name: 'Войти', exact: true }).click();
+ await expect(page.getByRole('heading', { name: room.name })).toBeVisible();
+ expect(calls.get('/rest/v1/rpc/lookup_room_by_invite')).toBe(1);
+});

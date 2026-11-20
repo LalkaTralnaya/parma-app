@@ -23,7 +23,8 @@
   const canonical = $derived(new URL(page.url.pathname.replace(/\/$/, '') || '/', SITE_URL).href);
 
   const links = [
-    { href: '/', label: 'Персонажи', icon: 'people' },
+    { href: '/', label: 'Главная', icon: 'compass' },
+    { href: '/characters', label: 'Персонажи', icon: 'people' },
     { href: '/adventures', label: 'Приключения', icon: 'compass' },
     { href: '/gm', label: 'Сказитель', icon: 'dice' },
     { href: '/gm/combat', label: 'Бой', icon: 'sword' },
@@ -41,7 +42,8 @@
       : links
   );
   function active(href: string) {
-    if (href === '/') return page.url.pathname === '/' || page.url.pathname.startsWith('/char') || page.url.pathname === '/new';
+    if (href === '/') return page.url.pathname === '/';
+    if (href === '/characters') return page.url.pathname === '/characters' || page.url.pathname.startsWith('/char/') || page.url.pathname.startsWith('/character-sheet/') || page.url.pathname === '/new';
     return href === '/adventures' ? page.url.pathname.startsWith('/adventures') : page.url.pathname === href;
   }
 </script>

@@ -10,8 +10,8 @@
   import { getSkillTotal, getSkillCheckTarget, getCharacteristicValue, getModifier, getResourceMax } from '$lib/engine/character';
   import { playerText } from '$lib/ui/player-copy';
 
-  let { character: c, modifiers = {}, preview = false, onclose }: {
-    character: Character; modifiers?: ConditionModifiers; preview?: boolean; onclose: () => void;
+  let { character: c, modifiers = {}, preview = false, blank = false, onclose }: {
+    character: Character; modifiers?: ConditionModifiers; preview?: boolean; blank?: boolean; onclose: () => void;
   } = $props();
   let includeHistory = $state(false);
   const race = $derived(RACES.find(r => r.id === c.raceId));
@@ -21,24 +21,24 @@
 
 <div class="print-sheet" class:preview aria-label="Печатный лист персонажа">
   <div class="print-toolbar">
-    <div><strong>Печатный бланк · A4</strong><p>Две страницы для игры на бумаге. Характеристики, навыки и максимумы ресурсов заполнены; текущие показатели, оружие, умения и заклинания — для записи от руки.</p></div>
+    <div><strong>Печатный бланк · A4</strong><p>{blank ? "Пустой бланк для заполнения от руки. В настройках печати выберите «Сохранить как PDF» или отправьте его на принтер." : "Две страницы для игры на бумаге. Характеристики, навыки и максимумы ресурсов заполнены; текущие показатели, оружие, умения и заклинания — для записи от руки."}</p></div>
     <label class="print-option"><input type="checkbox" bind:checked={includeHistory} /> Добавить личность, происхождение и историю</label>
-    <div class="print-actions"><button type="button" onclick={onclose}>Вернуться к листу</button><button type="button" onclick={() => window.print()}>Распечатать / сохранить PDF</button></div>
+    <div class="print-actions"><button type="button" onclick={onclose}>{blank ? 'К персонажам' : 'Вернуться к листу'}</button><button type="button" onclick={() => window.print()}>Распечатать / сохранить PDF</button></div>
   </div>
   <article class="paper">
     <div class="sheet-page">
       <header class="print-heading">
-        <div><p class="eyebrow">ПАРМА · ЛИСТ ПЕРСОНАЖА</p><h1>{c.name || 'Без имени'}</h1><p>{race?.name ?? c.raceId}{#if c.raceVariantId} · {race?.variants?.find(v => v.id === c.raceVariantId)?.name ?? c.raceVariantId}{/if} · {background?.name ?? 'Без предыстории'}</p></div>
+        <div><p class="eyebrow">ПАРМА · ЛИСТ ПЕРСОНАЖА</p>{#if blank}<h1 class="blank-name">Имя: <span class="write-line extra-wide"></span></h1><p>Раса: <span class="write-line wide"></span> · Предыстория: <span class="write-line extra-wide"></span></p>{:else}<h1>{c.name || 'Без имени'}</h1><p>{race?.name ?? c.raceId}{#if c.raceVariantId} · {race?.variants?.find(v => v.id === c.raceVariantId)?.name ?? c.raceVariantId}{/if} · {background?.name ?? 'Без предыстории'}</p>{/if}</div>
         <div class="level"><span class="number-box" aria-label="Уровень — вписать"></span><span>уровень</span></div>
       </header>
       <div class="stats">
         {#each CHARACTERISTICS as a}
-          {@const value = getCharacteristicValue(c,a.id)}<div><span>{a.name}</span><strong class="stat-value">{value}</strong><small>мод. {signed(getModifier(value))} · избавл. ≤ {value}</small></div>
+          {@const value = getCharacteristicValue(c,a.id)}<div><span>{a.name}</span><strong class="stat-value">{blank ? "" : value}</strong><small>мод. {blank ? "____" : signed(getModifier(value))} · избавл. ≤ {blank ? "____" : value}</small></div>
         {/each}
       </div>
       <div class="stats resources">
         {#each RESOURCES as r}
-          <div><span>{r.name}</span><div class="resource-blanks"><span aria-label={`${r.name} сейчас — вписать`}></span><b>/</b><span aria-label={`${r.name} максимум`}>{getResourceMax(c,r.id)}</span></div><small>сейчас / максимум</small></div>
+          <div><span>{r.name}</span><div class="resource-blanks"><span aria-label={`${r.name} сейчас — вписать`}></span><b>/</b><span aria-label={`${r.name} максимум`}>{blank ? "" : getResourceMax(c,r.id)}</span></div><small>сейчас / максимум</small></div>
         {/each}
       </div>
       <div class="tracking">
@@ -58,24 +58,26 @@
         <div class="tracking"><span>Глас крови <span class="mark-box"></span></span><span>Зов Живы <span class="mark-box"></span></span><span>Состояния <span class="write-line extra-wide"></span></span></div>
       </section>
       <section>
-        <h2>Навыки</h2><p class="footnote">Бонус и цель к100 перенесены из листа персонажа на момент печати.</p>
+        <h2>Навыки</h2><p class="footnote">{blank ? "Впишите бонус и цель к100 после создания персонажа." : "Бонус и цель к100 перенесены из листа персонажа на момент печати."}</p>
         <div class="skill-columns">
           {#each CHARACTERISTICS as a}
             <div class="skill-group"><h3>{a.name}</h3><table><thead><tr><th scope="col">Навык</th><th scope="col">Бонус</th><th scope="col">Цель</th></tr></thead><tbody>
-              {#each SKILLS.filter(s => s.parent === a.id) as s}<tr><td>{s.name}</td><td>{signed(getSkillTotal(c,s.id,modifiers))}</td><td>≤ {getSkillCheckTarget(c,s.id,modifiers)}</td></tr>{/each}
+              {#each SKILLS.filter(s => s.parent === a.id) as s}<tr><td>{s.name}</td><td>{blank ? "" : signed(getSkillTotal(c,s.id,modifiers))}</td><td>{blank ? "" : `≤ ${getSkillCheckTarget(c,s.id,modifiers)}`}</td></tr>{/each}
             </tbody></table></div>
           {/each}
         </div>
       </section>
     </div>
     <div class="sheet-page records-page">
-      <header class="records-heading"><strong>{c.name || 'Персонаж'}</strong><span>Снаряжение, умения и магия</span></header>
+      <header class="records-heading"><strong>{blank ? 'Имя: ____________________' : c.name || 'Персонаж'}</strong><span>Снаряжение, умения и магия</span></header>
       <section><h2>Оружие</h2><table class="writing-table weapons-table"><colgroup><col style="width:40%" /><col style="width:20%" /><col style="width:20%" /><col style="width:20%" /></colgroup><thead><tr><th scope="col">Оружие</th><th scope="col">Попадание к100</th><th scope="col">Урон</th><th scope="col">Пометки</th></tr></thead><tbody>{#each Array(6) as _}<tr><td></td><td></td><td></td><td></td></tr>{/each}</tbody></table></section>
       <section><h2>Умения</h2><table class="writing-table abilities-table"><colgroup><col style="width:35%" /><col style="width:65%" /></colgroup><thead><tr><th scope="col">Умение / ранг</th><th scope="col">Эффект и пометки</th></tr></thead><tbody>{#each Array(8) as _}<tr><td></td><td></td></tr>{/each}</tbody></table></section>
       <section><h2>Заклинания</h2><table class="writing-table spells-table"><colgroup><col style="width:25%" /><col style="width:17%" /><col style="width:12%" /><col style="width:13%" /><col style="width:33%" /></colgroup><thead><tr><th scope="col">Заклинание</th><th scope="col">Школа / ступень</th><th scope="col">Цена</th><th scope="col">Цель к100</th><th scope="col">Эффект / длительность</th></tr></thead><tbody>{#each Array(8) as _}<tr><td></td><td></td><td></td><td></td><td></td></tr>{/each}</tbody></table></section>
       <section><h2>Инвентарь и деньги</h2><div class="tracking money"><span>Златники <span class="write-line"></span></span><span>Серебряники <span class="write-line"></span></span><span>Медяки <span class="write-line"></span></span><span>Вес <span class="write-line"></span> пуд.</span></div><div class="inventory-columns">{#each [0,1] as _}<table class="writing-table inventory-table"><colgroup><col style="width:75%" /><col style="width:25%" /></colgroup><thead><tr><th scope="col">Предмет / пометки</th><th scope="col">Кол.</th></tr></thead><tbody>{#each Array(5) as _}<tr><td></td><td></td></tr>{/each}</tbody></table>{/each}</div></section>
     </div>
-    {#if includeHistory}
+    {#if includeHistory && blank}
+      <div class="sheet-page history-page"><header class="records-heading"><strong>Имя: ____________________</strong><span>Личность и история</span></header>{#each ["Характер", "Идеал", "Привязанность", "Слабость", "Цели", "Предыстория", "Внешность"] as label}<section><h2>{label}</h2><div class="blank-writing"></div><div class="blank-writing"></div><div class="blank-writing"></div></section>{/each}</div>
+    {:else if includeHistory}
       <div class="sheet-page history-page">
         <header class="records-heading"><strong>{c.name || 'Персонаж'}</strong><span>Личность и история</span></header>
         <div class="history-columns">
@@ -142,6 +144,8 @@
   .inventory-table td { height:5.5mm; }
   .inventory-columns { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:5mm; }
   .history-columns { column-count:2; column-gap:6mm; column-rule:1px solid #ddd; }
+  .blank-name { font-size:14pt; }
+  .blank-writing { height:7mm; border-bottom:1px solid #aaa; }
   .personal-text { white-space:pre-wrap; overflow-wrap:anywhere; }
   @media screen and (max-width:650px) { .sheet-page { padding:5mm; } .skill-columns { grid-template-columns:1fr; } .history-columns { column-count:1; } .stats { grid-template-columns:repeat(2,1fr); } .inventory-columns { grid-template-columns:1fr; } }
   @media print {

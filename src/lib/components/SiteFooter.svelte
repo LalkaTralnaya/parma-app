@@ -30,7 +30,7 @@
       {/if}
     </section>
   </div>
-  <div class="footer-bottom"><p>© {new Date().getFullYear()} {SITE_INFO.owner || 'Парма'}</p><ReleaseNotes showFooter={showRelease} /></div>
+  <div class="footer-bottom" id="app-updates"><p>© {new Date().getFullYear()} {SITE_INFO.owner || 'Парма'}</p><ReleaseNotes showFooter={showRelease} /></div>
 </footer>
 
 <style>

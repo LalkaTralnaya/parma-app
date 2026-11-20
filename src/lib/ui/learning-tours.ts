@@ -1,25 +1,186 @@
-export type TourStep = { title: string; text: string; target: string; href?: string; link?: string };
-
+import { helpContent, helpPractice, type HelpContent, type HelpTopicId } from './help-content';
+export type TourStep = HelpContent & { id: string; topicId: HelpTopicId; target: string };
+function tourStep(topicId: HelpTopicId, target: string): TourStep { return { ...helpContent(topicId), id: topicId, topicId, target }; }
 export const CREATION_TOUR: TourStep[] = [
-  { title: 'Начните с задумки', text: 'Кем вы хотите быть в мире Пармы и что хотите в нём делать? Представьте героя и то, к чему он стремится, затем дайте ему имя. Расу, предысторию и способности дальше можно подобрать под этот образ.', target: '#character-name' },
-  { title: 'Выберите народ', text: 'В списке «Раса» выберите происхождение героя. Рядом показаны описание и особенности. Если доступны вариант расы или бонус на выбор, укажите их ниже.', target: '#raceId', href: '/lore#lore-1676', link: 'Прочитать о народах' },
-  { title: 'Определите предысторию', text: 'Предыстория рассказывает, чем герой жил до приключений. Она даёт особенности и стартовое снаряжение — прочитайте их под списком.', target: '#backgroundId', href: '/mechanics#book16-2', link: 'Правила предысторий' },
-  { title: 'Распределите очки навыков', text: 'Кнопки «+» и «−» меняют вложенные очки. На старте доступно до 10 очков, максимум 2 в один навык. Счётчик показывает остаток. Выбирайте то, что соответствует замыслу героя.', target: '#creation-skills h2' },
-  { title: 'Сохраните героя', text: 'Когда будете готовы, нажмите «Сохранить персонажа». Откроется его лист; там можно заполнить личность и цели. Для знакомства с листом нажмите «Обучение» в его шапке. Эта подсказка сама ничего не сохраняет.', target: '#create-character' }
+ tourStep("character-concept", "#character-name"),
+ tourStep("character-origin", "#raceId"),
+ tourStep("character-background", "#backgroundId"),
+ tourStep("character-skills", "#creation-skills h2"),
+ tourStep("starting-abilities", "#creation-abilities"),
+ tourStep("character-save", "#create-character"),
+];
+export const SHEET_TOUR: TourStep[] = [
+ tourStep("sheet-navigation", ".sheet-nav"),
+ tourStep("roll-mode", "[aria-label=\"Режим бросков\"]"),
+ tourStep("characteristics", "#characteristics"),
+ tourStep("resources", "#resources"),
+ tourStep("weapon-combat", "#battle"),
+ tourStep("skill-check", "#skills"),
+ tourStep("ability-trees", "#abilities"),
+ tourStep("spellcasting", "#spells"),
+ tourStep("inventory", "#inventory"),
+ tourStep("player-tavern", "a[href^=\"/tavern?character=\"]"),
+ tourStep("player-relationships", "#relationships"),
+ tourStep("personality", "#personality"),
+ tourStep("conditions", "#conditions"),
+ tourStep("decay", "#decay"),
+ tourStep("rest-and-growth", "#rest"),
+];
+export const READING_ROUTE = [
+ { ...helpContent("reading-welcome"), topicId: "reading-welcome", number: "01", label: "Лор · начало" },
+ { ...helpContent("reading-world"), topicId: "reading-world", number: "02", label: "Лор · главы по порядку" },
+ { ...helpContent("reading-character"), topicId: "reading-character", number: "03", label: "Механики · начало" },
+ { ...helpContent("reading-action"), topicId: "reading-action", number: "04", label: "Механики · подробности" },
 ];
 
-export const SHEET_TOUR: TourStep[] = [
-  { title: 'Навигация по листу', text: 'Эти ссылки переносят к разделам длинного листа. Во время обучения нужный раздел будет подсвечен. Вы можете остановить подсказки в любой момент.', target: '.sheet-nav' },
-  { title: 'Режим бросков', text: '«Онлайн» бросает кубики в приложении. «Офлайн» позволяет бросить физические кубики и ввести результат. Выберите удобный для вашего стола режим.', target: '[aria-label="Режим бросков"]' },
-  { title: 'Характеристики', text: 'Здесь основные значения героя и их модификаторы. Нажатие на характеристику запускает её проверку. Для проверки конкретного навыка используйте раздел «Навыки».', target: '#characteristics', href: '/mechanics#mechanics-29', link: 'Как работают характеристики' },
-  { title: 'Ресурсы', text: 'Здравие, Жива, Бодрость, Влияние и Благодать: рядом видны текущие и максимальные значения. Кнопки меняют запас. Следите за затратами во время приключения.', target: '#resources' },
-  { title: 'Бой', text: 'Здесь выбирают оружие, доспех и щит, задают тип атаки и Броню цели, затем выполняют атаку. Проверьте снаряжение перед броском.', target: '#battle', href: '/gm/cheatsheet', link: 'Открыть краткие правила' },
-  { title: 'Навыки', text: 'Таблица показывает значения навыков и цель проверки к100. Кнопка в строке запускает проверку именно этого навыка.', target: '#skills', href: '/mechanics#mechanics-50', link: 'Прочитать о проверках' },
-  { title: 'Созвездия умений', text: 'Раскройте нужную ветвь, чтобы увидеть связанные умения. Нажмите на кружок узла, чтобы изучить доступное умение. Смотрите запас очков и требуемые предшественники.', target: '#abilities', href: '/mechanics#book16-current-4', link: 'Как читать дерево умений' },
-  { title: 'Магия', text: 'Заклинания собраны по школам. Раскройте школу, изучите нужные чары и прочитайте условия. Здесь же находятся сотворение и управление удерживаемым заклинанием.', target: '#spells', href: '/mechanics#chapter-magic', link: 'Правила магии' },
-  { title: 'Инвентарь', text: 'Здесь деньги, вещи, их количество и общий вес. Лавка помогает покупать снаряжение, а расходуемые предметы можно применять из списка.', target: '#inventory', href: '/lavka', link: 'Открыть лавку' },
-  { title: 'Личность и история', text: 'Заполните характер, идеал, привязанность и слабость. Ниже можно записать цели, предысторию и внешность. Здесь же учитывается Вдохновение.', target: '#personality', href: '/mechanics#book16-7', link: 'Аспекты личности' },
-  { title: 'Состояния', text: 'Здесь видны активные состояния, их эффекты и длительность. Можно добавить состояние, изменить число раундов, попытаться пройти избавление или снять его.', target: '#conditions', href: '/mechanics#mechanics-1139', link: 'Справочник состояний' },
-  { title: 'Тлен', text: 'Показаны очки и текущая стадия Тлена. Сверяйте изменения со Сказителем: стадия влияет на героя и оформление листа.', target: '#decay', href: '/mechanics#mechanics-2429', link: 'Прочитать о Тлене' },
-  { title: 'Отдых и дальнейший путь', text: 'Короткий и продолжительный отдых восстанавливают ресурсы по своим правилам. А для развития героя используйте «+1 уровень» в шапке листа. К этому обучению можно вернуться в любое время.', target: '#rest', href: '/learn?topic=reading', link: 'Где читать о мире и правилах' }
+export type PlayerDestination = 'sheet' | 'growth' | 'tavern' | 'home' | 'room';
+const playerSteps: { topicId: HelpTopicId; destination: PlayerDestination; section?: string }[] = [
+ { topicId: 'ability-trees', destination: 'sheet', section: 'abilities' },
+ { topicId: 'skill-check', destination: 'sheet', section: 'skills' },
+ { topicId: 'resources', destination: 'sheet', section: 'resources' },
+ { topicId: 'inventory', destination: 'sheet', section: 'inventory' },
+ { topicId: 'spellcasting', destination: 'sheet', section: 'spells' },
+ { topicId: 'rest-and-growth', destination: 'sheet', section: 'rest' },
+ { topicId: 'character-growth', destination: 'growth' },
+ { topicId: 'player-relationships', destination: 'sheet', section: 'relationships' },
+ { topicId: 'player-tavern', destination: 'tavern' },
+ { topicId: 'room-session', destination: 'room' },
+ { topicId: 'character-backup', destination: 'home' }
+];
+export const PLAYER_LESSONS = playerSteps.map(step => {
+ const practice = helpPractice(step.topicId);
+ if (!practice) throw new Error('Missing player lesson: ' + step.topicId);
+ return { ...step, ...helpContent(step.topicId), practice };
+});
+export function playerLessonHref(lesson: typeof PLAYER_LESSONS[number], characterId: string): string | null {
+ if (lesson.destination === 'home') return '/characters';
+ if (lesson.destination === 'room') return '/room';
+ if (!characterId) return null;
+ const id = encodeURIComponent(characterId);
+ if (lesson.destination === 'growth') return '/char/' + id + '/levelup';
+ if (lesson.destination === 'tavern') return '/tavern?character=' + id;
+ return '/char/' + id + '#' + lesson.section;
+}
+
+export const STORYTELLER_PHASES = [
+ { id: "prepare", title: "Подготовка встречи" },
+ { id: "play", title: "Проведение игры" },
+ { id: "finish", title: "Итоги и сохранение" }
+] as const;
+export const STORYTELLER_LESSONS = [
+  {
+    "topicId": "gm-orientation",
+    "phase": "prepare",
+    "action": "Открыть пульт"
+  },
+  {
+    "topicId": "adventure-preparation",
+    "phase": "prepare",
+    "action": "Открыть приключения"
+  },
+  {
+    "topicId": "gm-adventure-edit",
+    "phase": "prepare",
+    "action": "Открыть список и редактор"
+  },
+  {
+    "topicId": "gm-session-notes",
+    "phase": "prepare",
+    "action": "Открыть заметки"
+  },
+  {
+    "topicId": "room-start",
+    "phase": "prepare",
+    "action": "Открыть комнаты"
+  },
+  {
+    "topicId": "gm-players",
+    "phase": "prepare",
+    "action": "Открыть пульт и доступ к связям"
+  },
+  {
+    "topicId": "gm-checks",
+    "phase": "play",
+    "action": "Открыть запросы"
+  },
+  {
+    "topicId": "encounter-setup",
+    "phase": "play",
+    "action": "Открыть боевой трекер"
+  },
+  {
+    "topicId": "gm-combat-actions",
+    "phase": "play",
+    "action": "Открыть действия боя"
+  },
+  {
+    "topicId": "gm-effects",
+    "phase": "play",
+    "action": "Открыть эффекты боя"
+  },
+  {
+    "topicId": "gm-media",
+    "phase": "play",
+    "action": "Открыть материалы приключений"
+  },
+  {
+    "topicId": "gm-season",
+    "phase": "play",
+    "action": "Открыть настройку сезона"
+  },
+  {
+    "topicId": "gm-relationships",
+    "phase": "play",
+    "action": "Открыть паутину отношений"
+  },
+  {
+    "topicId": "gm-storyplot",
+    "phase": "play",
+    "action": "Открыть сюжетную паутину"
+  },
+  {
+    "topicId": "random-events",
+    "phase": "play",
+    "action": "Открыть таблицы событий"
+  },
+  {
+    "topicId": "gm-finish",
+    "phase": "finish",
+    "action": "Открыть завершение боя"
+  },
+  {
+    "topicId": "gm-report",
+    "phase": "finish",
+    "action": "Открыть отчёт"
+  },
+  {
+    "topicId": "gm-report-export",
+    "phase": "finish",
+    "action": "Открыть экспорт"
+  },
+  {
+    "topicId": "gm-archive",
+    "phase": "finish",
+    "action": "Открыть свои комнаты"
+  },
+  {
+    "topicId": "gm-recovery",
+    "phase": "finish",
+    "action": "Открыть аккаунт"
+  }
+] satisfies { topicId: HelpTopicId; phase: typeof STORYTELLER_PHASES[number]["id"]; action: string }[];
+export const STORYTELLER_ROUTE = STORYTELLER_LESSONS.map(step => {
+ const practice = helpPractice(step.topicId);
+ const content = helpContent(step.topicId);
+ if (!practice || !content.href) throw new Error("Missing storyteller lesson: " + step.topicId);
+ return { ...step, ...content, href: content.href, practice };
+});
+export const STORYTELLER_TOUR: TourStep[] = [
+ tourStep("gm-orientation", "#storyteller-console-title"),
+ tourStep("gm-session-notes", "#storyteller-notes-title"),
+ tourStep("gm-checks", "#gm-requests-title"),
+ tourStep("encounter-setup", "a[href=\"/gm/combat\"]"),
+ tourStep("gm-relationships", "#relationship-web-title"),
+ tourStep("gm-season", "#tavern-season-title"),
+ tourStep("gm-report", "a[href=\"/gm/adventure-report\"]")
 ];

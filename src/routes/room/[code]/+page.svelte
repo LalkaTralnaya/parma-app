@@ -400,6 +400,7 @@ async function declineGift(p: RoomParticipant) {
 			<div>
 				<div class="text-sm text-gray-500">{isMaster ? 'Вы — сказитель' : 'Вы — игрок'}</div>
 				<h1 class="text-3xl font-bold">{room.name || 'Комната'}</h1>
+ {#if isMaster}<p class="text-sm mt-2"><a href="/learn?topic=storyteller#help-gm-players">Гайд Сказителя</a></p>{/if}
 				<div class="text-sm text-gray-600 mt-1">
 					Секрет приглашения:
 					<span class="font-mono text-sm font-bold break-all text-blue-700 ml-2">

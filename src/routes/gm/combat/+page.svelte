@@ -619,6 +619,7 @@ async function addSelectedPlayers() {
 	<header class="flex justify-between items-center mb-6 flex-wrap gap-3">
 		<div>
 			<h1 class="text-3xl font-bold">Бой</h1>
+ <p class="text-sm my-2"><a href="/learn?topic=storyteller#help-encounter-setup">Гайд Сказителя</a></p>
 			<p class="text-sm text-gray-500">
 				Участников: {combatState.participants.length}
 				{#if combatState.active} · раунд {combatState.round}{/if}

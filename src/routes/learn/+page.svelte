@@ -5,9 +5,9 @@
   import StoryPanel from '$lib/components/StoryPanel.svelte';
   import { listCharacters } from '$lib/db/characters';
   import type { Character } from '$lib/type';
-  import { SHEET_TOUR } from '$lib/ui/learning-tours';
+  import { CREATION_TOUR, SHEET_TOUR, READING_ROUTE, PLAYER_LESSONS, playerLessonHref, STORYTELLER_PHASES, STORYTELLER_ROUTE } from '$lib/ui/learning-tours';
 
-  const topics = [{ id: 'create', title: 'Создать персонажа', icon: 'people' }, { id: 'sheet', title: 'Разобраться в листе', icon: 'compass' }, { id: 'reading', title: 'Мир и правила', icon: 'book' }];
+  const topics = [{ id: 'create', title: 'Создать персонажа', icon: 'people' }, { id: 'sheet', title: 'Разобраться в листе', icon: 'compass' }, { id: 'play', title: 'Игра за столом', icon: 'dice' }, { id: 'reading', title: 'Мир и правила', icon: 'book' }, { id: 'storyteller', title: 'Маршрут Сказителя', icon: 'compass' }];
   let topic = $state('create');
   let characters = $state<Character[]>([]);
   let characterId = $state('');
@@ -19,24 +19,13 @@
     catch { loadError = true; }
     finally { loading = false; }
   });
-  const creationSteps = [
-    { title: 'Придумайте замысел героя', text: 'Кем вы хотите быть в мире Пармы и что хотите в нём делать? Подумайте, чью историю вам интересно прожить и к чему будет стремиться ваш герой. Из этой задумки вырастут его происхождение, личность и способности.' },
-    { title: 'Выберите расу', text: 'Прочитайте описание и особенности народа. Если доступен вариант или бонус характеристики на выбор, укажите их в форме.' },
-    { title: 'Выберите предысторию', text: 'Она связывает героя с миром, даёт особенности и стартовые вещи. Посмотрите описание, умения и снаряжение под списком.' },
-    { title: 'Распределите очки навыков', text: 'В форме доступны до 10 начальных очков, не больше 2 в один навык. Кнопки «+» и «−» меняют вложения, счётчик показывает остаток.' },
-    { title: 'Сохраните и откройте лист', text: 'Нажмите «Сохранить персонажа». В разделе «Личность» запишите идеал, привязанность, слабость и личную цель. Дальше можно запустить обучение по листу.' }
-  ];
-  const readingLinks = [
-    { href: '/lore#lore-2', number: '01', title: 'Вступление в мир', text: 'Начните с «Добро пожаловать в Парму»: о чём игра и какие истории ждут героев.', label: 'Лор · начало' },
-    { href: '/lore#chapter-world-laws', number: '02', title: 'Законы, народы и боги', text: 'После вступления — Жива и Кон, народы и пантеон. Затем жизнь общин, письменности и легенды.', label: 'Лор · главы по порядку' },
-    { href: '/mechanics#mechanics-introduction', number: '03', title: 'От задумки к герою', text: 'Начните с того, кем хотите быть и что хотите делать в Парме. Затем подберите происхождение, личность и способности под этот образ.', label: 'Механики · начало' },
-    { href: '/mechanics#chapter-combat', number: '04', title: 'Игра в действии', text: 'Бой, магия и состояния. Дальше — отдых, путешествия, снаряжение и ремесло.', label: 'Механики · подробности' }
-  ];
+  const creationSteps = CREATION_TOUR;
+  const readingLinks = READING_ROUTE;
 </script>
 
 <main class="learn-page">
   <header class="learn-hero">
-    <div><p class="eyebrow">Первые шаги в Парме</p><h1>У каждой истории<br />есть начало.</h1><p class="lead">Создайте героя, познакомьтесь с его листом и найдите нужные главы мира и правил. Можно пройти всё по порядку или выбрать одну тему.</p><a href="/" class="home-link">← К персонажам</a></div>
+    <div><p class="eyebrow">Первые шаги в Парме</p><h1>У каждой истории<br />есть начало.</h1><p class="lead">Создайте героя, познакомьтесь с его листом и разберите действия за столом. Затем переходите к нужным главам мира и правил. Можно пройти всё по порядку или выбрать одну тему.</p><a href="/characters" class="home-link">← К персонажам</a></div>
     <StoryPanel scene="road" label="Путник на дороге к лесному святилищу" width={140} />
   </header>
   <nav class="topic-tabs" aria-label="Темы обучения">
@@ -45,7 +34,7 @@
 
   {#if topic === 'create'}
     <section aria-labelledby="creation-guide"><div class="section-heading"><p class="eyebrow">Шаг 1 · Ваш герой</p><h2 id="creation-guide">От замысла к готовому листу</h2><p>В Парме нет классов: сочетайте происхождение, навыки и умения под свою историю.</p></div>
-      <ol class="learning-steps">{#each creationSteps as step, index}<li><span class="step-number">{index + 1}</span><div><h3>{step.title}</h3><p>{step.text}</p></div></li>{/each}</ol>
+      <ol class="learning-steps">{#each creationSteps as step, index}<li id={'help-' + step.topicId}><span class="step-number">{index + 1}</span><div><h3>{step.title}</h3><p>{step.text}</p></div></li>{/each}</ol>
       <div class="lesson-actions"><a class="button primary" href="/new?learn=1"><Icon name="plus" size={18} />Создать героя с подсказками</a><button class="button" onclick={() => topic = 'sheet'}>Дальше: лист персонажа <Icon name="arrow" size={18} /></button></div>
     </section>
   {:else if topic === 'sheet'}
@@ -56,12 +45,59 @@
         {:else if characters.length}<label>Выберите персонажа<select bind:value={characterId}>{#each characters as character}<option value={character.id}>{character.name || 'Без имени'}</option>{/each}</select></label><a class="button primary" href={`/char/${characterId}?learn=1`}>Показать на моём листе <Icon name="arrow" size={18} /></a>
         {:else}<p>Сначала создайте героя, чтобы пройти обучение на его листе.</p><a class="button primary" href="/new?learn=1">Создать персонажа</a>{/if}
       </div>
-      <div class="sheet-map">{#each SHEET_TOUR as step, index}<article><span>{(index + 1).toString().padStart(2, '0')}</span><h3>{step.title}</h3><p>{step.text}</p></article>{/each}</div>
+      <div class="sheet-map">{#each SHEET_TOUR as step, index}<article id={'help-' + step.topicId}><span>{(index + 1).toString().padStart(2, '0')}</span><h3>{step.title}</h3><p>{step.text}</p></article>{/each}</div>
+      <div class="lesson-actions"><button class="button" onclick={() => topic = 'play'}>Разобрать действия за столом <Icon name="arrow" size={18} /></button><button class="button" onclick={() => topic = 'reading'}>Дальше: мир и правила <Icon name="arrow" size={18} /></button></div>
+    </section>
+  {:else if topic === 'play'}
+    <section aria-labelledby="player-guide">
+      <div class="section-heading"><p class="eyebrow">Шаг 3 · За игровым столом</p><h2 id="player-guide">От первого действия к продолжению истории</h2><p>У каждого шага есть порядок действий и ожидаемый результат. Чтение гайда не меняет героя. Броски, покупки и изучение умений выполняются только на соответствующих экранах.</p></div>
+      <div class="tour-choice">
+        {#if loading}<p role="status">Открываем список героев…</p>
+        {:else if loadError}<p>Список героев не удалось открыть. Инструкции можно прочитать здесь, а нужный раздел открыть из своего листа.</p>
+        {:else if characters.length}<label>Персонаж для переходов<select bind:value={characterId}>{#each characters as character}<option value={character.id}>{character.name || 'Без имени'}</option>{/each}</select></label>
+        {:else}<p>Инструкции доступны без героя. Для действий создайте отдельного учебного персонажа или выберите существующего на своём устройстве.</p><a class="button primary" href="/new?learn=1">Создать персонажа</a>{/if}
+      </div>
+      <ol class="player-lessons">
+        {#each PLAYER_LESSONS as lesson, index (lesson.topicId)}
+          {@const href = playerLessonHref(lesson, characterId)}
+          <li><details id={'help-' + lesson.topicId} open={index === 0 || page.url.hash === "#help-" + lesson.topicId}>
+            <summary><span class="step-number">{index + 1}</span><strong>{lesson.title}</strong></summary>
+            <div class="lesson-body">
+              <p>{lesson.text}</p>
+              <ol>{#each lesson.practice.steps as action}<li>{action}</li>{/each}</ol>
+              <p><strong>Ожидаемый результат.</strong> {lesson.practice.result}</p>
+              {#if lesson.practice.caution}<p class="lesson-caution">{lesson.practice.caution}</p>{/if}
+              {#if href}<a class="button" href={href}>{lesson.destination === 'home' ? 'К персонажам и экспорту JSON' : lesson.destination === 'room' ? 'Открыть комнаты' : lesson.destination === 'growth' ? 'Открыть рост героя' : lesson.destination === 'tavern' ? 'Открыть таверну для героя' : 'Открыть раздел листа'} <Icon name="arrow" size={17} /></a>
+              {:else}<p class="lesson-caution">Выберите персонажа выше, чтобы перейти к этому шагу.</p>{/if}
+            </div>
+          </details></li>
+        {/each}
+      </ol>
       <div class="lesson-actions"><button class="button" onclick={() => topic = 'reading'}>Дальше: мир и правила <Icon name="arrow" size={18} /></button></div>
     </section>
+  {:else if topic === 'storyteller'}
+    <section aria-labelledby="storyteller-guide">
+      <div class="section-heading"><p class="eyebrow">Сказителю · Полный маршрут</p><h2 id="storyteller-guide">От подготовки к итогам приключения</h2><p>Все инструкции доступны без аккаунта и комнаты. Чтение не меняет игровые данные. Реальные действия выполняются на соответствующих экранах с действующими правами доступа.</p></div>
+      <div class="lesson-actions"><a class="button primary" href="/gm?learn=1">Экскурсия по пульту Сказителя <Icon name="arrow" size={18} /></a></div>
+      <nav class="lesson-actions" aria-label="Этапы маршрута Сказителя">{#each STORYTELLER_PHASES as phase}<a class="button" href={'/learn?topic=storyteller#storyteller-' + phase.id}>{phase.title}</a>{/each}</nav>
+      {#each STORYTELLER_PHASES as phase}
+        <section aria-labelledby={'storyteller-' + phase.id}>
+          <h3 id={'storyteller-' + phase.id} class="phase-heading">{phase.title}</h3>
+          <ol class="player-lessons" start={STORYTELLER_ROUTE.findIndex(lesson => lesson.phase === phase.id) + 1}>
+            {#each STORYTELLER_ROUTE.filter(lesson => lesson.phase === phase.id) as lesson (lesson.topicId)}
+              <li><details id={'help-' + lesson.topicId} open={lesson.topicId === 'gm-orientation' || page.url.hash === '#help-' + lesson.topicId}>
+                <summary><span class="step-number">{STORYTELLER_ROUTE.indexOf(lesson) + 1}</span><strong>{lesson.title}</strong></summary>
+                <div class="lesson-body"><p>{lesson.text}</p><ol>{#each lesson.practice.steps as action}<li>{action}</li>{/each}</ol><p><strong>Ожидаемый результат.</strong> {lesson.practice.result}</p>{#if lesson.practice.caution}<p class="lesson-caution">{lesson.practice.caution}</p>{/if}<a class="button" href={lesson.href}>{lesson.action} <Icon name="arrow" size={17} /></a></div>
+              </details></li>
+            {/each}
+          </ol>
+        </section>
+      {/each}
+      <div class="lesson-actions"><button class="button" onclick={() => topic = 'reading'}>Мир и правила <Icon name="arrow" size={18} /></button></div>
+    </section>
   {:else}
-    <section aria-labelledby="reading-guide"><div class="section-heading"><p class="eyebrow">Шаг 3 · Знакомство с Пармой</p><h2 id="reading-guide">Что и в каком порядке читать</h2><p>В лоре — мир и его истории. В механиках — подробные правила. Оглавление в начале каждой страницы помогает идти последовательно.</p></div>
-      <ol class="reading-route">{#each readingLinks as item}<li><a href={item.href}><span class="step-number">{item.number}</span><div><small>{item.label}</small><h3>{item.title}</h3><p>{item.text}</p></div><Icon name="arrow" size={20} /></a></li>{/each}</ol>
+    <section aria-labelledby="reading-guide"><div class="section-heading"><p class="eyebrow">Шаг 4 · Знакомство с Пармой</p><h2 id="reading-guide">Что и в каком порядке читать</h2><p>В лоре — мир и его истории. В механиках — подробные правила. Оглавление в начале каждой страницы помогает идти последовательно.</p></div>
+      <ol class="reading-route">{#each readingLinks as item}<li id={'help-' + item.topicId}><a href={item.href}><span class="step-number">{item.number}</span><div><small>{item.label}</small><h3>{item.title}</h3><p>{item.text}</p></div><Icon name="arrow" size={20} /></a></li>{/each}</ol>
       <div class="quick-reference"><h3>Во время игры</h3><p>Чтобы быстро вспомнить правило, откройте шпаргалку. Для подготовки встречи со Сказителем пригодится бестиарий.</p><div class="lesson-actions"><a class="button" href="/gm/cheatsheet"><Icon name="book" size={18} />Правила · краткая шпаргалка</a><a class="button" href="/gm/bestiary"><Icon name="shield" size={18} />Бестиарий</a></div></div>
     </section>
   {/if}
@@ -93,4 +129,17 @@
   small { display:block;color:#91683e;font-size:11px;margin:0 0 7px; } .quick-reference { border-top:1px solid #c1aa83;margin-top:30px;padding-top:24px; }
   button:focus-visible, a:focus-visible { outline:2px solid #a26c38;outline-offset:4px; }
   @media(max-width:600px) { .learn-page { padding:24px 16px 40px; } .learn-hero { gap:14px;align-items:start; } .learn-hero :global(.story-panel) { width:76px; } .topic-tabs button { padding:9px 11px; } .sheet-map { grid-template-columns:1fr; } .reading-route a { padding:16px;gap:12px; } .learning-steps li { gap:14px; } .section-heading h2 { font-size:26px; } }
+  .phase-heading { margin-top:32px;scroll-margin-top:24px; }
+  .player-lessons { display:grid;gap:14px;list-style:none;padding:0;margin:24px 0; }
+  .player-lessons details { border:1px solid #c1aa83;border-radius:5px;background:#fff9ed;scroll-margin-top:20px; }
+  .player-lessons summary { display:flex;align-items:center;gap:14px;padding:16px;cursor:pointer; }
+  .player-lessons summary strong { font:22px Georgia,serif; }
+  .lesson-body { padding:0 18px 20px;overflow-wrap:anywhere; }
+  .lesson-body p,.lesson-body li { font-size:14px;line-height:1.75; }
+  .lesson-body ol { list-style:decimal;padding-left:22px;margin:14px 0; }
+  .lesson-body li { margin:7px 0; }
+  .lesson-body p { margin:12px 0; }
+  .lesson-caution { color:#756449; }
+  .player-lessons summary:focus-visible { outline:2px solid #a26c38;outline-offset:3px; }
+  @media(max-width:600px) { .player-lessons summary { padding:12px;gap:10px; } .player-lessons summary strong { font-size:20px; } .lesson-body { padding:0 14px 16px; } }
 </style>

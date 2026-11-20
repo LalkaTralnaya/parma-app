@@ -193,7 +193,7 @@
 		</div>
 		<progress class="resource-meter" max="10" value={spentPoints} aria-label="Распределено очков навыков">{spentPoints} из 10</progress>
 		<p class="text-sm text-gray-500 mb-3">Максимум 2 очка в один навык.</p>
-		<p class="text-sm text-blue-800 bg-blue-50 border border-blue-200 rounded p-3 mb-4">При создании персонаж получает отдельно <strong>4 очка умений</strong>. Они сохранятся на листе и будут доступны в разделе «Умения» после создания героя; неизрасходованные очки можно оставить на будущее.</p>
+		<p id="creation-abilities" class="text-sm text-blue-800 bg-blue-50 border border-blue-200 rounded p-3 mb-4">При создании персонаж получает отдельно <strong>4 очка умений</strong>. Они сохранятся на листе и будут доступны в разделе «Умения» после создания героя; неизрасходованные очки можно оставить на будущее.</p>
 
 		<div class="space-y-4">
 			{#each CHARACTERISTICS as c}

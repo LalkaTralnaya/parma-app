@@ -21,7 +21,7 @@
 	onMount(async () => {
 		const found = await getCharacter(page.params.id ?? '');
 		if (!found) {
-			goto('/');
+			goto('/characters');
 			return;
 		}
 		char = found;

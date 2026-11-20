@@ -1,4 +1,7 @@
 <script lang="ts">
+ import { page } from '$app/state';
+ import GuidedTour from '$lib/components/GuidedTour.svelte';
+ import { STORYTELLER_TOUR } from '$lib/ui/learning-tours';
 	import Icon from '$lib/components/Icon.svelte';
 	import RelationshipWebView from '$lib/components/RelationshipWeb.svelte';
 	import StoryPlotWebView from '$lib/components/StoryPlotWeb.svelte';
@@ -7,6 +10,7 @@
 	import { getArmorValue } from '../../lib/engine/combat';
 	import { onMount, onDestroy } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { dev } from '$app/environment';
 	import { listCharacters, getCurrentResource, getCharacter, saveCharacter } from '../../lib/db/characters';
 	import { RACES } from '../../lib/rules/races';
 	import { RESOURCES } from '../../lib/rules/resources';
@@ -449,12 +453,18 @@
 <nav class="flex flex-wrap gap-3 mb-4" aria-label="Руководство Сказителя"><a href="/mechanics#personal-story">Личная история и награды</a><a href="/lore#koschei-rules-1">Тринадцать масок Кощея</a></nav>
 	<header class="flex justify-between items-center mb-6 flex-wrap gap-3">
 		<div>
-			<h1 class="text-3xl font-bold">Режим сказителя</h1>
+			<h1 id="storyteller-console-title" class="text-3xl font-bold">Режим сказителя</h1>
 			<p class="text-sm text-gray-500">
 				Всего персонажей: {characters.length}
 			</p>
 		</div>
 		<div class="flex gap-2 flex-wrap">
+			<GuidedTour steps={STORYTELLER_TOUR} title="Пульт Сказителя" autoStart={page.url.searchParams.get('learn') === '1'} />
+ <a href="/learn?topic=storyteller" class="px-4 py-2 border rounded hover:bg-gray-50">Гайд Сказителя</a>
+ <a href="/gm/adventure-report" class="px-4 py-2 border rounded hover:bg-gray-50">Отчёт Сказителя</a>
+			{#if dev}
+				<a href="/gm/adventure-report?test=1" class="px-4 py-2 border rounded hover:bg-gray-50">Тестовый отчёт</a>
+			{/if}
 			<a href="/lavka" class="px-4 py-2 border rounded hover:bg-gray-50 inline-flex items-center gap-2"><Icon name="bag" size={18} />Лавка</a>
 			<a href="/tavern" class="px-4 py-2 border rounded hover:bg-gray-50 inline-flex items-center gap-2"><Icon name="mug" size={18} />Таверна</a>
 			<a
@@ -516,7 +526,7 @@
 					</button>
 				</div>
 			{/if}
-			<a href="/" class="px-4 py-2 border rounded hover:bg-gray-50">← К игрокам</a>
+			<a href="/characters" class="px-4 py-2 border rounded hover:bg-gray-50">← К игрокам</a>
 		</div>
 	</header>
 
@@ -547,10 +557,10 @@
 
 
 
-	<p class="notice mb-6">Пульт видит персонажей этого браузера. Для общих проверок откройте их листы в соседних вкладках. Между разными устройствами данные не передаются.</p>
+	<p class="notice mb-6">Без комнаты пульт показывает персонажей этого браузера. Для общих запросов и обмена между устройствами подключитесь к комнате. Роль Сказителя определяется гостевой сессией комнаты.</p>
 	<!-- Панель запросов -->
 	<section class="border rounded-lg bg-white p-4 mb-6">
-		<h2 class="font-semibold mb-3">Запросы к игрокам</h2>
+		<h2 id="gm-requests-title" class="font-semibold mb-3">Запросы к игрокам</h2>
 		<div class="flex gap-2 flex-wrap">
 			<button
 				class="px-3 py-2 bg-purple-600 text-white rounded hover:bg-purple-700"

@@ -26,7 +26,7 @@
 
 <svelte:head><title>Кубики — Парма</title></svelte:head>
 <main class="dice-demo">
-  <a class="back" href="/">← К персонажам</a>
+  <a class="back" href="/characters">← К персонажам</a>
   <div class="demo-grid">
     <section class="intro">
       <p class="context">За игровым столом</p>

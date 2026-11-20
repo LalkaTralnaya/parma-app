@@ -105,7 +105,7 @@ test('guest character transfer is batched and preserves local originals on failu
 
  const lada = [...cloud.values()].find(row => row.payload?.name === 'Лада')!;
  cloud.set(lada.character_id, { ...lada, is_deleted: true, payload: null, client_updated_at: lada.client_updated_at + 1 });
- await page.goto('/');
+ await page.goto('/characters');
  await expect(page.getByRole('link', { name: /Мира Сиверская/ })).toBeVisible();
  await expect(page.getByRole('link', { name: /Лада/ })).toHaveCount(0);
  expect(cloud.get(lada.character_id)?.is_deleted).toBe(true);

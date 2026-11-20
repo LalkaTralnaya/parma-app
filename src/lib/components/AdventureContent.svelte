@@ -188,6 +188,7 @@
 			<details class="gm-materials">
 				<summary><Icon name="book" size={21} /> Материалы для сказителя <span>Сюжетные тайны и сцены</span></summary>
 				<div class="gm-content" data-nosnippet>
+ <p><a href="/learn?topic=storyteller#help-adventure-preparation">Гайд Сказителя: подготовка приключения</a></p>
 					<section class="panel secret" aria-labelledby="secret-title">
 						<h2 id="secret-title">Что происходит на самом деле</h2>
 						<p>{adventure.secret}</p>

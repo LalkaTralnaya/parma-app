@@ -141,7 +141,9 @@ onMount(() => {
 	<header class="mb-6">
 		<a href="/" class="text-sm text-gray-500 hover:text-gray-700">← На главную</a>
 		<h1 class="text-3xl font-bold mt-2">Комната</h1>
+ <p class="text-sm my-2"><a href="/learn?topic=storyteller#help-room-start">Гайд Сказителя</a></p>
 		<p class="text-gray-600">Собирайтесь вместе за одним столом</p>
+        <p class="text-sm mt-3" id="room-session-help">Аккаунт «Пармы» хранит ваших персонажей. Для комнаты используется отдельная гостевая сессия этого браузера — вход в аккаунт не восстанавливает её. Сохраняйте приглашение и не очищайте данные сайта во время игры: доступ Сказителя может быть утрачен.</p>
 	</header>
 {#if myRooms.length > 0}
 	<section class="mb-6 border rounded-lg bg-white p-4">
@@ -183,7 +185,7 @@ onMount(() => {
 				onclick={() => (mode = 'create')}>
 				<div class="text-2xl font-bold text-green-800 mb-2">Я сказитель</div>
 				<div class="text-sm text-gray-600">
-					Создать комнату и получить код для игроков
+					Создать комнату и получить секретную ссылку для игроков
 				</div>
 			</button>
 
@@ -192,7 +194,7 @@ onMount(() => {
 				onclick={() => (mode = 'join')}>
 				<div class="text-2xl font-bold text-blue-800 mb-2">Я игрок</div>
 				<div class="text-sm text-gray-600">
-					Войти по коду сказителя
+					Войти по приглашению Сказителя
 				</div>
 			</button>
 		</div>
@@ -258,10 +260,12 @@ onMount(() => {
 					id="room-code"
 					type="text"
 					bind:value={code}
-					placeholder="Вставьте секрет из ссылки сказителя"
-					maxlength="64"
+					placeholder="Вставьте ссылку или секрет приглашения"
+					maxlength="2048"
+                    aria-describedby="room-invite-help"
 					autocomplete="off"
 					class="w-full px-3 py-2 border rounded font-mono" />
+                <p class="text-sm mt-2" id="room-invite-help">Можно вставить полную ссылку Сказителя или секрет из 64 символов. Приглашение открывает вход в комнату — передавайте его только участникам игры.</p>
 			</div>
 
 			{#if error}

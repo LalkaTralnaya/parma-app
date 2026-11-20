@@ -302,7 +302,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		const found = await getCharacter(page.params.id ?? '');
 		if (diceLifetime.signal.aborted) return;
 		if (!found) {
-			goto('/');
+			goto('/characters');
 			return;
 		}
 		char = found;
@@ -1540,7 +1540,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 		if (!char) return;
 		if (!confirm('Удалить персонажа?')) return;
 		await deleteCharacter(char.id);
-		goto('/');
+		goto('/characters');
 	}
 
 	async function respondToRequest() {
@@ -1826,10 +1826,11 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 				</div>
 			</div>
 			<div class="flex gap-2 flex-wrap">
-				<a href="/" class="px-3 py-2 border rounded hover:bg-gray-50">← К списку</a>
+				<a href="/characters" class="px-3 py-2 border rounded hover:bg-gray-50">← К списку</a>
 				<a href="/lavka?character={char.id}" class="px-3 py-2 border rounded hover:bg-gray-50 inline-flex items-center gap-2"><Icon name="bag" size={17} />Лавка</a>
 				<a href="/tavern?character={char.id}" class="px-3 py-2 border rounded hover:bg-gray-50 inline-flex items-center gap-2"><Icon name="mug" size={17} />Таверна</a>
 				<GuidedTour steps={SHEET_TOUR} title="Лист персонажа" autoStart={page.url.searchParams.get('learn') === '1'} />
+                <a href="/learn?topic=play" class="px-3 py-2 border rounded hover:bg-gray-50">Гайд игрока</a>
 				<a
 					href="/char/{char.id}/levelup"
 					class="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-semibold">
@@ -1882,7 +1883,7 @@ import { getConditionModifiers, getConditionSaveTarget as calculateConditionSave
 						class="print-characteristic border rounded-lg p-3 text-center bg-white hover:bg-blue-50 hover:border-blue-400 active:scale-95 transition-all cursor-pointer w-full
 							{effVal < baseVal ? 'border-red-300 bg-red-50' : effVal > baseVal ? 'border-green-300 bg-green-50' : ''}"
 						onclick={() => rollCharacteristicCheck(c.id, c.name)}
-						title="Бросить проверку характеристики: к100 ≤ {effVal + (condMods.saves ?? 0)}">
+						title="Бросить проверку характеристики: к100 ≤ {applyCheckDifficulty(effVal + (condMods.saves ?? 0), char)}">
 						<div class="text-xs uppercase text-gray-500">{c.short}</div>
 						<div class="text-2xl font-bold">
 							{effVal}

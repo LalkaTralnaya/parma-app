@@ -1,0 +1,165 @@
+<script lang="ts">
+  import { onMount } from 'svelte';
+  import { listCharacters, deleteCharacter, saveCharacter } from '$lib/db/characters';
+  import { RACES } from '$lib/rules/races';
+  import type { Character } from '$lib/type';
+  import Icon from '$lib/components/Icon.svelte';
+  import CloudAccount from '$lib/components/CloudAccount.svelte';
+  import { exportCharacterToJson, exportAllCharactersToJson, importCharactersFromJson } from '$lib/utils/export';
+  let importInput: HTMLInputElement;
+
+  async function handleImport(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const files = input.files;
+    if (!files || files.length === 0) return;
+
+    let imported = 0;
+    const existingById = new Map(characters.map((character) => [character.id, character]));
+    for (const file of Array.from(files)) {
+      try {
+        const importedCharacters = await importCharactersFromJson(file);
+        for (const char of importedCharacters) {
+          if (existingById.has(char.id) && !confirm(`Персонаж «${char.name}» уже есть. Заменить?`)) continue;
+          await saveCharacter(char);
+          existingById.set(char.id, char);
+          imported++;
+        }
+      } catch (err) {
+        alert(`Ошибка импорта «${file.name}»: ${(err as Error).message}`);
+      }
+    }
+    input.value = '';
+    await load();
+    if (imported > 0) alert(`Импортировано: ${imported}`);
+  }
+  let characters = $state<Character[]>([]);
+  let loading = $state(true);
+  let error = $state('');
+  let query = $state('');
+  let deleting = $state<string | null>(null);
+  let busy = $state(false);
+	let loadVersion = 0;
+  const filtered = $derived(characters.filter(c => `${c.name} ${raceName(c.raceId)}`.toLocaleLowerCase('ru').includes(query.trim().toLocaleLowerCase('ru'))));
+  async function load() {
+	const version = ++loadVersion;
+    loading = true;
+    error = '';
+    try { const loaded = await listCharacters(); if (version === loadVersion) characters = loaded; }
+    catch { if (version === loadVersion) error = 'Не удалось загрузить персонажей. Проверьте, разрешено ли браузеру хранить данные, и попробуйте ещё раз.'; }
+    finally { if (version === loadVersion) loading = false; }
+  }
+  async function remove(id: string) {
+    if (busy) return;
+    busy = true;
+    try { await deleteCharacter(id); characters = characters.filter(c => c.id !== id); deleting = null; }
+    catch { error = 'Не удалось удалить персонажа. Попробуйте ещё раз.'; }
+    finally { busy = false; }
+  }
+  function raceName(id: string) { return RACES.find(r => r.id === id)?.name ?? id; }
+  onMount(() => {
+    void load();
+    const refresh = () => { void load(); };
+    window.addEventListener('parma-cloud-sync', refresh);
+    return () => window.removeEventListener('parma-cloud-sync', refresh);
+  });
+</script>
+<main class="home">
+<header class="characters-heading"><h1>Персонажи</h1><p>Ваши герои, резервные копии и всё необходимое для игры.</p></header>
+  <input
+    type="file"
+    accept=".json,application/json"
+    multiple
+    bind:this={importInput}
+    onchange={handleImport}
+    class="hidden"
+  />
+  <div class="home-columns">
+    <section class="characters" aria-labelledby="characters-title">
+      <div class="section-heading"><h2 id="characters-title">Ваши персонажи <span class="count">{characters.length}</span></h2><a class="button" href="/new"><Icon name="plus" size={18} /> Создать</a></div>
+      <p class="characters-note">Выберите героя, чтобы продолжить приключение. <a href="/character-sheet/blank">Скачать пустой лист персонажа</a></p>
+      {#if characters.length > 0}
+        <label class="search"><Icon name="search" size={20} /><span class="sr-only">Поиск по имени или расе</span><input type="search" bind:value={query} placeholder="Найти по имени или расе" /></label>
+      {/if}
+      {#if error}<div class="notice error" role="alert">{error}<button class="button mt-3" onclick={load}>Повторить загрузку</button></div>{/if}
+      {#if loading}
+        <div class="empty" role="status"><Icon name="compass" size={40} /><p>Открываем летопись героев…</p></div>
+      {:else if characters.length === 0 && !error}
+        <div class="empty"><span class="empty-symbol"><Icon name="people" size={38} /></span><h3>У каждого героя есть начало</h3><p>Придумайте имя, выберите расу и предысторию.<br />Парма поможет собрать ваш первый лист.</p><a href="/new" class="button primary"><Icon name="plus" size={18} /> Создать первого героя</a></div>
+      {:else if filtered.length === 0 && characters.length > 0}
+        <div class="empty"><h3>Герои не найдены</h3><p>Попробуйте другое имя или название расы.</p><button class="button" onclick={() => query = ''}>Сбросить поиск</button></div>
+      {:else}
+        <ul class="character-list">
+          {#each filtered as c (c.id)}
+            <li class="character-card">
+              <a href={`/char/${c.id}`} class="character-link"><span class="portrait">{(c.name || 'П').slice(0, 1).toUpperCase()}</span><span class="character-info"><strong>{c.name || 'Без имени'}</strong><span>{raceName(c.raceId)}</span></span><span class="level">{c.level}<small>уровень</small></span><Icon name="arrow" size={18} /></a>
+              <button class="export-button" aria-label={`Скачать персонажа ${c.name || 'Без имени'} в JSON`} onclick={() => exportCharacterToJson(c)}>JSON</button>
+              {#if deleting === c.id}
+                <div class="delete-confirm"><p>Удалить «{c.name || 'Без имени'}»? Восстановить лист будет нельзя.</p><div><button class="button danger" disabled={busy} onclick={() => remove(c.id)}>{busy ? 'Удаляем…' : 'Удалить'}</button><button class="button" disabled={busy} onclick={() => deleting = null}>Отмена</button></div></div>
+              {:else}
+                <button class="delete-button" aria-label={`Удалить персонажа ${c.name || 'Без имени'}`} onclick={() => deleting = c.id}><Icon name="trash" size={18} /></button>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      {/if}
+      <div class="character-utilities">
+        <button type="button" onclick={() => importInput.click()}>↓ Импорт персонажей</button>
+        <button type="button" disabled={characters.length === 0} onclick={() => exportAllCharactersToJson(characters)}>↑ Экспорт всех</button>
+      </div>
+      <CloudAccount compact />
+    </section>
+<aside class="toolbox ornament-frame" aria-labelledby="tools-title"><h2 id="tools-title">Полезное для героя</h2><p>Подсказки, правила и общий игровой стол.</p><a href="/learn?topic=sheet" class="tool"><span class="tool-icon"><Icon name="compass" /></span><span><strong>Гайд игрока</strong><small>Лист героя и действия за столом</small></span><Icon name="arrow" size={17} /></a>
+<a href="/mechanics" class="tool"><span class="tool-icon"><Icon name="book" /></span><span><strong>Механики</strong><small>Подробные правила игры</small></span><Icon name="arrow" size={17} /></a>
+<a href="/gm/cheatsheet" class="tool"><span class="tool-icon"><Icon name="book" /></span><span><strong>Краткая шпаргалка</strong><small>Быстро вспомнить правило</small></span><Icon name="arrow" size={17} /></a>
+<a href="/lore" class="tool"><span class="tool-icon"><Icon name="leaf" /></span><span><strong>Мир Пармы</strong><small>Народы, земли и истории</small></span><Icon name="arrow" size={17} /></a>
+<a href="/room" class="tool"><span class="tool-icon"><Icon name="people" /></span><span><strong>Комнаты</strong><small>Присоединиться к своей группе</small></span><Icon name="arrow" size={17} /></a>
+<a href="/account" class="tool"><span class="tool-icon"><Icon name="people" /></span><span><strong>Аккаунт</strong><small>Синхронизация и обратная связь</small></span><Icon name="arrow" size={17} /></a><div class="table-note"><Icon name="leaf" size={23} /><p>Экспорт JSON сохраняет отдельную копию героев. Перед очисткой данных браузера проверьте скачанные файлы.</p></div></aside>
+</div></main>
+<style>
+  .home { max-width: 1250px; margin: auto; padding: 32px; }
+  .home-columns { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 28px; margin-top: 28px; }
+  h2 { font-size: 27px; font-weight: 600; margin: 0; }
+  .characters-note, .toolbox > p { color: #5f6c60; font-size: 13px; margin: 5px 0 18px; }
+  .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .character-utilities { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 10px; }
+  .character-utilities button { background: none; border: 0; padding: 6px 0; color: #5f6c60; font-size: 12px; }
+  .character-utilities button:hover { color: #173d30; text-decoration: underline; }
+  .count { vertical-align: middle; font: 13px 'Segoe UI', sans-serif; background: #e4e8d9; padding: 4px 9px; border-radius: 20px; margin-left: 7px; }
+  .empty { background: #fffef8; border: 1px dashed #bdc8ae; border-radius: 10px; min-height: 275px; padding: 28px 18px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 12px; }
+  .empty h3 { font: 24px Georgia, serif; }
+  .empty p { font-size: 14px; color: #5f6c60; }
+  .empty-symbol { color: #678256; padding: 13px; background: #f0f2e4; border-radius: 50%; }
+  .toolbox { border-left: 1px solid #d5daca; padding-left: 28px; }
+  .toolbox h2 { font-size: 24px; }
+  .tool { display: flex; align-items: center; gap: 12px; padding: 15px 0; border-bottom: 1px solid #d5daca; }
+  .tool > span:nth-child(2) { flex: 1; }
+  .tool strong { font-size: 14px; font-weight: 600; display: block; }
+  .tool small { font-size: 12px; color: #5f6c60; }
+  .tool:hover strong { text-decoration: underline; }
+  .tool-icon { width: 40px; height: 40px; background: #e7ecd9; border-radius: 8px; display: grid; place-items: center; color: #45623c; }
+  .table-note { display: flex; align-items: flex-start; gap: 12px; margin-top: 22px; color: #657553; }
+  .table-note :global(svg) { flex-shrink: 0; }
+  .table-note p { font-size: 12px; }
+  .search { display: flex; align-items: center; gap: 10px; border: 1px solid #bdc8ae; background: #fffef8; border-radius: 6px; padding: 0 12px; margin-bottom: 16px; }
+  .search input { min-width: 0; width: 100%; background: transparent; outline-offset: 0; }
+  .character-list { display: grid; gap: 12px; }
+  .character-card { position: relative; background: #fffef8; border: 1px solid #d5daca; border-radius: 8px; }
+  .character-card:hover { border-color: #8da481; }
+  .character-link { display: flex; align-items: center; gap: 16px; padding: 20px 100px 20px 18px; }
+  .portrait { width: 50px; height: 56px; border-radius: 24px 24px 6px 6px; background: #e5ecd9; display: grid; place-items: center; font: 30px Georgia, serif; flex-shrink: 0; }
+  .character-info { flex: 1; min-width: 0; }
+  .character-info strong { display: block; font: bold 21px Georgia, serif; overflow-wrap: anywhere; }
+  .character-info > span { font-size: 13px; color: #5f6c60; }
+  .level { font-size: 24px; text-align: center; line-height: 1.3; }
+  .level small { display: block; font-size: 10px; color: #5f6c60; }
+  .delete-button { position: absolute; right: 7px; top: 26px; width: 40px; display: grid; place-items: center; color: #6c7765; border-radius: 5px; }
+  .export-button { position: absolute; right: 50px; top: 27px; border: 1px solid #bdc8ae; border-radius: 5px; padding: 5px 7px; color: #45623c; font-size: 11px; }
+  .export-button:hover { background: #e7ecd9; }
+  .delete-button:hover { color: #a93232; background: #fff0eb; }
+  .delete-confirm { border-top: 1px solid #d5daca; padding: 16px; font-size: 14px; }
+  .delete-confirm > div { display: flex; gap: 10px; margin-top: 12px; }
+ .characters-heading { margin-bottom:24px; } .characters-heading h1 { font:36px/1.2 Georgia,serif; } .characters-heading p { margin-top:10px;color:#5f6c60; } .home :global(.ornament-frame) { padding:28px!important; }
+ @media(max-width:900px){.home-columns{grid-template-columns:minmax(0,1fr) 280px;gap:24px;}}
+ @media(max-width:700px){.home{padding:24px 16px;}.home-columns{grid-template-columns:minmax(0,1fr);}.toolbox{border-left:0;padding-left:0;}.character-link{gap:10px;padding-left:12px;}}
+
+</style>
